@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Log in - Palimpsest{% endblock %}
+{% block content %}
+<section class="card">
+  <p>Accounts are created by the site operator, not through this form. Ask
+  whoever runs this instance for a username and password.</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post">
+    <div>
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autofocus required>
+    </div>
+    <div>
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required>
+    </div>
+    <button type="submit">Log in</button>
+  </form>
+</section>
+{% endblock %}

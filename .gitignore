@@ -1,0 +1,25 @@
+# Environment variables
+.env
+
+# Runtime data: per-user saves and the accounts database - not authored content
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

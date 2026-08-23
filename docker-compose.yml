@@ -1,0 +1,26 @@
+services:
+  web:
+    build: .
+    container_name: palimpsest-web
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      FLASK_ENV: development
+    restart: unless-stopped
+
+  story-engine:
+    build: .
+    container_name: palimpsest-story-engine
+    command: python story_engine.py
+    volumes:
+      # bind-mounted (not a named volume) so this CLI session sees the exact same
+      # saves/accounts as the web service, which mounts the whole repo (including
+      # data/) via `.:/app` above
+      - ./stories:/app/stories
+      - ./data:/app/data
+    stdin_open: true
+    tty: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

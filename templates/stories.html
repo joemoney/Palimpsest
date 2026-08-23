@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Your stories - Palimpsest{% endblock %}
+{% block header_title %}Choose a story{% endblock %}
+{% block content %}
+<section class="story-list">
+  {% for story in stories %}
+  <a href="{{ url_for('play', story_slug=story.slug) }}">
+    <div class="card">
+      <div style="font-weight:700;">{{ story.title or story.slug }}</div>
+      <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">{{ story.genre or '' }}</div>
+      {% if story.synopsis %}
+      <p class="story" style="font-size:0.9rem; margin-top:10px;">{{ story.synopsis }}</p>
+      {% endif %}
+    </div>
+  </a>
+  {% else %}
+  <div class="card">No stories are available yet.</div>
+  {% endfor %}
+</section>
+{% endblock %}

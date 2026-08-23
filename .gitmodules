@@ -1,0 +1,3 @@
+[submodule "stories/new_babel"]
+	path = stories/new_babel
+	url = https://github.com/joemoney/palimpsest-stories.git
