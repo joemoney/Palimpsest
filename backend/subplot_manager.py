@@ -112,6 +112,29 @@ def activate_subplot(state, subplot_id):
     print(f"Activated subplot: '{subplot['title']}'")
 
 
+def modify_subplot(state, subplot_id, **kwargs):
+    """Modify an existing subplot's descriptive properties (title, description, priority,
+    ties_to_main_plot) - mirrors plot_manager.py's modify_act. Deliberately not the place
+    to touch progress/status/active/completion_threshold: those have dedicated commands
+    (update_subplot_progress, activate_subplot) with their own completion/regeneration
+    side effects that a blind key overwrite here would bypass."""
+    if subplot_id not in state["plot"]["subplots"]:
+        print(f"Error: Subplot '{subplot_id}' not found")
+        return
+
+    subplot = state["plot"]["subplots"][subplot_id]
+    modified = []
+    for key, value in kwargs.items():
+        if key in subplot:
+            subplot[key] = value
+            modified.append(key)
+
+    if modified:
+        print(f"Modified subplot '{subplot_id}': {', '.join(modified)}")
+    else:
+        print(f"No changes made to subplot '{subplot_id}'")
+
+
 def advance_act(state):
     """Manually force-complete the current act. If no next act exists yet, it's normally
     left for the automatic pacing director (story_engine.check_and_advance_act) to
@@ -166,6 +189,8 @@ def main():
         print("  python subplot_manager.py status")
         print("  python subplot_manager.py progress <subplot_id> <+/- amount>")
         print("  python subplot_manager.py activate <subplot_id>")
+        print("  python subplot_manager.py modify-subplot <subplot_id> --title '<new>' "
+              "--description '<new>' --priority '<high|medium|low>' --ties '<new>'")
         print("  python subplot_manager.py advance-act")
         print("  python subplot_manager.py reveal <fragment_id>")
         return
@@ -191,6 +216,32 @@ def main():
             return
         subplot_id = argv[2]
         activate_subplot(state, subplot_id)
+        state_store.save_state(state, user_id, story_slug)
+
+    elif command == "modify-subplot":
+        if len(argv) < 3:
+            print("Usage: python subplot_manager.py modify-subplot <subplot_id> --title '<new>' "
+                  "--description '<new>' --priority '<high|medium|low>' --ties '<new>'")
+            return
+        subplot_id = argv[2]
+        kwargs = {}
+        i = 3
+        while i < len(argv):
+            if argv[i] == "--title" and i + 1 < len(argv):
+                kwargs["title"] = argv[i + 1]
+                i += 2
+            elif argv[i] == "--description" and i + 1 < len(argv):
+                kwargs["description"] = argv[i + 1]
+                i += 2
+            elif argv[i] == "--priority" and i + 1 < len(argv):
+                kwargs["priority"] = argv[i + 1]
+                i += 2
+            elif argv[i] == "--ties" and i + 1 < len(argv):
+                kwargs["ties_to_main_plot"] = argv[i + 1]
+                i += 2
+            else:
+                i += 1
+        modify_subplot(state, subplot_id, **kwargs)
         state_store.save_state(state, user_id, story_slug)
 
     elif command == "advance-act":

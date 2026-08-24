@@ -68,6 +68,34 @@
   </form>
 </details>
 
+<details class="card">
+  <summary>Modify Subplot</summary>
+  <p style="color:var(--muted); font-size:0.85rem;">Leave a field blank to leave it unchanged.</p>
+  <form method="post">
+    <input type="hidden" name="command" value="modify-subplot">
+    <label for="modify-subplot-id">Subplot</label>
+    <select id="modify-subplot-id" name="subplot_id" required>
+      {% for sid, sp in plot.subplots.items() %}
+      <option value="{{ sid }}">{{ sp.title }} ({{ sid }})</option>
+      {% endfor %}
+    </select>
+    <label for="modify-title">Title</label>
+    <input type="text" id="modify-title" name="title">
+    <label for="modify-description">Description</label>
+    <textarea id="modify-description" name="description" rows="3"></textarea>
+    <label for="modify-priority">Priority</label>
+    <select id="modify-priority" name="priority">
+      <option value="">(unchanged)</option>
+      <option value="high">high</option>
+      <option value="medium">medium</option>
+      <option value="low">low</option>
+    </select>
+    <label for="modify-ties">Ties to main plot</label>
+    <input type="text" id="modify-ties" name="ties_to_main_plot">
+    <button type="submit">Modify Subplot</button>
+  </form>
+</details>
+
 {% set inactive_subplots = plot.subplots.values() | rejectattr('active') | list %}
 {% if inactive_subplots %}
 <details class="card">

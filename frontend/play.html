@@ -37,6 +37,10 @@
     <button type="submit" style="width:100%;">Close</button>
   </form>
 </dialog>
+<div id="busy-indicator" class="busy-indicator" role="status" aria-live="polite">
+  <span class="spinner-ring"></span>
+  <span id="busy-indicator-label">Working…</span>
+</div>
 {% endif %}
 {% endblock %}
 
@@ -69,6 +73,16 @@
   document.addEventListener("DOMContentLoaded", function () {
     var el = document.querySelector('.story[data-animate="true"]');
     if (el) { revealNarration(el); }
+
+    // Resuming a save (or just refreshing) should land on the latest scene and its
+    // choices, not the top of the oldest of the last few scenes shown - the page loads
+    // scrolled to the top by default otherwise. Safe to jump straight to the bottom here
+    // (no smooth-scroll fighting a growing element) because a resumed page's narration is
+    // never mid-reveal: data-animate is only ever "true" right after a fresh turn, whose
+    // content is already the last thing on the page.
+    if (document.getElementById("scene-list")) {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    }
   });
 
   document.body.addEventListener("htmx:afterSwap", function () {
@@ -78,6 +92,21 @@
     // document-wide scan never double-animates an already-revealed block either way.
     var els = document.querySelectorAll('.story[data-animate="true"]');
     for (var i = 0; i < els.length; i++) { revealNarration(els[i]); }
+  });
+
+  // A fresh random status word each time a request starts, so the busy indicator reads
+  // as "the engine is at work" rather than a static, repeated label - picked on
+  // htmx:beforeRequest (fires for every htmx-initiated request, including pagination)
+  // so it's set before the indicator becomes visible.
+  var STATUS_WORDS = [
+    "Drafting", "Plotting", "Weaving", "Composing", "Imagining",
+    "Scripting", "Narrating", "Crafting", "Penning", "Conjuring"
+  ];
+  document.body.addEventListener("htmx:beforeRequest", function () {
+    var label = document.getElementById("busy-indicator-label");
+    if (label) {
+      label.textContent = STATUS_WORDS[Math.floor(Math.random() * STATUS_WORDS.length)] + "…";
+    }
   });
 
   document.body.addEventListener("htmx:responseError", function (evt) {

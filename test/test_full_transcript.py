@@ -21,7 +21,7 @@ state["history_log"]["full_transcript"] = []
 se.state_store.load_state = lambda *a, **k: state
 se.state_store.save_state = lambda s, *a, **k: None
 se.call_llm_json = lambda prompt: {"ready": False, "reason": "not yet"}
-se.call_llm = lambda prompt: "updated summary text"
+se.call_llm = lambda prompt, **kwargs: "updated summary text"
 
 # --- turns still inside the recent_turns window: not archived yet ---
 for i in range(1, se.RECENT_TURN_LIMIT + 1):

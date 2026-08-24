@@ -110,25 +110,49 @@ treatment as these existing ones:
   targets the single latest turn. Also disk-only, never read by any prompt.
 
 ## Backend / Model Notes
-- Smaller/cheaper models drift faster, so `world.rules` should stay short,
-  with the 1–2 most critical constraints repeated near the end of the prompt
-  (recency bias helps enforcement on smaller models).
-- `call_llm` wraps any `google.api_core.exceptions.GoogleAPIError` (rate
-  limit, quota exhausted, transient outage) as `story_engine.
-  LLMUnavailableError` — a stable type independent of the underlying SDK.
-  `app.py`'s `take_turn`/`regenerate_turn` views (the only two web-reachable
-  paths that ever call `call_llm`) each catch it directly and return
-  `(str(e), 503)` instead of swapping any content — since both are htmx
-  endpoints (see "Web UI" below), a non-2xx response is never swapped into
-  the page, so the previous scene/choices are left completely untouched and
-  the player can just retry. `play.html`'s `htmx:responseError` listener
-  reads the response body into the `#llm-error-modal` `<dialog>` and shows
-  it. Safe to treat as fully recoverable either way: `call_llm` always runs
-  before `update_state_after_turn`/`save_state` for that turn, so a failure
-  here never leaves a save partially written. The import of `GoogleAPIError`
-  is inside `call_llm`, not at module level, since the offline test suite
-  stubs `google.generativeai` but not the transitive `google-api-core`
-  package.
+- **LLM provider: OpenRouter by default, Google/Gemini for testing/debugging
+  only** (`LLM_PROVIDER` env var, `"openrouter"` or `"google"`, no automatic
+  failover between them - picking one is a startup-time decision, not a
+  runtime fallback). `story_engine.py`'s `call_llm`/`call_llm_json` branch on
+  `LLM_PROVIDER` and dispatch to `_call_llm_openrouter`/`_call_llm_google`.
+  The offline test suite forces `LLM_PROVIDER=google` (see `test/
+  _llm_stubs.py`) specifically because that's the side with a stubbable SDK
+  (`google.generativeai`) - `test/test_openrouter.py` is the one file that
+  overrides this to exercise the OpenRouter path directly (mocking
+  `requests.post`), since each test file runs in its own subprocess and
+  can't affect the others' provider selection.
+- **Two model tiers**, picked per call by `call_llm`'s/`call_llm_json`'s own
+  default parameter values so most call sites never pass `model=` at all:
+  `NARRATION_MODEL` (a bigger/pricier model - the one big creative
+  generation per turn, `build_system_prompt`) vs `STATE_UPDATE_MODEL` (a
+  cheaper/faster model - every other call: `update_progress_from_turn`,
+  `generate_new_subplot`, `check_and_advance_act`,
+  `handle_end_story_request`, and the `compressed_summary` rollover in
+  `update_state_after_turn`, which is the one call site that has to pass
+  `model=STATE_UPDATE_MODEL` explicitly since it goes through `call_llm`
+  directly rather than `call_llm_json`). Under `LLM_PROVIDER=google`, the
+  `model` argument is ignored entirely - that path always uses
+  `GEMINI_MODEL`, since replicating the cost-tier split isn't the point of
+  the testing/debugging path.
+- `call_llm` wraps any provider-level failure (an HTTP error or
+  `requests.exceptions.RequestException` from OpenRouter, or a
+  `google.api_core.exceptions.GoogleAPIError` from Gemini) as `story_engine.
+  LLMUnavailableError` — a single stable type regardless of which provider
+  raised it. `app.py`'s `take_turn`/`regenerate_turn` views (the only two
+  web-reachable paths that ever call `call_llm`) each catch it directly and
+  return `(str(e), 503)` instead of swapping any content — since both are
+  htmx endpoints (see "Web UI" below), a non-2xx response is never swapped
+  into the page, so the previous scene/choices are left completely
+  untouched and the player can just retry. `play.html`'s
+  `htmx:responseError` listener reads the response body into the
+  `#llm-error-modal` `<dialog>` and shows it. Safe to treat as fully
+  recoverable either way: `call_llm` always runs before
+  `update_state_after_turn`/`save_state` for that turn, so a failure here
+  never leaves a save partially written. The import of `GoogleAPIError`
+  inside `_call_llm_google` (not at module level) is what lets the offline
+  test suite import `story_engine` without the real `google-api-core`
+  package installed - it stubs `google.generativeai` but not that
+  transitive dependency.
 - State updates (flags, subplot progress, memory-fragment reveals, entity
   interactions, inventory, relationship scores) are a **separate LLM call**
   from narration (`update_progress_from_turn`) — one call trying to

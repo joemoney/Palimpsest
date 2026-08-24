@@ -52,10 +52,15 @@ and `git submodule add <url> stories/<slug>` if you want it private.
 pip install -r requirements.txt
 python backend/story_engine.py
 ```
-Needs a `.env` file (not checked in) with `GOOGLE_API_KEY` (a Gemini key from
-[Google AI Studio](https://aistudio.google.com/apikey)) and, for the web
-interface, `FLASK_SECRET_KEY` (any random string — used to sign session
-cookies).
+Needs a `.env` file (not checked in) with `OPENROUTER_API_KEY` (an
+[OpenRouter](https://openrouter.ai/keys) key — the default LLM provider)
+and, for the web interface, `FLASK_SECRET_KEY` (any random string — used to
+sign session cookies). `GOOGLE_API_KEY` (a Gemini key from
+[Google AI Studio](https://aistudio.google.com/apikey)) is only needed if
+you set `LLM_PROVIDER=google` — Gemini is kept around for testing/debugging,
+not used by default. See `CLAUDE.md`'s "Backend / Model Notes" for the
+`NARRATION_MODEL`/`STATE_UPDATE_MODEL` env vars if you want to override the
+default DeepSeek models.
 Boots straight into `stories/example/`'s opening with no flags needed — the
 CLI defaults to a local single-player save against the public example story
 (`--user`/`--story` flags exist if you want to target a different one, e.g.
@@ -118,6 +123,7 @@ the same coverage as the CLI:
 python backend/subplot_manager.py status                    # view all subplots + pacing state
 python backend/subplot_manager.py progress subplot_001 +25   # increase progress
 python backend/subplot_manager.py activate subplot_002       # start a new subplot
+python backend/subplot_manager.py modify-subplot subplot_002 --description '...'  # edit title/description/priority/ties
 python backend/subplot_manager.py advance-act                # manually force-complete the current act
 python backend/subplot_manager.py reveal frag_0001            # surface a memory fragment
 ```

@@ -304,6 +304,17 @@ def subplot_manager_view(story_slug):
             )
         elif command == "activate":
             subplot_manager.activate_subplot(state, request.form.get("subplot_id", ""))
+        elif command == "modify-subplot":
+            kwargs = {}
+            if request.form.get("title"):
+                kwargs["title"] = request.form["title"]
+            if request.form.get("description"):
+                kwargs["description"] = request.form["description"]
+            if request.form.get("priority"):
+                kwargs["priority"] = request.form["priority"]
+            if request.form.get("ties_to_main_plot"):
+                kwargs["ties_to_main_plot"] = request.form["ties_to_main_plot"]
+            subplot_manager.modify_subplot(state, request.form.get("subplot_id", ""), **kwargs)
         elif command == "advance-act":
             subplot_manager.advance_act(state)
         elif command == "reveal":

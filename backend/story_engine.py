@@ -7,6 +7,7 @@ import subprocess
 import sys
 from dotenv import load_dotenv
 import google.generativeai as genai
+import requests
 
 import state_store
 from state_store import DEFAULT_STORY_SLUG, DEFAULT_USER_ID
@@ -29,29 +30,70 @@ STEER_WARNING = (
     "    'create-alt', 'focus', 'add-goal', 'add-theme'). ***"
 )
 
-# Configure Google Gemini
+# --- LLM provider configuration ---
+# OpenRouter is the default endpoint for real play. Google/Gemini is kept available purely
+# for testing/debugging (set LLM_PROVIDER=google) - not a fallback, no automatic failover
+# between the two.
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter")
+
+# Two cost/quality tiers, matched to what each call actually needs: narration is the one
+# big creative generation per turn (see build_system_prompt); every other call - state-update
+# extraction, subplot generation, act-advancement judgment, ending-arc generation, and the
+# compressed-summary rollover - is short, structured output where the cheaper/faster model
+# is the better fit. call_llm/call_llm_json's own defaults already route to the right tier,
+# so most call sites below never need to pass model= explicitly.
+NARRATION_MODEL = os.getenv("NARRATION_MODEL", "deepseek/deepseek-v4-pro-20260813")
+STATE_UPDATE_MODEL = os.getenv("STATE_UPDATE_MODEL", "deepseek/deepseek-v4-flash-20260731")
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
 
-if not GOOGLE_API_KEY:
-    raise ValueError("GOOGLE_API_KEY not found in .env file")
-
-genai.configure(api_key=GOOGLE_API_KEY)
+if LLM_PROVIDER == "openrouter":
+    if not OPENROUTER_API_KEY:
+        raise ValueError("OPENROUTER_API_KEY not found in .env file")
+elif LLM_PROVIDER == "google":
+    if not GOOGLE_API_KEY:
+        raise ValueError("GOOGLE_API_KEY not found in .env file")
+    genai.configure(api_key=GOOGLE_API_KEY)
+else:
+    raise ValueError(f"Unknown LLM_PROVIDER {LLM_PROVIDER!r} - expected 'openrouter' or 'google'")
 
 
 class LLMUnavailableError(Exception):
     """Raised when the LLM API call fails for a reason outside our control - rate limit,
-    quota exhausted, transient outage - rather than a bug in our own code. Callers (app.py's
-    global error handler) should show the user a friendly retry message instead of a raw
-    500, since no state was mutated when this fires (call_llm always runs before any state
-    is saved for the turn)."""
+    quota exhausted, transient outage - rather than a bug in our own code, regardless of
+    which provider is active. Callers (app.py's take_turn/regenerate_turn routes) should
+    show the user a friendly retry message instead of a raw 500, since no state was mutated
+    when this fires (call_llm always runs before any state is saved for the turn)."""
 
 
-def call_llm(prompt: str) -> str:
+def _call_llm_openrouter(prompt: str, model: str) -> str:
+    try:
+        response = requests.post(
+            OPENROUTER_URL,
+            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+            json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+            timeout=120,  # matches gunicorn's own --timeout, no point waiting past that
+        )
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        raise LLMUnavailableError(str(e)) from e
+
+    data = response.json()
+    try:
+        return data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as e:
+        raise LLMUnavailableError(f"Unexpected OpenRouter response shape: {data}") from e
+
+
+def _call_llm_google(prompt: str) -> str:
     # Imported lazily so importing story_engine doesn't require the real google-api-core
-    # package - the offline test suite stubs google.generativeai but not this transitive
-    # dependency, and every test that exercises call_llm's error path monkeypatches it
-    # entirely, never reaching this import.
+    # package under LLM_PROVIDER=openrouter - the offline test suite stubs
+    # google.generativeai but not this transitive dependency, and forces
+    # LLM_PROVIDER=google specifically to exercise this path against the stub.
     from google.api_core.exceptions import GoogleAPIError
 
     model = genai.GenerativeModel(GEMINI_MODEL)
@@ -62,9 +104,19 @@ def call_llm(prompt: str) -> str:
     return response.text
 
 
-def call_llm_json(prompt: str) -> dict:
+def call_llm(prompt: str, model: str = NARRATION_MODEL) -> str:
+    """Sends prompt to the configured provider and returns the raw text response. model is
+    an OpenRouter model slug - ignored under LLM_PROVIDER=google, which always uses
+    GEMINI_MODEL regardless (that path is for testing/debugging, not for replicating the
+    Pro/Flash cost split)."""
+    if LLM_PROVIDER == "google":
+        return _call_llm_google(prompt)
+    return _call_llm_openrouter(prompt, model)
+
+
+def call_llm_json(prompt: str, model: str = STATE_UPDATE_MODEL) -> dict:
     """Call the LLM expecting a single JSON object back, tolerating markdown code fences."""
-    raw = call_llm(prompt).strip()
+    raw = call_llm(prompt, model=model).strip()
     if raw.startswith("```"):
         lines = raw.splitlines()
         if lines and lines[0].startswith("```"):
@@ -613,7 +665,7 @@ NEW EVENTS:
 {chr(10).join(overflow)}
 
 Respond with ONLY the updated summary text, under {SUMMARY_MAX_WORDS} words, no preamble."""
-        updated_summary = call_llm(summary_prompt)
+        updated_summary = call_llm(summary_prompt, model=STATE_UPDATE_MODEL)
         state["history_log"]["compressed_summary"] = updated_summary.strip()
 
     state_store.save_state(state, user_id, story_slug)

@@ -101,6 +101,12 @@ def load_story_engine():
     for tests that exercise the storage layer itself."""
     os.chdir(REPO_ROOT)  # engine modules resolve stories/, data/ relative to cwd
     os.environ.setdefault("GOOGLE_API_KEY", "test-key")
+    # story_engine.py defaults LLM_PROVIDER to "openrouter" in real use, but Google is the
+    # provider kept around specifically for testing/debugging (see CLAUDE.md) - it's the
+    # one with a stubbable SDK (google.generativeai, below), so the offline suite forces it
+    # here rather than needing a fake OPENROUTER_API_KEY plus a requests.post stub for every
+    # test file that merely imports story_engine.
+    os.environ.setdefault("LLM_PROVIDER", "google")
     _install_stubs()
 
     if BACKEND_DIR not in sys.path:
@@ -115,6 +121,7 @@ def load_state_store(tmp_path):
     redirected under tmp_path, so tests never touch the real stories/ or data/
     directories. tmp_path should be a fresh directory per test."""
     os.environ.setdefault("GOOGLE_API_KEY", "test-key")
+    os.environ.setdefault("LLM_PROVIDER", "google")  # see load_story_engine() above
     _install_stubs()
 
     if BACKEND_DIR not in sys.path:
@@ -136,7 +143,10 @@ class CannedResponses:
     def __init__(self, responses):
         self._responses = list(responses)
 
-    def __call__(self, prompt):
+    def __call__(self, prompt, **kwargs):
+        # **kwargs (e.g. call_llm's model=) accepted and ignored - this stands in for
+        # either call_llm or call_llm_json depending on the test, and only the former is
+        # ever called with a model= kwarg by real story_engine.py code.
         assert self._responses, "ran out of canned responses - more LLM calls happened than expected"
         return copy.deepcopy(self._responses.pop(0))
 
@@ -153,6 +163,7 @@ class RecordingLLM:
         self.prompts = []
         self._response_fn = response_fn
 
-    def __call__(self, prompt):
+    def __call__(self, prompt, **kwargs):
+        # **kwargs (e.g. call_llm's model=) accepted and ignored - see CannedResponses above.
         self.prompts.append(prompt)
         return self._response_fn(prompt)
