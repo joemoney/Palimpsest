@@ -1,0 +1,11 @@
+<div class="scene-block" data-turn-index="{{ turn.index }}">
+{% if turn.player_action %}
+<div class="player-turn">
+  <p class="player-bubble">{{ turn.player_action }}</p>
+</div>
+{% endif %}
+<section class="card">
+  <p class="story" data-text="{{ turn.narration }}"
+     data-animate="{{ 'true' if turn.animate else 'false' }}">{{ '' if turn.animate else turn.narration }}</p>
+</section>
+</div>

@@ -1,0 +1,3 @@
+<div id="scroll-sentinel"
+  hx-get="{{ url_for('turn_history', story_slug=story_slug, before=oldest_index, count=3) }}"
+  hx-trigger="revealed" hx-swap="outerHTML" hx-target="this"></div>

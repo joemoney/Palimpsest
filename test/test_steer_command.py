@@ -27,7 +27,11 @@ def fake_run(cmd, *a, **k):
 
 se.subprocess.run = fake_run
 
-PREFIX = [sys.executable, "plot_manager.py", "--user", se.state_store.DEFAULT_USER_ID,
+# Absolute path, not a bare "plot_manager.py" - handle_steer_command builds it from
+# story_engine.py's own __file__ so the subprocess call works regardless of cwd (both
+# live together under backend/, wherever that ends up).
+plot_manager_path = os.path.join(os.path.dirname(os.path.abspath(se.__file__)), "plot_manager.py")
+PREFIX = [sys.executable, plot_manager_path, "--user", se.state_store.DEFAULT_USER_ID,
           "--story", se.state_store.DEFAULT_STORY_SLUG]
 
 # --- warning must be shown every time, not just once ---
@@ -63,7 +67,7 @@ print("OK: empty steer command runs plot_manager.py with no args (usage text)")
 # --- a non-default user/story gets threaded through to the subprocess call ---
 se.handle_steer_command("overview", user_id="alice", story_slug="another_story")
 assert calls[-1] == [
-    sys.executable, "plot_manager.py", "--user", "alice", "--story", "another_story", "overview",
+    sys.executable, plot_manager_path, "--user", "alice", "--story", "another_story", "overview",
 ], calls[-1]
 print("OK: explicit user_id/story_slug are forwarded instead of the defaults")
 

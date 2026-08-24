@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}{{ story_title }} - Palimpsest{% endblock %}
+{% block header_title %}{{ story_title }}{% endblock %}
+{% block content %}
+{% if mode == "name_entry" %}
+<section class="card">
+  <p class="story">{{ narration }}</p>
+</section>
+<section class="card">
+  <form method="post">
+    <label for="name">What should we call you?</label>
+    <input type="text" id="name" name="name">
+    <button type="submit">Answer</button>
+  </form>
+</section>
+{% else %}
+<div id="scene-list">
+  {% if has_older %}
+    {% include "_scroll_sentinel.html" %}
+  {% endif %}
+  {% for turn in initial_turns %}
+    {% include "_scene_block.html" %}
+  {% endfor %}
+</div>
+<fieldset id="controls" class="post-narration{{ ' hidden' if animate else '' }}">
+{% include "_controls.html" %}
+</fieldset>
+<dialog id="llm-error-modal">
+  <p class="story">The story engine couldn't reach the AI model just now — usually a
+  temporary rate limit or quota issue. Nothing was lost; it's safe to try again in a
+  moment.</p>
+  <details style="margin-top:12px;">
+    <summary style="cursor:pointer; color:var(--muted); font-size:0.8rem;">Technical details</summary>
+    <p id="llm-error-message" style="color:var(--muted); font-size:0.8rem; margin-top:8px; white-space:pre-wrap;"></p>
+  </details>
+  <form method="dialog" style="margin-top:16px;">
+    <button type="submit" style="width:100%;">Close</button>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var CHARS_PER_TICK = 4;
+  var TICK_MS = 30;
+
+  function revealNarration(el) {
+    var text = el.getAttribute("data-text") || "";
+    el.setAttribute("data-animate", "false");
+    function finish() {
+      var controls = document.getElementById("controls");
+      if (controls) { controls.classList.remove("hidden"); }
+    }
+    if (!text) { finish(); return; }
+    var i = 0;
+    el.textContent = "";
+    (function tick() {
+      i = Math.min(text.length, i + CHARS_PER_TICK);
+      el.textContent = text.slice(0, i);
+      if (i < text.length) {
+        window.setTimeout(tick, TICK_MS);
+      } else {
+        finish();
+      }
+    })();
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    var el = document.querySelector('.story[data-animate="true"]');
+    if (el) { revealNarration(el); }
+  });
+
+  document.body.addEventListener("htmx:afterSwap", function () {
+    // Scan the whole document rather than evt.detail.target: for an outerHTML swap
+    // (regenerate) target semantics around the replaced node are unreliable, and
+    // revealNarration() immediately flips data-animate to "false" once it runs, so a
+    // document-wide scan never double-animates an already-revealed block either way.
+    var els = document.querySelectorAll('.story[data-animate="true"]');
+    for (var i = 0; i < els.length; i++) { revealNarration(els[i]); }
+  });
+
+  document.body.addEventListener("htmx:responseError", function (evt) {
+    var modal = document.getElementById("llm-error-modal");
+    var msg = document.getElementById("llm-error-message");
+    if (msg) { msg.textContent = evt.detail.xhr.responseText; }
+    if (modal) { modal.showModal(); }
+  });
+
+  // Preserve scroll position when older scenes are prepended above the fold -
+  // without this, inserting content above the viewport visually "jumps" the page.
+  var pendingScrollHeight = null;
+  document.body.addEventListener("htmx:beforeSwap", function (evt) {
+    if (evt.detail.target && evt.detail.target.id === "scroll-sentinel") {
+      pendingScrollHeight = document.documentElement.scrollHeight;
+    }
+  });
+  document.body.addEventListener("htmx:afterSwap", function (evt) {
+    if (pendingScrollHeight !== null) {
+      var delta = document.documentElement.scrollHeight - pendingScrollHeight;
+      window.scrollTo(0, window.scrollY + delta);
+      pendingScrollHeight = null;
+    }
+  });
+</script>
+{% endblock %}

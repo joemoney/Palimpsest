@@ -1,0 +1,36 @@
+{% if mode == "concluded" %}
+<p class="end-marker">THE END</p>
+<a href="{{ url_for('stories') }}"><button style="width:100%;">Back to your stories</button></a>
+{% else %}
+  {% if turn.player_action %}
+  <div class="scene-actions">
+    <button type="button" class="icon-button"
+      hx-post="{{ url_for('regenerate_turn', story_slug=story_slug) }}"
+      hx-target="#scene-list > .scene-block:last-child" hx-swap="outerHTML"
+      hx-disabled-elt="#controls" hx-indicator="#controls"
+      title="Regenerate this scene">&#8635; Regenerate</button>
+  </div>
+  {% endif %}
+  {% if options %}
+  <section class="card choices" id="choices">
+    {% for option in options %}
+    <button type="button" class="choice"
+      hx-post="{{ url_for('take_turn', story_slug=story_slug) }}"
+      hx-vals='{"action": {{ option.prose | tojson }}}'
+      hx-target="#scene-list" hx-swap="beforeend"
+      hx-disabled-elt="#controls" hx-indicator="#controls">
+      <span class="choice-action">{{ loop.index }}. {{ option.action }}</span>
+      <span class="choice-prose">{{ option.prose }}</span>
+    </button>
+    {% endfor %}
+  </section>
+  {% endif %}
+  <form class="card"
+    hx-post="{{ url_for('take_turn', story_slug=story_slug) }}"
+    hx-target="#scene-list" hx-swap="beforeend"
+    hx-disabled-elt="#controls" hx-indicator="#controls">
+    <label for="action-input">{{ "Or, steer your own way" if options else "What do you do?" }}</label>
+    <textarea id="action-input" name="action" rows="2" required></textarea>
+    <button type="submit">{{ "4. Steer" if options else "Continue" }}</button>
+  </form>
+{% endif %}

@@ -50,7 +50,7 @@ and `git submodule add <url> stories/<slug>` if you want it private.
 ### CLI (single local player)
 ```bash
 pip install -r requirements.txt
-python story_engine.py
+python backend/story_engine.py
 ```
 Needs a `.env` file (not checked in) with `GOOGLE_API_KEY` (a Gemini key from
 [Google AI Studio](https://aistudio.google.com/apikey)) and, for the web
@@ -65,37 +65,39 @@ Special commands, typed at the prompt like a normal action:
 - `quit` / `exit` — leave the session
 - `end story` (or "end the story" / "conclude the story" / "wrap up the story") —
   begin wrapping the narrative up for good
-- `steer ...` — directly reshape the plot via `plot_manager.py` (see below).
+- `steer ...` — directly reshape the plot via `backend/plot_manager.py` (see below).
   Prints a warning every time: it bypasses narration and edits plot state
   directly, so a vague command can break story coherence.
 
 ### Web (multi-user)
 ```bash
 docker-compose up
-python state_store.py create-account <username> <password>   # accounts are backend-only, no signup form
+python backend/state_store.py create-account <username> <password>   # accounts are backend-only, no signup form
 ```
 Then log in at `http://localhost:8000/login`. `docker-compose.yml` runs both
 a `web` service (the Flask app) and a `story-engine` service (an interactive
 CLI session in its own container) against the same shared `data/` volume.
 
 ### Mid-Adventure Steering
-`plot_manager.py` lets you dynamically adjust plot structure during play,
-either from a separate terminal or via the in-session `steer` command above.
-Run `python plot_manager.py` with no arguments for the full current command
-list; the common ones:
+`backend/plot_manager.py` lets you dynamically adjust plot structure during
+play, from a separate terminal, via the in-session `steer` command above, or
+from the web UI itself — the "Manage" dropdown on the play screen (top
+right) has a **Plot Manager** page covering every command below as a form,
+reading and writing the same save file. Run `python backend/plot_manager.py`
+with no arguments for the full current CLI command list; the common ones:
 
 ```bash
-python plot_manager.py overview                                              # view current state
-python plot_manager.py add-act 'Act Title' 'Description of what happens'     # add a new act
-python plot_manager.py add-act 'Side Quest' 'Optional arc' --optional
-python plot_manager.py pivot 'New Main Goal' 'Updated description' 'Why we pivoted'
-python plot_manager.py add-emergent 'Corporate Conspiracy' 'Player discovered...'
-python plot_manager.py promote-emergent 0                                    # promote emergent -> full act
-python plot_manager.py create-alt 'thread_faction' 'Faction War' 'Megacorps vs underground'
-python plot_manager.py focus thread_faction                                  # switch primary focus
-python plot_manager.py focus                                                 # switch back to main
-python plot_manager.py add-goal 'Player wants to rescue trapped AI'
-python plot_manager.py add-theme 'Identity and memory'
+python backend/plot_manager.py overview                                              # view current state
+python backend/plot_manager.py add-act 'Act Title' 'Description of what happens'     # add a new act
+python backend/plot_manager.py add-act 'Side Quest' 'Optional arc' --optional
+python backend/plot_manager.py pivot 'New Main Goal' 'Updated description' 'Why we pivoted'
+python backend/plot_manager.py add-emergent 'Corporate Conspiracy' 'Player discovered...'
+python backend/plot_manager.py promote-emergent 0                                    # promote emergent -> full act
+python backend/plot_manager.py create-alt 'thread_faction' 'Faction War' 'Megacorps vs underground'
+python backend/plot_manager.py focus thread_faction                                  # switch primary focus
+python backend/plot_manager.py focus                                                 # switch back to main
+python backend/plot_manager.py add-goal 'Player wants to rescue trapped AI'
+python backend/plot_manager.py add-theme 'Identity and memory'
 ```
 
 Add `--user <id> --story <slug>` to any command to target a specific save
@@ -110,12 +112,14 @@ possible — reach for `steer` when you need to force a specific structural
 change the model isn't going to arrive at on its own.
 
 ### Subplot Management
+Also reachable from the same "Manage" dropdown as **Subplot Manager**, with
+the same coverage as the CLI:
 ```bash
-python subplot_manager.py status                    # view all subplots + pacing state
-python subplot_manager.py progress subplot_001 +25   # increase progress
-python subplot_manager.py activate subplot_002       # start a new subplot
-python subplot_manager.py advance-act                # manually force-complete the current act
-python subplot_manager.py reveal frag_0001            # surface a memory fragment
+python backend/subplot_manager.py status                    # view all subplots + pacing state
+python backend/subplot_manager.py progress subplot_001 +25   # increase progress
+python backend/subplot_manager.py activate subplot_002       # start a new subplot
+python backend/subplot_manager.py advance-act                # manually force-complete the current act
+python backend/subplot_manager.py reveal frag_0001            # surface a memory fragment
 ```
 
 ## File Structure
@@ -124,13 +128,22 @@ python subplot_manager.py reveal frag_0001            # surface a memory fragmen
   committed here directly (public); `stories/new_babel/` is a private git
   submodule — see "Public vs. private stories" above. Adding a new story is
   a content change, not a code change.
-- `state_store.py` — the storage layer: story catalog, per-user save
-  load/save, and account creation/login.
-- `story_engine.py` — reference implementation: builds the system prompt,
-  calls the Gemini API for narration, runs a separate state-update pass,
-  drives automatic subplot/act generation and the player-triggered ending.
-- `plot_manager.py` / `subplot_manager.py` — mid-adventure steering CLIs.
-- `app.py` + `templates/` — the web interface (login, story picker, play).
+- `backend/` — all engine/server Python code:
+  - `state_store.py` — the storage layer: story catalog, per-user save
+    load/save, and account creation/login.
+  - `story_engine.py` — reference implementation: builds the system prompt,
+    calls the Gemini API for narration, runs a separate state-update pass,
+    drives automatic subplot/act generation and the player-triggered ending.
+  - `plot_manager.py` / `subplot_manager.py` — mid-adventure steering; both a
+    CLI and, since `app.py` imports and calls their functions directly, the
+    web Plot/Subplot Manager pages.
+  - `app.py` — the web interface (login, story picker, play, regenerate,
+    Plot Manager, Subplot Manager). Points `template_folder`/`static_folder`
+    back at the repo-root `frontend/`/`static/` below, since those aren't
+    part of `backend/`.
+- `frontend/` — Jinja2 templates for the web interface.
+- `static/` — served as-is by Flask (currently just the vendored
+  `htmx.min.js` the play page uses).
 - `data/` — runtime-only (gitignored): per-user saves and the accounts
   database.
 - `test/` — offline regression tests (stubbed LLM/deps, no network or
@@ -152,8 +165,26 @@ python subplot_manager.py reveal frag_0001            # surface a memory fragmen
       first-person prose rendition, submitted as the actual player action),
       plus a free-text box as a 4th "steer your own way" option
 - [x] Public repo / private story-content split via git submodule
-- [ ] Extend the state-update pass to cover inventory and relationship
-      scores, not just flags/subplot-progress
+- [x] State-update pass extended to cover inventory (`items_gained`/
+      `items_lost`) and relationship scores (`relationship_changes`,
+      -100 to 100, bounded to the 20 most significant), not just
+      flags/subplot-progress — both now also fed into narration prompts
+- [x] Regenerate button for the latest scene — re-rolls the most recent
+      narration/options in place, replaying the same player action against
+      a state rolled back to just before that turn
+- [x] Plot Manager and Subplot Manager web UI, reachable from a "Manage"
+      dropdown on the play screen — full coverage of `plot_manager.py`'s and
+      `subplot_manager.py`'s commands as forms, calling the same functions
+      directly (no subprocess/CLI shell-out)
+- [ ] Revert to an earlier scene (similar to a Claude conversation fork) —
+      roll the save back to a prior turn, discarding everything after it,
+      so a player can back up and try a different path
+- [ ] Scene image generation button, in the same `scene-actions` div as
+      Regenerate. Best implemented by feeding a reference image (e.g. a
+      previously generated scene, or a character/setting portrait) into the
+      generation call alongside the prompt, rather than generating from text
+      alone each time — keeps character/setting appearance visually
+      consistent across a playthrough instead of drifting scene to scene
 - [ ] If migrating an in-progress story from another app: paste the raw
       transcript and ask Claude to extract characters/locations/flags/plot
       threads into this schema

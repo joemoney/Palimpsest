@@ -21,4 +21,7 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "app:app"]
+# --pythonpath (not --chdir) so app.py/state_store.py/etc. under backend/ import cleanly
+# while cwd stays /app (the repo root) - state_store.py's STORIES_DIR/DATA_DIR are plain
+# relative paths ("stories"/"data") that need cwd to stay at the repo root to resolve.
+CMD ["gunicorn", "--pythonpath", "backend", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "app:app"]

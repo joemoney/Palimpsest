@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import re
@@ -16,6 +17,7 @@ RECENT_TURN_LIMIT = 10
 SUMMARY_MAX_WORDS = 2000
 SUBPLOT_TITLE_HISTORY_LIMIT = 15
 FLAGS_ACTIVE_LIMIT = 25
+RELATIONSHIPS_LIMIT = 20
 SCENE_WORD_MIN = 470
 SCENE_WORD_MAX = 500
 END_STORY_PHRASES = {"end story", "end the story", "conclude the story", "wrap up the story"}
@@ -37,9 +39,26 @@ if not GOOGLE_API_KEY:
 genai.configure(api_key=GOOGLE_API_KEY)
 
 
+class LLMUnavailableError(Exception):
+    """Raised when the LLM API call fails for a reason outside our control - rate limit,
+    quota exhausted, transient outage - rather than a bug in our own code. Callers (app.py's
+    global error handler) should show the user a friendly retry message instead of a raw
+    500, since no state was mutated when this fires (call_llm always runs before any state
+    is saved for the turn)."""
+
+
 def call_llm(prompt: str) -> str:
+    # Imported lazily so importing story_engine doesn't require the real google-api-core
+    # package - the offline test suite stubs google.generativeai but not this transitive
+    # dependency, and every test that exercises call_llm's error path monkeypatches it
+    # entirely, never reaching this import.
+    from google.api_core.exceptions import GoogleAPIError
+
     model = genai.GenerativeModel(GEMINI_MODEL)
-    response = model.generate_content(prompt)
+    try:
+        response = model.generate_content(prompt)
+    except GoogleAPIError as e:
+        raise LLMUnavailableError(str(e)) from e
     return response.text
 
 
@@ -77,7 +96,8 @@ def check_subplot_status(state: dict) -> dict:
 
 def update_progress_from_turn(state: dict, player_action: str, ai_response: str) -> dict:
     """Separate LLM pass (kept apart from narration) that extracts a state diff from the
-    turn just narrated: subplot progress, flags, revealed memory fragments, entity contact."""
+    turn just narrated: subplot progress, flags, revealed memory fragments, entity contact,
+    inventory changes, and relationship-score changes."""
     subplots = state["plot"]["subplots"]
     active_subplots = {sid: sp["title"] for sid, sp in subplots.items() if sp["active"]}
     unrevealed_fragments = {
@@ -85,12 +105,15 @@ def update_progress_from_turn(state: dict, player_action: str, ai_response: str)
         for frag in state["player"]["origin"]["memory_fragments"]
         if not frag["revealed"]
     }
+    relationships = state["player"].setdefault("relationships", {})
 
     prompt = f"""Given this turn of an interactive story, report what changed in the world state.
 
 ACTIVE SUBPLOTS: {json.dumps(active_subplots)}
 UNREVEALED MEMORY FRAGMENT TRIGGERS: {json.dumps(unrevealed_fragments)}
 CURRENT FLAGS: {json.dumps(state["player"]["flags_active"])}
+CURRENT INVENTORY: {json.dumps(state["player"]["inventory"])}
+CURRENT RELATIONSHIPS (name: score from -100 hostile to +100 devoted, 0 neutral/unknown): {json.dumps(relationships)}
 
 PLAYER ACTION: {player_action}
 NARRATION: {ai_response}
@@ -102,9 +125,15 @@ Respond with ONLY a JSON object, no other text, in this exact shape:
     that should never be forgotten, e.g. a core revelation or identity; false if it's situational
     and safe to eventually forget once it's no longer recent>}}}},
   "memory_fragments_revealed": ["<fragment_id>", "..."],
-  "entity_interaction": <true if the Architect appeared or acted this turn, else false>
+  "entity_interaction": <true if the Architect appeared or acted this turn, else false>,
+  "items_gained": ["<short item description>", "..."],
+  "items_lost": ["<item description, matching an existing inventory entry exactly>", "..."],
+  "relationship_changes": {{"<character name>": <integer delta this turn, typically -10 to +10,
+    positive for trust/warmth built, negative for damage done - only named characters the player
+    actually interacted with or was meaningfully affected by this turn>}}
 }}
-Only include subplot ids, flags, and fragment ids that actually changed this turn. Use {{}}/[] for nothing changed."""
+Only include subplot ids, flags, fragment ids, items, and character names that actually changed
+this turn. Use {{}}/[] for nothing changed."""
 
     try:
         diff = call_llm_json(prompt)
@@ -135,6 +164,25 @@ Only include subplot ids, flags, and fragment ids that actually changed this tur
 
     if diff.get("entity_interaction"):
         state["plot"]["entity_interaction_count"] += 1
+
+    inventory = state["player"]["inventory"]
+    for item in diff.get("items_gained", []):
+        if item:
+            inventory.append(item)
+    for item in diff.get("items_lost", []):
+        if item in inventory:
+            inventory.remove(item)
+
+    for char_name, delta in diff.get("relationship_changes", {}).items():
+        if not char_name:
+            continue
+        relationships[char_name] = max(-100, min(100, relationships.get(char_name, 0) + int(delta)))
+    # Bounded like flags_active: if a story accumulates more named relationships than this,
+    # drop the least narratively significant ones first (closest to neutral), not the oldest -
+    # a strongly-loved or strongly-hated character should never be the one that gets evicted.
+    if len(relationships) > RELATIONSHIPS_LIMIT:
+        for name in sorted(relationships, key=lambda n: abs(relationships[n]))[:len(relationships) - RELATIONSHIPS_LIMIT]:
+            del relationships[name]
 
     return diff
 
@@ -479,7 +527,7 @@ RECENT EXCHANGES:
 {recent}
 {pacing_instruction}
 CURRENT SCENE ({scene['location']}): {scene['summary']}
-PLAYER: {player['name']} | Traits: {', '.join(player['traits'])} | Flags: {player['flags_active']}
+PLAYER: {player['name']} | Traits: {', '.join(player['traits'])} | Inventory: {', '.join(player['inventory']) or 'nothing'} | Relationships: {player.get('relationships', {})} | Flags: {player['flags_active']}
 
 Stay strictly within the established world, tone, and rules above.
 {instruction_footer}
@@ -620,9 +668,44 @@ def handle_steer_command(
     immediately. CLI-only: there's no web equivalent (see CLAUDE.md)."""
     print(STEER_WARNING)
     args = shlex.split(steer_args) if steer_args.strip() else []
+    # Absolute path, not a bare "plot_manager.py" - unlike a plain `import`, subprocess argv
+    # resolution isn't looked up via sys.path, so this must stay correct regardless of the
+    # caller's cwd (both plot_manager.py and story_engine.py live in backend/ together).
+    plot_manager_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plot_manager.py")
     subprocess.run(
-        [sys.executable, "plot_manager.py", "--user", user_id, "--story", story_slug] + args
+        [sys.executable, plot_manager_path, "--user", user_id, "--story", story_slug] + args
     )
+
+
+def _generate_and_apply_turn(
+    state: dict,
+    player_action: str,
+    pre_turn_snapshot: dict,
+    user_id: str,
+    story_slug: str,
+) -> bool:
+    """Shared by take_turn and regenerate_last_turn: calls the LLM for player_action against
+    the given state, applies the resulting state-update pass, and stashes pre_turn_snapshot
+    (a deep copy of state from just before this turn) so a later regenerate_last_turn call can
+    restore to exactly this point and re-roll. Returns True once the story has concluded."""
+    prompt = build_system_prompt(state) + f"\n\nPlayer action: {player_action}\n\nNarrator:"
+    ai_response = call_llm(prompt)
+    print(ai_response)
+
+    update_state_after_turn(state, player_action, ai_response, user_id, story_slug)
+
+    # Bounded to exactly one level (this turn only, overwriting whatever was pending before) -
+    # regenerating re-rolls the latest scene, it isn't a multi-step undo stack.
+    state["history_log"]["pending_regenerate"] = {
+        "state": pre_turn_snapshot,
+        "player_action": player_action,
+    }
+
+    if state["plot"]["endgame"]["requested"] and "THE END" in ai_response:
+        state["plot"]["endgame"]["concluded"] = True
+
+    state_store.save_state(state, user_id, story_slug)
+    return state["plot"]["endgame"]["concluded"]
 
 
 def take_turn(
@@ -638,18 +721,31 @@ def take_turn(
         state_store.save_state(state, user_id, story_slug)
         print(f"\n[The story is moving toward its conclusion: {final_arc['title']}]\n")
 
-    prompt = build_system_prompt(state) + f"\n\nPlayer action: {player_action}\n\nNarrator:"
-    ai_response = call_llm(prompt)
-    print(ai_response)
+    pre_turn_snapshot = copy.deepcopy(state)
+    pre_turn_snapshot["history_log"].pop("pending_regenerate", None)
+    return _generate_and_apply_turn(state, player_action, pre_turn_snapshot, user_id, story_slug)
 
-    update_state_after_turn(state, player_action, ai_response, user_id, story_slug)
 
-    if state["plot"]["endgame"]["requested"] and "THE END" in ai_response:
-        state["plot"]["endgame"]["concluded"] = True
-        state_store.save_state(state, user_id, story_slug)
-        return True
+def regenerate_last_turn(
+    user_id: str = DEFAULT_USER_ID,
+    story_slug: str = DEFAULT_STORY_SLUG,
+) -> bool:
+    """Re-rolls the most recent turn in place: restores state to exactly before that turn (so
+    its subplot progress, flags, pacing, and appended recent_turns entry are all undone), then
+    re-runs the same player_action through a fresh LLM call. Does not replay/re-detect the
+    end-story command - that's only evaluated once, on the original take_turn call.
 
-    return False
+    Returns False with no effect if there's nothing to regenerate (no turn taken yet, e.g. the
+    fixed opening scene, or a save from before this feature existed)."""
+    state = state_store.load_state(user_id, story_slug)
+    pending = state["history_log"].get("pending_regenerate")
+    if not pending:
+        return False
+
+    restored_state = pending["state"]
+    player_action = pending["player_action"]
+    pre_turn_snapshot = copy.deepcopy(restored_state)
+    return _generate_and_apply_turn(restored_state, player_action, pre_turn_snapshot, user_id, story_slug)
 
 
 if __name__ == "__main__":

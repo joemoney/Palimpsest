@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Plot Manager - {{ story_title }} - Palimpsest{% endblock %}
+{% block header_title %}Plot Manager{% endblock %}
+{% block content %}
+<section class="card warning-banner">
+  <strong>Power tool.</strong> This edits plot structure directly, bypassing narration —
+  a vague or contradictory change can break story coherence. Prefer letting the story arrive
+  at a direction change on its own where possible.
+</section>
+
+<section class="card">
+  <div style="font-weight:700;">{{ plot.main_thread.title }}</div>
+  <p class="story" style="font-size:0.95rem; margin-top:6px;">{{ plot.main_thread.description }}</p>
+  <p style="color:var(--muted); font-size:0.8rem; margin-top:8px;">
+    Focus: {{ "Main thread" if plot.main_thread.is_primary_focus else "Alternate thread" }}
+    &middot; Can pivot: {{ "yes" if plot.main_thread.can_pivot else "no" }}
+  </p>
+  {% if plot.endgame.requested %}
+  <p class="error" style="margin-top:8px;">Endgame in progress — no more acts or subplots auto-generate.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div style="font-weight:700; margin-bottom:10px;">Acts</div>
+  {% for act in plot.main_thread.acts %}
+  <div style="padding:10px 0; {% if not loop.first %}border-top:1px solid rgba(148,163,184,0.15);{% endif %}">
+    <div style="font-weight:600;">
+      {{ "✓" if act.completed else "●" }} Act {{ act.act_number }}: {{ act.title }}
+      {% if act.act_number == plot.main_thread.current_act %}<span style="color:var(--accent-2); font-weight:400;">(current)</span>{% endif %}
+      {% if act.optional %}<span style="color:var(--muted); font-weight:400;">[optional]</span>{% endif %}
+      {% if act.is_finale %}<span style="color:var(--danger); font-weight:400;">[finale]</span>{% endif %}
+    </div>
+    <div style="color:var(--muted); font-size:0.9rem; margin-top:2px;">{{ act.description }}</div>
+    {% if act.completion_signals %}
+    <div style="color:var(--muted); font-size:0.8rem; margin-top:4px;">Signals: {{ act.completion_signals | join(', ') }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+
+{% if plot.alternate_threads %}
+<section class="card">
+  <div style="font-weight:700; margin-bottom:10px;">Alternate Threads</div>
+  {% for tid, thread in plot.alternate_threads.items() %}
+  <div style="padding:8px 0; {% if not loop.first %}border-top:1px solid rgba(148,163,184,0.15);{% endif %}">
+    <div style="font-weight:600;">{{ "●" if thread.active else "○" }} {{ thread.title }}
+      <span style="color:var(--muted); font-weight:400; font-size:0.8rem;">({{ tid }})</span>
+    </div>
+    <div style="color:var(--muted); font-size:0.9rem; margin-top:2px;">{{ thread.description }}</div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if plot.main_thread.emergent_directions %}
+<section class="card">
+  <div style="font-weight:700; margin-bottom:10px;">Emergent Directions</div>
+  {% for d in plot.main_thread.emergent_directions %}
+  <div style="padding:8px 0; {% if not loop.first %}border-top:1px solid rgba(148,163,184,0.15);{% endif %}">
+    <div style="font-weight:600;">{{ d.title }}
+      {% if d.promoted %}<span style="color:var(--muted); font-weight:400; font-size:0.8rem;">(promoted)</span>{% endif %}
+    </div>
+    <div style="color:var(--muted); font-size:0.9rem; margin-top:2px;">{{ d.description }}</div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<details class="card">
+  <summary>Add Act</summary>
+  <form method="post">
+    <input type="hidden" name="command" value="add-act">
+    <label for="add-act-title">Title</label>
+    <input type="text" id="add-act-title" name="title" required>
+    <label for="add-act-desc">Description</label>
+    <textarea id="add-act-desc" name="description" rows="2" required></textarea>
+    <label for="add-act-position">Position (blank = append to end)</label>
+    <input type="text" id="add-act-position" name="position">
+    <label class="checkbox-label"><input type="checkbox" name="optional"> Optional act</label>
+    <button type="submit">Add Act</button>
+  </form>
+</details>
+
+<details class="card">
+  <summary>Edit Act</summary>
+  <form method="post">
+    <input type="hidden" name="command" value="modify-act">
+    <label for="edit-act-number">Act</label>
+    <select id="edit-act-number" name="act_number" required>
+      {% for act in plot.main_thread.acts %}
+      <option value="{{ act.act_number }}">Act {{ act.act_number }}: {{ act.title }}</option>
+      {% endfor %}
+    </select>
+    <label for="edit-act-title">New title (blank = unchanged)</label>
+    <input type="text" id="edit-act-title" name="title">
+    <label for="edit-act-desc">New description (blank = unchanged)</label>
+    <textarea id="edit-act-desc" name="description" rows="2"></textarea>
+    <button type="submit">Update Act</button>
+  </form>
+</details>
+
+<details class="card">
+  <summary>Pivot Main Plot</summary>
+  <form method="post">
+    <input type="hidden" name="command" value="pivot">
+    <label for="pivot-title">New title</label>
+    <input type="text" id="pivot-title" name="title" required>
+    <label for="pivot-desc">New description</label>
+    <textarea id="pivot-desc" name="description" rows="2" required></textarea>
+    <label for="pivot-reason">Reason</label>
+    <input type="text" id="pivot-reason" name="reason" required>
+    <button type="submit">Pivot</button>
+  </form>
+</details>
+
+<details class="card">
+  <summary>Note Emergent Direction</summary>
+  <form method="post">
+    <input type="hidden" name="command" value="add-emergent">
+    <label for="emergent-title">Title</label>
+    <input type="text" id="emergent-title" name="title" required>
+    <label for="emergent-desc">Description</label>
+    <textarea id="emergent-desc" name="description" rows="2" required></textarea>
+    <button type="submit">Note Direction</button>
+  </form>
+</details>
+
+{% if plot.main_thread.emergent_directions | rejectattr('promoted') | list %}
+<details class="card">
+  <summary>Promote Emergent Direction to Act</summary>
+  <form method="post">
+    <input type="hidden" name="command" value="promote-emergent">
+    <label for="promote-index">Direction</label>
+    <select id="promote-index" name="index" required>
+      {% for d in plot.main_thread.emergent_directions %}
+        {% if not d.promoted %}
+        <option value="{{ loop.index0 }}">{{ d.title }}</option>
+        {% endif %}
+      {% endfor %}
+    </select>
+    <label for="promote-position">Position (blank = append to end)</label>
+    <input type="text" id="promote-position" name="position">
+    <button type="submit">Promote to Act</button>
+  </form>
+</details>
+{% endif %}
+
+<details class="card">
+  <summary>Create Alternate Thread</summary>
+  <form method="post">
+    <input type="hidden" name="command" value="create-alt">
+    <label for="alt-id">Thread ID</label>
+    <input type="text" id="alt-id" name="thread_id" required placeholder="e.g. thread_faction">
+    <label for="alt-title">Title</label>
+    <input type="text" id="alt-title" name="title" required>
+    <label for="alt-desc">Description</label>
+    <textarea id="alt-desc" name="description" rows="2" required></textarea>
+    <button type="submit">Create Thread</button>
+  </form>
+</details>
+
+<details class="card">
+  <summary>Switch Focus</summary>
+  <form method="post">
+    <input type="hidden" name="command" value="focus">
+    <label for="focus-thread">Thread</label>
+    <select id="focus-thread" name="thread_id">
+      <option value="">Main thread</option>
+      {% for tid, thread in plot.alternate_threads.items() %}
+      <option value="{{ tid }}">{{ thread.title }} ({{ tid }})</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Switch Focus</button>
+  </form>
+</details>
+
+<details class="card">
+  <summary>Record Player Goal</summary>
+  <form method="post">
+    <input type="hidden" name="command" value="add-goal">
+    <label for="goal-desc">Goal</label>
+    <input type="text" id="goal-desc" name="goal" required>
+    <button type="submit">Record Goal</button>
+  </form>
+</details>
+
+<details class="card">
+  <summary>Note Emerging Theme</summary>
+  <form method="post">
+    <input type="hidden" name="command" value="add-theme">
+    <label for="theme-desc">Theme</label>
+    <input type="text" id="theme-desc" name="theme" required>
+    <button type="submit">Note Theme</button>
+  </form>
+</details>
+{% endblock %}

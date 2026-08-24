@@ -1,0 +1,321 @@
+import os
+from functools import wraps
+
+from dotenv import load_dotenv
+from flask import Flask, redirect, render_template, request, session, url_for
+
+import plot_manager
+import state_store
+import story_engine
+import subplot_manager
+
+load_dotenv()
+
+# frontend/ (Jinja templates) and static/ live at the repo root, not alongside this file -
+# Flask's default (relative to this module's own location) would look under backend/
+# instead, so both are pointed back explicitly. template_folder is renamed from Flask's
+# usual "templates" purely by convention (frontend/ pairs with backend/) - Flask itself
+# doesn't care what the directory is called. static_url_path is left at the default
+# "/static" so existing url_for('static', ...) calls (e.g. htmx.min.js in base.html)
+# don't need to change.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+app = Flask(
+    __name__,
+    template_folder=os.path.join(_REPO_ROOT, "frontend"),
+    static_folder=os.path.join(_REPO_ROOT, "static"),
+)
+
+FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
+if not FLASK_SECRET_KEY:
+    raise ValueError("FLASK_SECRET_KEY not found in .env file")
+app.secret_key = FLASK_SECRET_KEY
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("login"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+INITIAL_TURNS_SHOWN = 3
+
+
+def _split_turn_entry(entry: str):
+    """(player_action, narration) for one history_log entry. Entries are either
+    'Player: ...\\nNarrator: ...' (a normal turn - player_action is the action that led to
+    this scene) or 'Narrator: ...' (the synthetic opening-scene entry, which has no
+    preceding player action - player_action is None)."""
+    marker = "Narrator: "
+    idx = entry.find(marker)
+    narration = entry[idx + len(marker):] if idx != -1 else entry
+    player_action = None
+    if idx != -1 and entry.startswith("Player: "):
+        player_action = entry[len("Player: "):idx].rstrip("\n")
+    return player_action, narration
+
+
+def _all_turns(state: dict) -> list:
+    """The complete chronological turn sequence for a save, oldest first - full_transcript
+    (unbounded, disk-only, only populated once turns roll out of recent_turns) followed by
+    recent_turns (the live window). See CLAUDE.md's 'Keeping LLM Context Bounded' section."""
+    return state["history_log"].get("full_transcript", []) + state["history_log"]["recent_turns"]
+
+
+def _render_turn(entry: str, index: int, animate: bool) -> dict:
+    """Splits and options-strips one turn for display. parse_narration_and_options is run
+    on every turn, not just the latest - the raw stored text is the LLM's full response
+    including any trailing 'OPTIONS:' block, so an older turn left unstripped would show
+    that block as literal text. options is only meaningful (and only rendered by
+    _controls.html) for the single latest turn - see _latest_rendered_turn."""
+    player_action, raw_narration = _split_turn_entry(entry)
+    narration, options = story_engine.parse_narration_and_options(raw_narration)
+    return {
+        "player_action": player_action, "narration": narration, "animate": animate,
+        "index": index, "options": options,
+    }
+
+
+def _latest_rendered_turn(state: dict, animate: bool) -> dict:
+    all_turns = _all_turns(state)
+    return _render_turn(all_turns[-1], len(all_turns) - 1, animate)
+
+
+def _scene_and_controls_response(state: dict, story_slug: str) -> str:
+    """Shared by take_turn and regenerate_turn: renders the latest turn as a _scene_block
+    fragment plus an out-of-band _controls update, so a single htmx swap both shows the new
+    scene and replaces the old choices with fresh ones (or removes them, at endgame)."""
+    turn = _latest_rendered_turn(state, animate=True)
+    mode = "concluded" if state["plot"]["endgame"]["concluded"] else "playing"
+    scene_html = render_template("_scene_block.html", turn=turn, story_slug=story_slug)
+    controls_html = render_template(
+        "_controls.html", turn=turn, options=turn["options"], mode=mode, story_slug=story_slug
+    )
+    # class must be repeated here: an hx-swap-oob replacement swaps the whole element
+    # (attributes included), so omitting it would drop base.html's .post-narration layout
+    # and unhide the controls before the freshly-animated narration above them finishes.
+    # Tag matches play.html's <fieldset id="controls"> (not a <div>) so hx-disabled-elt's
+    # native disabled-cascade to every descendant button/textarea keeps working turn over
+    # turn, not just on the very first swap.
+    return scene_html + (
+        f'<fieldset id="controls" class="post-narration hidden" hx-swap-oob="true">'
+        f'{controls_html}</fieldset>'
+    )
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+        user_id = state_store.verify_login(username, password)
+        if user_id is None:
+            return render_template("login.html", error="Incorrect username or password.")
+        session["user_id"] = user_id
+        session["username"] = username
+        return redirect(url_for("stories"))
+    return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.route("/")
+@login_required
+def index():
+    return redirect(url_for("stories"))
+
+
+@app.route("/stories")
+@login_required
+def stories():
+    return render_template("stories.html", stories=state_store.list_stories())
+
+
+@app.route("/play/<story_slug>", methods=["GET", "POST"])
+@login_required
+def play(story_slug):
+    user_id = session["user_id"]
+    state = state_store.load_state(user_id, story_slug)
+    story_title = state["meta"]["title"]
+
+    if not state["plot"]["opening_scene"]["played"]:
+        if request.method == "POST":
+            story_engine.apply_opening_name(state, request.form.get("name", ""))
+            state_store.save_state(state, user_id, story_slug)
+            return redirect(url_for("play", story_slug=story_slug, fresh=1))
+        narration = state["plot"]["opening_scene"]["narration_before_name"]
+        return render_template(
+            "play.html", story_title=story_title, story_slug=story_slug, narration=narration,
+            options=[], player_action=None, mode="name_entry", animate=False
+        )
+
+    # Only the request immediately following the name-entry submission carries ?fresh=1 -
+    # any other GET (resuming a save, refreshing, navigating back from the story picker)
+    # renders every visible scene instantly instead of replaying the reveal animation.
+    animate = request.args.get("fresh") == "1"
+    mode = "concluded" if state["plot"]["endgame"]["concluded"] else "playing"
+    all_turns = _all_turns(state)
+    total = len(all_turns)
+    oldest_index = max(0, total - INITIAL_TURNS_SHOWN)
+    initial_turns = [
+        _render_turn(entry, idx, animate=(animate and idx == total - 1))
+        for idx, entry in enumerate(all_turns[oldest_index:], start=oldest_index)
+    ]
+    latest = initial_turns[-1] if initial_turns else {"options": []}
+    return render_template(
+        "play.html", story_title=story_title, story_slug=story_slug,
+        initial_turns=initial_turns, oldest_index=oldest_index, has_older=oldest_index > 0,
+        turn=latest, options=latest["options"], mode=mode, animate=animate,
+    )
+
+
+@app.route("/play/<story_slug>/api/turn", methods=["POST"])
+@login_required
+def take_turn(story_slug):
+    user_id = session["user_id"]
+    action = request.form.get("action", "")
+    if not action.strip():
+        return ""  # matches the textarea's required attribute - nothing to submit
+    try:
+        story_engine.take_turn(action, user_id, story_slug)
+    except story_engine.LLMUnavailableError as e:
+        # call_llm always runs before any state is saved for the turn, so nothing was
+        # lost - htmx doesn't swap on a non-2xx response, so #scene-list/#controls are
+        # left exactly as they were and the player can just retry the same choice.
+        return str(e), 503
+    state = state_store.load_state(user_id, story_slug)
+    return _scene_and_controls_response(state, story_slug)
+
+
+@app.route("/play/<story_slug>/api/regenerate", methods=["POST"])
+@login_required
+def regenerate_turn(story_slug):
+    user_id = session["user_id"]
+    try:
+        story_engine.regenerate_last_turn(user_id, story_slug)
+    except story_engine.LLMUnavailableError as e:
+        return str(e), 503
+    state = state_store.load_state(user_id, story_slug)
+    return _scene_and_controls_response(state, story_slug)
+
+
+@app.route("/play/<story_slug>/api/history", methods=["GET"])
+@login_required
+def turn_history(story_slug):
+    user_id = session["user_id"]
+    state = state_store.load_state(user_id, story_slug)
+    all_turns = _all_turns(state)
+    total = len(all_turns)
+    before = max(0, min(_int_or_none(request.args.get("before")) or 0, total))
+    count = _int_or_none(request.args.get("count")) or 3
+    start = max(0, before - count)
+    batch = [
+        _render_turn(entry, idx, animate=False)
+        for idx, entry in enumerate(all_turns[start:before], start=start)
+    ]
+    html = "".join(
+        render_template("_scene_block.html", turn=t, story_slug=story_slug) for t in batch
+    )
+    if start > 0:
+        # Chains the "reverse infinite scroll" pattern: the response replaces the old
+        # sentinel with [older blocks + a fresh sentinel above them], so the topmost
+        # sentinel always points at the next-older batch. Omitted once nothing is left
+        # before start, which naturally ends the chain.
+        html = render_template(
+            "_scroll_sentinel.html", story_slug=story_slug, oldest_index=start
+        ) + html
+    return html
+
+
+def _int_or_none(value):
+    return int(value) if value else None
+
+
+@app.route("/play/<story_slug>/plot", methods=["GET", "POST"])
+@login_required
+def plot_manager_view(story_slug):
+    user_id = session["user_id"]
+    state = state_store.load_state(user_id, story_slug)
+
+    if request.method == "POST":
+        command = request.form.get("command", "")
+        if command == "add-act":
+            plot_manager.add_act(
+                state, request.form.get("title", ""), request.form.get("description", ""),
+                position=_int_or_none(request.form.get("position")),
+                optional=bool(request.form.get("optional")),
+            )
+        elif command == "modify-act":
+            kwargs = {}
+            if request.form.get("title"):
+                kwargs["title"] = request.form["title"]
+            if request.form.get("description"):
+                kwargs["description"] = request.form["description"]
+            plot_manager.modify_act(state, int(request.form.get("act_number", 0)), **kwargs)
+        elif command == "pivot":
+            plot_manager.pivot_main_plot(
+                state, request.form.get("title", ""), request.form.get("description", ""),
+                request.form.get("reason", ""),
+            )
+        elif command == "add-emergent":
+            plot_manager.add_emergent_direction(
+                state, request.form.get("title", ""), request.form.get("description", "")
+            )
+        elif command == "promote-emergent":
+            plot_manager.promote_emergent_to_act(
+                state, int(request.form.get("index", 0)), _int_or_none(request.form.get("position"))
+            )
+        elif command == "create-alt":
+            plot_manager.create_alternate_thread(
+                state, request.form.get("thread_id", ""), request.form.get("title", ""),
+                request.form.get("description", ""),
+            )
+        elif command == "focus":
+            plot_manager.toggle_thread_focus(state, request.form.get("thread_id") or None)
+        elif command == "add-goal":
+            plot_manager.add_player_goal(state, request.form.get("goal", ""))
+        elif command == "add-theme":
+            plot_manager.add_emerging_theme(state, request.form.get("theme", ""))
+        state_store.save_state(state, user_id, story_slug)
+        return redirect(url_for("plot_manager_view", story_slug=story_slug))
+
+    return render_template(
+        "plot_manager.html", story_title=state["meta"]["title"], story_slug=story_slug, plot=state["plot"]
+    )
+
+
+@app.route("/play/<story_slug>/subplots", methods=["GET", "POST"])
+@login_required
+def subplot_manager_view(story_slug):
+    user_id = session["user_id"]
+    state = state_store.load_state(user_id, story_slug)
+
+    if request.method == "POST":
+        command = request.form.get("command", "")
+        if command == "progress":
+            subplot_manager.update_subplot_progress(
+                state, request.form.get("subplot_id", ""), int(request.form.get("delta", 0))
+            )
+        elif command == "activate":
+            subplot_manager.activate_subplot(state, request.form.get("subplot_id", ""))
+        elif command == "advance-act":
+            subplot_manager.advance_act(state)
+        elif command == "reveal":
+            subplot_manager.reveal_memory_fragment(state, request.form.get("fragment_id", ""))
+        state_store.save_state(state, user_id, story_slug)
+        return redirect(url_for("subplot_manager_view", story_slug=story_slug))
+
+    return render_template(
+        "subplot_manager.html", story_title=state["meta"]["title"], story_slug=story_slug,
+        plot=state["plot"], player=state["player"]
+    )
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000, debug=True)

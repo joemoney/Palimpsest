@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Subplot Manager - {{ story_title }} - Palimpsest{% endblock %}
+{% block header_title %}Subplot Manager{% endblock %}
+{% block content %}
+<section class="card warning-banner">
+  <strong>Power tool.</strong> Directly adjusts subplot progress and pacing state, bypassing
+  narration — use sparingly.
+</section>
+
+<section class="card">
+  {% set current_act = plot.main_thread.acts[plot.main_thread.current_act - 1] %}
+  <div style="font-weight:700;">Act {{ plot.main_thread.current_act }}: {{ current_act.title }}</div>
+  <p class="story" style="font-size:0.9rem; margin-top:6px;">{{ current_act.description }}</p>
+  {% if current_act.completion_signals %}
+  <p style="color:var(--muted); font-size:0.8rem; margin-top:6px;">Signals: {{ current_act.completion_signals | join(', ') }}</p>
+  {% endif %}
+  <p style="color:var(--muted); font-size:0.8rem; margin-top:8px;">
+    Subplots completed this act: {{ plot.pacing.subplots_completed_this_act }}
+    &middot; Turn: {{ plot.pacing.turn_count }}
+    &middot; Memory fragments revealed: {{ player.origin.memory_fragments | selectattr('revealed') | list | length }}/{{ player.origin.memory_fragments | length }}
+    &middot; Architect encounters: {{ plot.entity_interaction_count }}
+  </p>
+  {% if plot.endgame.requested %}
+  <p class="error" style="margin-top:8px;">Endgame in progress — acts no longer advance.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div style="font-weight:700; margin-bottom:10px;">Subplots</div>
+  {% for sid, sp in plot.subplots.items() %}
+  <div style="padding:10px 0; {% if not loop.first %}border-top:1px solid rgba(148,163,184,0.15);{% endif %}">
+    <div style="font-weight:600;">
+      {{ "✓" if sp.status == "completed" else ("●" if sp.active else "○") }} {{ sp.title }}
+      <span style="color:var(--muted); font-weight:400; font-size:0.8rem;">({{ sid }}, {{ sp.priority }})</span>
+    </div>
+    <div style="color:var(--muted); font-size:0.9rem; margin-top:2px;">{{ sp.description }}</div>
+    <div style="font-size:0.8rem; color:var(--muted); margin-top:6px;">{{ sp.status }} — {{ sp.progress }}/{{ sp.completion_threshold }}</div>
+    <div class="subplot-progress"><div class="subplot-progress-fill" style="width:{{ (sp.progress / sp.completion_threshold * 100) if sp.completion_threshold else 0 }}%;"></div></div>
+  </div>
+  {% endfor %}
+</section>
+
+<section class="card">
+  <div style="font-weight:700; margin-bottom:6px;">Pacing</div>
+  <p style="color:var(--muted); font-size:0.85rem;">
+    Turns since pacing nudge: {{ plot.pacing.turns_since_last_pacing_nudge }}/{{ plot.pacing.pacing_nudge_frequency }}
+    &middot; Max parallel subplots: {{ plot.pacing.max_parallel_subplots }}
+    &middot; Ready for main plot advancement: {{ "yes" if plot.pacing.ready_for_main_plot_advancement else "no" }}
+  </p>
+  {% if plot.pacing.last_pacing_direction %}
+  <p style="color:var(--muted); font-size:0.85rem; margin-top:6px;">Last direction: {{ plot.pacing.last_pacing_direction }}</p>
+  {% endif %}
+</section>
+
+<details class="card">
+  <summary>Adjust Progress</summary>
+  <form method="post">
+    <input type="hidden" name="command" value="progress">
+    <label for="progress-subplot">Subplot</label>
+    <select id="progress-subplot" name="subplot_id" required>
+      {% for sid, sp in plot.subplots.items() %}
+      <option value="{{ sid }}">{{ sp.title }} ({{ sid }})</option>
+      {% endfor %}
+    </select>
+    <label for="progress-delta">Delta (e.g. 25 or -10)</label>
+    <input type="text" id="progress-delta" name="delta" required>
+    <button type="submit">Update Progress</button>
+  </form>
+</details>
+
+{% set inactive_subplots = plot.subplots.values() | rejectattr('active') | list %}
+{% if inactive_subplots %}
+<details class="card">
+  <summary>Activate Subplot</summary>
+  <form method="post">
+    <input type="hidden" name="command" value="activate">
+    <label for="activate-subplot">Subplot</label>
+    <select id="activate-subplot" name="subplot_id" required>
+      {% for sp in inactive_subplots %}
+      <option value="{{ sp.id }}">{{ sp.title }} ({{ sp.id }})</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Activate</button>
+  </form>
+</details>
+{% endif %}
+
+<details class="card">
+  <summary>Advance Act</summary>
+  <p style="color:var(--muted); font-size:0.85rem;">Force-completes the current act. If no next act exists yet, one is generated automatically during play.</p>
+  <form method="post">
+    <input type="hidden" name="command" value="advance-act">
+    <button type="submit">Advance Act</button>
+  </form>
+</details>
+
+{% set unrevealed_fragments = player.origin.memory_fragments | rejectattr('revealed') | list %}
+{% if unrevealed_fragments %}
+<details class="card">
+  <summary>Reveal Memory Fragment</summary>
+  <form method="post">
+    <input type="hidden" name="command" value="reveal">
+    <label for="reveal-fragment">Fragment</label>
+    <select id="reveal-fragment" name="fragment_id" required>
+      {% for f in unrevealed_fragments %}
+      <option value="{{ f.id }}">{{ f.id }}: {{ f.trigger }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Reveal</button>
+  </form>
+</details>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{% block title %}Palimpsest{% endblock %}</title>
+    <script src="{{ url_for('static', filename='htmx.min.js') }}"></script>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --panel-2: #1f2937;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --accent: #8b5cf6;
+        --accent-2: #22c55e;
+        --danger: #f87171;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: linear-gradient(180deg, #020817 0%, #0f172a 100%);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        padding: 16px;
+      }
+
+      .app {
+        width: 100%;
+        max-width: 560px;
+        min-height: calc(100vh - 32px);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: rgba(17, 24, 39, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 18px;
+        padding: 14px 16px;
+        backdrop-filter: blur(10px);
+      }
+
+      .title { font-size: 1.1rem; font-weight: 700; }
+
+      .topbar a {
+        color: var(--muted);
+        font-size: 0.85rem;
+        text-decoration: none;
+      }
+      .topbar a:hover { color: var(--text); }
+
+      .card {
+        background: rgba(17, 24, 39, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 20px;
+        padding: 18px;
+      }
+
+      .story {
+        font-size: 1.05rem;
+        line-height: 1.7;
+        margin: 0;
+        white-space: pre-wrap;
+      }
+
+      label {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+      }
+
+      input[type="text"], input[type="password"], textarea, select {
+        width: 100%;
+        background: rgba(31, 41, 55, 0.8);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 12px;
+        color: var(--text);
+        padding: 12px 14px;
+        font-size: 1rem;
+        font-family: inherit;
+      }
+      select { appearance: auto; }
+
+      input[type="checkbox"] {
+        width: auto;
+        accent-color: var(--accent);
+        margin-right: 6px;
+      }
+      .checkbox-label {
+        display: flex;
+        align-items: center;
+        text-transform: none;
+        letter-spacing: normal;
+        font-size: 0.9rem;
+        color: var(--text);
+      }
+
+      button {
+        appearance: none;
+        border: 1px solid rgba(139, 92, 246, 0.6);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(139, 92, 246, 0.18), rgba(30, 41, 59, 0.9));
+        color: var(--text);
+        text-align: center;
+        padding: 12px 16px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:hover { filter: brightness(1.15); }
+
+      form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+
+      .story-list { display: flex; flex-direction: column; gap: 10px; }
+      .story-list a {
+        display: block;
+        text-decoration: none;
+        color: var(--text);
+      }
+      .story-list .card:hover { border-color: rgba(139, 92, 246, 0.6); }
+
+      .choices { display: flex; flex-direction: column; gap: 10px; }
+      .choices form { margin-top: 0; }
+      .choice {
+        width: 100%;
+        text-align: left;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+      }
+      .choice-action { font-weight: 600; }
+      .choice-prose {
+        font-weight: 400;
+        font-style: italic;
+        color: var(--muted);
+        font-size: 0.85rem;
+        line-height: 1.4;
+      }
+
+      .player-turn {
+        display: flex;
+        justify-content: flex-end;
+      }
+      .player-bubble {
+        background: var(--panel-2);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 16px;
+        padding: 10px 14px;
+        max-width: 80%;
+        font-style: italic;
+        color: var(--text);
+        margin: 0;
+        white-space: pre-wrap;
+      }
+
+      #scene-list {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .post-narration {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        border: none;
+        margin: 0;
+        padding: 0;
+        min-width: 0;
+      }
+      .post-narration.hidden { display: none; }
+      #controls.htmx-request { opacity: 0.6; }
+      #controls:disabled .choice,
+      #controls:disabled .icon-button,
+      #controls:disabled button { cursor: not-allowed; }
+
+      .scene-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .scene-actions form { margin: 0; }
+      .icon-button {
+        width: auto;
+        padding: 8px 14px;
+        font-size: 0.85rem;
+        font-weight: 500;
+      }
+
+      .error {
+        color: var(--danger);
+        font-size: 0.9rem;
+      }
+
+      .end-marker {
+        text-align: center;
+        color: var(--muted);
+        letter-spacing: 0.1em;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        margin-top: 8px;
+      }
+
+      .topbar-right {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .dropdown { position: relative; }
+      .dropdown summary {
+        list-style: none;
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+      .dropdown summary:hover { color: var(--text); }
+      .dropdown summary::-webkit-details-marker { display: none; }
+      .dropdown summary::after { content: " \25BE"; }
+      .dropdown[open] summary::after { content: " \25B4"; }
+      .dropdown-menu {
+        position: absolute;
+        right: 0;
+        top: calc(100% + 8px);
+        min-width: 180px;
+        background: var(--panel-2);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 14px;
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        z-index: 10;
+      }
+      .dropdown-menu a {
+        display: block;
+        padding: 8px 10px;
+        border-radius: 8px;
+        color: var(--text);
+        text-decoration: none;
+        font-size: 0.9rem;
+      }
+      .dropdown-menu a:hover { background: rgba(139, 92, 246, 0.18); }
+
+      details.card summary {
+        cursor: pointer;
+        font-weight: 700;
+        list-style: none;
+      }
+      details.card summary::-webkit-details-marker { display: none; }
+      details.card summary::before { content: "\25B8  "; color: var(--muted); }
+      details.card[open] summary::before { content: "\25BE  "; }
+      details.card + details.card { margin-top: 12px; }
+
+      .warning-banner {
+        border-color: rgba(248, 113, 113, 0.4);
+        color: var(--text);
+        font-size: 0.9rem;
+        line-height: 1.5;
+      }
+      .warning-banner strong { color: var(--danger); }
+
+      dialog {
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 20px;
+        padding: 20px;
+        max-width: 440px;
+        width: calc(100% - 32px);
+        font-family: inherit;
+      }
+      dialog::backdrop {
+        background: rgba(2, 8, 23, 0.75);
+        backdrop-filter: blur(2px);
+      }
+
+      .subplot-progress {
+        height: 6px;
+        border-radius: 3px;
+        background: rgba(148, 163, 184, 0.2);
+        overflow: hidden;
+        margin-top: 6px;
+      }
+      .subplot-progress-fill {
+        height: 100%;
+        background: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div class="title">{% block header_title %}Palimpsest{% endblock %}</div>
+        <div class="topbar-right">
+          {% if story_slug %}
+          <details class="dropdown">
+            <summary>Manage</summary>
+            <div class="dropdown-menu">
+              <a href="{{ url_for('play', story_slug=story_slug) }}">Play</a>
+              <a href="{{ url_for('plot_manager_view', story_slug=story_slug) }}">Plot Manager</a>
+              <a href="{{ url_for('subplot_manager_view', story_slug=story_slug) }}">Subplot Manager</a>
+            </div>
+          </details>
+          {% endif %}
+          {% if session.get('username') %}
+            <a href="{{ url_for('logout') }}">Log out ({{ session['username'] }})</a>
+          {% endif %}
+        </div>
+      </header>
+      {% block content %}{% endblock %}
+    </main>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

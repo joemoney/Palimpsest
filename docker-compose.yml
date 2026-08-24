@@ -13,7 +13,7 @@ services:
   story-engine:
     build: .
     container_name: palimpsest-story-engine
-    command: python story_engine.py
+    command: python backend/story_engine.py
     volumes:
       # bind-mounted (not a named volume) so this CLI session sees the exact same
       # saves/accounts as the web service, which mounts the whole repo (including

@@ -23,6 +23,7 @@ import sys
 import types
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BACKEND_DIR = os.path.join(REPO_ROOT, "backend")
 
 
 def _stub_module(name, **attrs):
@@ -57,15 +58,28 @@ def _stub_test_check_password_hash(hash_, password):
 def _install_stubs():
     _stub_module("dotenv", load_dotenv=lambda *a, **k: None)
 
+    if "google" not in sys.modules:
+        sys.modules["google"] = types.ModuleType("google")
+    google_stub = sys.modules["google"]
+
     if "google.generativeai" not in sys.modules:
-        google_stub = types.ModuleType("google")
         genai_stub = _stub_module(
             "google.generativeai",
             configure=lambda **k: None,
             GenerativeModel=lambda *a, **k: None,
         )
         google_stub.generativeai = genai_stub
-        sys.modules["google"] = google_stub
+
+    if "google.api_core.exceptions" not in sys.modules:
+        # story_engine.call_llm imports GoogleAPIError from here (lazily) to wrap real API
+        # failures as LLMUnavailableError - stub just enough to test that wrapping offline.
+        exceptions_stub = _stub_module(
+            "google.api_core.exceptions", GoogleAPIError=type("GoogleAPIError", (Exception,), {})
+        )
+        api_core_stub = types.ModuleType("google.api_core")
+        api_core_stub.exceptions = exceptions_stub
+        sys.modules["google.api_core"] = api_core_stub
+        google_stub.api_core = api_core_stub
 
     _stub_module("filelock", FileLock=_NoOpLock)
 
@@ -85,12 +99,12 @@ def load_story_engine():
     stubbed out. Idempotent - safe to call from multiple test files in the same
     run. Does NOT redirect state_store's storage paths - use load_state_store()
     for tests that exercise the storage layer itself."""
-    os.chdir(REPO_ROOT)
+    os.chdir(REPO_ROOT)  # engine modules resolve stories/, data/ relative to cwd
     os.environ.setdefault("GOOGLE_API_KEY", "test-key")
     _install_stubs()
 
-    if REPO_ROOT not in sys.path:
-        sys.path.insert(0, REPO_ROOT)
+    if BACKEND_DIR not in sys.path:
+        sys.path.insert(0, BACKEND_DIR)
 
     import story_engine as se
     return se
@@ -103,8 +117,8 @@ def load_state_store(tmp_path):
     os.environ.setdefault("GOOGLE_API_KEY", "test-key")
     _install_stubs()
 
-    if REPO_ROOT not in sys.path:
-        sys.path.insert(0, REPO_ROOT)
+    if BACKEND_DIR not in sys.path:
+        sys.path.insert(0, BACKEND_DIR)
 
     import state_store as ss
     ss.STORIES_DIR = os.path.join(tmp_path, "stories")

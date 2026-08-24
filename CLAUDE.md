@@ -20,10 +20,12 @@ inconsistency, especially on cheaper/smaller models). Instead, a hybrid:
 4. **A pacing/director layer** — every N turns, inject a meta-instruction
    nudging the story toward the next waypoint, preventing infinite wandering
    without scripting every branch.
-5. **Mid-adventure steering** (`plot_manager.py`, `subplot_manager.py`,
-   or the in-session `steer` command) bypasses narration and edits plot
-   state directly — see README for the command reference. Reach for it only
-   when the model won't arrive at a needed structural change on its own.
+5. **Mid-adventure steering** (`plot_manager.py`, `subplot_manager.py`, the
+   in-session `steer` command, or the web UI's Plot/Subplot Manager pages —
+   `app.py` calls the same functions directly, no subprocess) bypasses
+   narration and edits plot state directly — see README for the command
+   reference. Reach for it only when the model won't arrive at a needed
+   structural change on its own.
 6. **Continuous, not finite** — no built-in stopping point. Subplots and
    acts are generated on demand rather than pulled from a fixed pool. See
    below.
@@ -97,18 +99,82 @@ treatment as these existing ones:
   are already present there in full. Never read by `build_system_prompt` or
   any other LLM call, so it costs nothing in context regardless of game
   length.
+- **`history_log.pending_regenerate`** — bounded to exactly one entry,
+  overwritten every turn (not a growing stack): `{state, player_action}`,
+  where `state` is a full deep-copied snapshot of everything *before* the
+  most recent turn. `regenerate_last_turn()` restores that snapshot and
+  re-runs `player_action` through a fresh LLM call, which correctly
+  undoes that turn's subplot progress, flags, and pacing counters before
+  reapplying fresh ones — not a diff/patch, a full state swap. `take_turn()`
+  always overwrites this with a fresh snapshot, so regenerating only ever
+  targets the single latest turn. Also disk-only, never read by any prompt.
 
 ## Backend / Model Notes
 - Smaller/cheaper models drift faster, so `world.rules` should stay short,
   with the 1–2 most critical constraints repeated near the end of the prompt
   (recency bias helps enforcement on smaller models).
+- `call_llm` wraps any `google.api_core.exceptions.GoogleAPIError` (rate
+  limit, quota exhausted, transient outage) as `story_engine.
+  LLMUnavailableError` — a stable type independent of the underlying SDK.
+  `app.py`'s `take_turn`/`regenerate_turn` views (the only two web-reachable
+  paths that ever call `call_llm`) each catch it directly and return
+  `(str(e), 503)` instead of swapping any content — since both are htmx
+  endpoints (see "Web UI" below), a non-2xx response is never swapped into
+  the page, so the previous scene/choices are left completely untouched and
+  the player can just retry. `play.html`'s `htmx:responseError` listener
+  reads the response body into the `#llm-error-modal` `<dialog>` and shows
+  it. Safe to treat as fully recoverable either way: `call_llm` always runs
+  before `update_state_after_turn`/`save_state` for that turn, so a failure
+  here never leaves a save partially written. The import of `GoogleAPIError`
+  is inside `call_llm`, not at module level, since the offline test suite
+  stubs `google.generativeai` but not the transitive `google-api-core`
+  package.
 - State updates (flags, subplot progress, memory-fragment reveals, entity
-  interactions) are a **separate LLM call** from narration
-  (`update_progress_from_turn`) — one call trying to "narrate AND update
-  state" tends to produce messier JSON than splitting the two. Keep this
-  split if extending state-update coverage (e.g. inventory, relationships).
+  interactions, inventory, relationship scores) are a **separate LLM call**
+  from narration (`update_progress_from_turn`) — one call trying to
+  "narrate AND update state" tends to produce messier JSON than splitting
+  the two. Keep this split if extending state-update coverage further.
+- `player.inventory` is a flat list of item-description strings, diffed via
+  `items_gained`/`items_lost` each turn (`items_lost` matches by exact
+  string, so a lost entry must echo an existing one verbatim - the model is
+  shown `CURRENT INVENTORY` in the prompt for this reason). Left unbounded,
+  same as `player.traits` - a story-appropriate item list doesn't grow the
+  way flags or subplots do, so no cap has been needed.
+- `player.relationships` (`{name: score}`, -100 to 100) is diffed as a
+  **delta per turn**, not an absolute value - `relationship_changes` in the
+  diff is added to the existing score and clamped. Bounded to
+  `RELATIONSHIPS_LIMIT` (20), but unlike `flags_active` (evicts oldest
+  non-pinned first) it evicts whichever relationships sit **closest to
+  neutral** first - a story's strongest bonds/rivalries are exactly the ones
+  that should never silently disappear, regardless of how long ago they
+  were set.
 - Summarization of `history_log` into `compressed_summary` runs periodically
   (on `recent_turns` overflow), not every turn, to save cost.
+
+## Web UI
+The `/play/<slug>` page is a single, continuously-appending transcript, not
+a page-per-turn form flow: submitting a choice/free-text action or hitting
+regenerate never triggers a full navigation. This is built with **HTMX**
+(vendored at `static/htmx.min.js`, loaded once from `base.html`'s `<head>`
+— not pulled from a CDN, since the app is self-hosted/Dockerized and
+shouldn't depend on an external host at page-load time), not hand-written
+`fetch`/DOM-patch JS — declarative `hx-*` attributes in `frontend/
+_controls.html` drive submission, and `app.py`'s `take_turn`/
+`regenerate_turn`/`turn_history` views return HTML fragments (rendered from
+the same `frontend/_scene_block.html`/`_controls.html` partials used for
+the initial page load), not JSON. An out-of-band swap (`hx-swap-oob`) on
+`<fieldset id="controls">` is what makes a single response both append the
+new scene and refresh the choices in one round trip — `#controls` is a
+`<fieldset>` specifically so `hx-disabled-elt="#controls"` can disable
+every descendant control during a request (a plain `<div>` doesn't cascade
+`disabled` to its children). Scrollback is "reverse infinite scroll":
+`/play/<slug>/api/history` follows htmx's standard self-chaining sentinel
+pattern (`#scroll-sentinel`, `hx-trigger="revealed"`) rather than any
+client-tracked pagination state — each response either includes a fresh
+sentinel pointing at the next-older batch, or omits it once
+`history_log.full_transcript` (concatenated with `recent_turns` via
+`app.py`'s `_all_turns`) is exhausted. New UI work on this page should
+extend this pattern rather than introducing a parallel fetch-based one.
 
 ## Multi-User, Multi-Story Architecture
 Many users, each with independent progress, and many stories (not just one
@@ -116,6 +182,28 @@ the engine can ever run) — see `state_store.py`, the single storage layer
 all four entry points (`story_engine.py`, `plot_manager.py`,
 `subplot_manager.py`, `app.py`) go through. Don't read/write story state any
 other way.
+
+All five files referenced by bare name throughout this doc (`app.py`,
+`story_engine.py`, `state_store.py`, `plot_manager.py`, `subplot_manager.py`)
+live together under `backend/` — everything else (`stories/`, `frontend/`,
+`static/`, `data/`, `test/`) stays at the repo root. Their imports of each
+other (`import state_store`, etc.) stay flat, not package-relative - this
+works because every entry point that loads them puts `backend/` on
+`sys.path` itself: `python backend/story_engine.py` gets it for free (Python
+adds a directly-run script's own directory to `sys.path[0]`), gunicorn's
+Dockerfile `CMD` passes `--pythonpath backend` for the same reason, and
+`test/_llm_stubs.py` inserts it manually. None of that changes the process's
+cwd, which is what lets `state_store.py`'s `STORIES_DIR`/`DATA_DIR` stay
+plain relative strings (`"stories"`, `"data"`) resolved against the repo
+root rather than `backend/` - cwd stays at the repo root everywhere this
+runs. `app.py` is the one exception that needs an explicit fix rather than
+relying on cwd: Flask resolves `template_folder`/`static_folder` from the
+module's own file location by default, so `app.py` passes both explicitly,
+pointed back at the repo-root `frontend/`/`static/` (`frontend` instead of
+Flask's usual `templates` purely by naming convention, to pair with
+`backend/` - Flask itself doesn't care what the directory is called). If
+you add a sixth backend module, it only needs the same flat `import` - no
+new wiring.
 
 - **`stories/<slug>/template.json`** — authored seed content. `state_store.
   list_stories()` scans this directory directly (no separate catalog to keep
