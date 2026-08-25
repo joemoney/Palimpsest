@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{% block title %}Palimpsest{% endblock %}</title>
     <script src="{{ url_for('static', filename='htmx.min.js') }}"></script>
+    <script>
+      // Applied before first paint (plain synchronous <head> script, not deferred) so a
+      // viewer who's hidden the topbar doesn't see it flash visible for a frame on every
+      // page load. localStorage, not account state - a per-browser reading preference,
+      // not something that should follow the player to a different device.
+      (function () {
+        try {
+          if (localStorage.getItem("palimpsest-topbar-hidden") === "1") {
+            document.documentElement.classList.add("topbar-hidden");
+          }
+        } catch (e) {}
+      })();
+    </script>
     <style>
       :root {
         --bg: #0f172a;
@@ -74,6 +87,14 @@
         align-items: center;
         justify-content: center;
       }
+      button.icon-link {
+        appearance: none;
+        border: none;
+        background: none;
+        padding: 0;
+        color: var(--muted);
+      }
+      button.icon-link:hover { filter: none; color: var(--text); }
 
       .card {
         background: rgba(17, 24, 39, 0.9);
@@ -87,6 +108,13 @@
         line-height: 1.7;
         margin: 0;
         white-space: pre-wrap;
+      }
+
+      code {
+        background: rgba(148, 163, 184, 0.15);
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 0.9em;
       }
 
       label {
@@ -271,6 +299,29 @@
         gap: 14px;
       }
 
+      html.topbar-hidden .topbar { display: none; }
+
+      .topbar-show-tab {
+        appearance: none;
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        align-items: center;
+        justify-content: center;
+        background: rgba(17, 24, 39, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-top: none;
+        border-radius: 0 0 12px 12px;
+        padding: 4px 16px 5px;
+        color: var(--muted);
+        cursor: pointer;
+        z-index: 21;
+      }
+      .topbar-show-tab:hover { color: var(--text); }
+      html.topbar-hidden .topbar-show-tab { display: flex; }
+
       .dropdown { position: relative; }
       .dropdown summary {
         list-style: none;
@@ -382,6 +433,13 @@
           </details>
           {% endif %}
           {% if session.get('username') %}
+            <a href="{{ url_for('help_page', story_slug=story_slug) if story_slug else url_for('help_page') }}" class="icon-link" title="Help" aria-label="Help">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+            </a>
             <a href="{{ url_for('logout') }}" class="icon-link" title="Log out ({{ session['username'] }})" aria-label="Log out ({{ session['username'] }})">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -390,10 +448,31 @@
               </svg>
             </a>
           {% endif %}
+          <button type="button" id="topbar-hide-btn" class="icon-link" title="Hide title bar" aria-label="Hide title bar">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+          </button>
         </div>
       </header>
+      <button type="button" id="topbar-show-btn" class="topbar-show-tab" title="Show title bar" aria-label="Show title bar">
+        <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
       {% block content %}{% endblock %}
     </main>
+    <script>
+      (function () {
+        var STORAGE_KEY = "palimpsest-topbar-hidden";
+        function setHidden(hidden) {
+          document.documentElement.classList.toggle("topbar-hidden", hidden);
+          try { localStorage.setItem(STORAGE_KEY, hidden ? "1" : "0"); } catch (e) {}
+        }
+        document.getElementById("topbar-hide-btn").addEventListener("click", function () { setHidden(true); });
+        document.getElementById("topbar-show-btn").addEventListener("click", function () { setHidden(false); });
+      })();
+    </script>
     {% block scripts %}{% endblock %}
   </body>
 </html>

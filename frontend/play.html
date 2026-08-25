@@ -49,30 +49,124 @@
   var CHARS_PER_TICK = 4;
   var TICK_MS = 30;
 
+  // Narration is plain text from the LLM, marked up with exactly three inline markers
+  // (see story_engine.py's build_system_prompt instruction): **bold**, *italic*,
+  // __underline__ - deliberately not full Markdown (no headers/lists/links), and
+  // deliberately not a library, to keep this small and dependency-free like the rest of
+  // the project. escapeHtml runs first, via the DOM's own textContent->innerHTML escaping
+  // (correct by construction, no hand-rolled entity list to get wrong) so raw LLM output
+  // can never inject markup - only our own <strong>/<em>/<u> tags, added afterward, are
+  // ever real elements.
+  function escapeHtml(text) {
+    var div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // [^\n*]/[^\n_] (not just [^*]/[^_]) keeps an unmatched stray marker from swallowing
+  // everything up to the next one several paragraphs later.
+  function renderInlineMarkdown(raw) {
+    return escapeHtml(raw)
+      .replace(/\*\*([^\n*]+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/__([^\n_]+?)__/g, "<u>$1</u>")
+      .replace(/\*([^\n*]+?)\*/g, "<em>$1</em>");
+  }
+
+  // Same substitutions as renderInlineMarkdown but dropping the markers instead of
+  // wrapping them - used only to translate a raw-text character offset (reveal_from,
+  // computed server-side against the unrendered opening-scene text) into the equivalent
+  // offset in rendered plain text, since marker characters don't count once rendered.
+  function stripMarkdownMarkers(raw) {
+    return raw
+      .replace(/\*\*([^\n*]+?)\*\*/g, "$1")
+      .replace(/__([^\n_]+?)__/g, "$1")
+      .replace(/\*([^\n*]+?)\*/g, "$1");
+  }
+
+  function collectTextNodes(el) {
+    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    var nodes = [];
+    var node;
+    while ((node = walker.nextNode())) { nodes.push(node); }
+    return nodes;
+  }
+
+  function finishReveal() {
+    var controls = document.getElementById("controls");
+    if (controls) { controls.classList.remove("hidden"); }
+  }
+
+  // Renders raw -> HTML immediately, once, for a scene the player has already had time
+  // to read (an older turn, or one loaded with animate=false) - no typewriter.
+  function renderStatic(el) {
+    el.innerHTML = renderInlineMarkdown(el.getAttribute("data-text") || "");
+  }
+
+  // Builds the final <strong>/<em>/<u> DOM structure up front (so formatting is visually
+  // correct from the very first revealed character, not applied retroactively), then
+  // reveals it by growing each text node's content in document order - a plain
+  // textContent-slicing approach like before can't work once tags are involved, since
+  // slicing raw HTML mid-tag would produce invalid/unbalanced markup.
   function revealNarration(el) {
-    var text = el.getAttribute("data-text") || "";
-    el.setAttribute("data-animate", "false");
-    function finish() {
-      var controls = document.getElementById("controls");
-      if (controls) { controls.classList.remove("hidden"); }
+    var raw = el.getAttribute("data-text") || "";
+    // Non-zero only for the opening-scene turn - see app.py's play() route comment.
+    // Lets the already-shown "before name" half appear instantly instead of being
+    // retyped from scratch alongside the genuinely new "after name" half. Converted from
+    // a raw offset to a rendered-plain-text offset since marker characters don't survive
+    // rendering.
+    var revealFromRaw = Math.min(raw.length, parseInt(el.getAttribute("data-reveal-from"), 10) || 0);
+    var revealFromPlain = stripMarkdownMarkers(raw.slice(0, revealFromRaw)).length;
+
+    el.innerHTML = renderInlineMarkdown(raw);
+    var nodes = collectTextNodes(el).map(function (n) {
+      var full = n.nodeValue;
+      n.nodeValue = "";
+      return { node: n, full: full };
+    });
+    var total = nodes.reduce(function (sum, n) { return sum + n.full.length; }, 0);
+    if (!total) { finishReveal(); return; }
+
+    function applyReveal(count) {
+      var remaining = count;
+      for (var idx = 0; idx < nodes.length; idx++) {
+        var take = Math.min(nodes[idx].full.length, Math.max(0, remaining));
+        nodes[idx].node.nodeValue = nodes[idx].full.slice(0, take);
+        remaining -= take;
+      }
     }
-    if (!text) { finish(); return; }
-    var i = 0;
-    el.textContent = "";
+
+    var revealed = revealFromPlain;
+    applyReveal(revealed);
     (function tick() {
-      i = Math.min(text.length, i + CHARS_PER_TICK);
-      el.textContent = text.slice(0, i);
-      if (i < text.length) {
+      revealed = Math.min(total, revealed + CHARS_PER_TICK);
+      applyReveal(revealed);
+      if (revealed < total) {
         window.setTimeout(tick, TICK_MS);
       } else {
-        finish();
+        finishReveal();
       }
     })();
   }
 
+  // data-md-done gates both branches from ever being reprocessed - a document-wide
+  // rescan (see the htmx:afterSwap handler below) would otherwise re-animate an
+  // already-revealed scene, or just needlessly re-render a static one.
+  function processStoryElements(root) {
+    var els = (root || document).querySelectorAll('.story:not([data-md-done="true"])');
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      el.setAttribute("data-md-done", "true");
+      if (el.getAttribute("data-animate") === "true") {
+        el.setAttribute("data-animate", "false");
+        revealNarration(el);
+      } else {
+        renderStatic(el);
+      }
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
-    var el = document.querySelector('.story[data-animate="true"]');
-    if (el) { revealNarration(el); }
+    processStoryElements(document);
 
     // Resuming a save (or just refreshing) should land on the latest scene and its
     // choices, not the top of the oldest of the last few scenes shown - the page loads
@@ -88,10 +182,9 @@
   document.body.addEventListener("htmx:afterSwap", function () {
     // Scan the whole document rather than evt.detail.target: for an outerHTML swap
     // (regenerate) target semantics around the replaced node are unreliable, and
-    // revealNarration() immediately flips data-animate to "false" once it runs, so a
-    // document-wide scan never double-animates an already-revealed block either way.
-    var els = document.querySelectorAll('.story[data-animate="true"]');
-    for (var i = 0; i < els.length; i++) { revealNarration(els[i]); }
+    // data-md-done makes a document-wide scan safe either way - already-processed
+    // elements are skipped, not reprocessed.
+    processStoryElements(document);
   });
 
   // A fresh random status word each time a request starts, so the busy indicator reads

@@ -24,4 +24,13 @@ EXPOSE 8000
 # --pythonpath (not --chdir) so app.py/state_store.py/etc. under backend/ import cleanly
 # while cwd stays /app (the repo root) - state_store.py's STORIES_DIR/DATA_DIR are plain
 # relative paths ("stories"/"data") that need cwd to stay at the repo root to resolve.
-CMD ["gunicorn", "--pythonpath", "backend", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "app:app"]
+# --timeout is deliberately longer than story_engine.py's own requests.post timeout (120s)
+# for OpenRouter calls - if the two were equal (or this were shorter), a stalled call could
+# hit gunicorn's harder SIGABRT before requests' own clean timeout fires, killing the worker
+# mid-request with no response sent to the client and the turn's state never saved.
+# --access-logfile - (stdout, captured by `docker logs`) plus %(L)s (request duration in
+# seconds) in the format string - there was previously no access log at all, only error-level
+# output, so a hung/slow request left no trace unless it happened to crash outright.
+CMD ["gunicorn", "--pythonpath", "backend", "--bind", "0.0.0.0:8000", "--workers", "3", \
+     "--timeout", "180", "--access-logfile", "-", \
+     "--access-logformat", "%(t)s %(h)s \"%(r)s\" %(s)s %(L)ss", "app:app"]

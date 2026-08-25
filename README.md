@@ -128,6 +128,96 @@ python backend/subplot_manager.py advance-act                # manually force-co
 python backend/subplot_manager.py reveal frag_0001            # surface a memory fragment
 ```
 
+## User Manual
+Everything below is written for a player using the web UI, not a developer -
+the same content is also available in-app at `/help` once logged in (the
+"?" icon in the top bar). Playing via the CLI works too (see "Running It"
+above) but the two "steer"/`plot_manager.py`/`subplot_manager.py` sections
+above are the CLI equivalent of the web walkthrough below.
+
+### How to Play
+1. Log in at `/login`. Accounts are created for you ahead of time (there's
+   no self-service signup) - ask whoever's running the server for one.
+2. Pick a story from `/stories`.
+3. The first time you play a given story, you're asked to name your
+   protagonist - typed in-fiction, as part of the opening scene itself,
+   not a separate setup form.
+4. Each turn shows the current scene, followed by up to three numbered
+   choices as buttons (a short label plus the full first-person action
+   it'll submit if picked) and a free-text box below them for typing your
+   own action instead - "steer your own way" if none of the three fit
+   what you want to do.
+5. **Regenerate** - didn't like how the last scene played out? The
+   regenerate button (below the most recent scene) re-rolls it with a
+   fresh response to the same action, discarding the version you didn't
+   like. Only ever affects the single most recent scene.
+6. **The story has no fixed length** - there's no set number of acts or a
+   built-in ending waiting for you. Only the first act is pre-written;
+   whenever the current one feels resolved, the engine judges that for
+   itself and generates the next act on the spot, with no ceiling.
+   Subplots work the same way, automatically topping back up as old ones
+   complete. Nothing here is scripted in advance, so don't expect a fixed
+   chapter count or a natural stopping point - the story keeps going until
+   you decide to end it (next).
+7. **Ending the story** - type one of `end story`, `end the story`,
+   `conclude the story`, or `wrap up the story` as your action. The
+   narration shifts into wrapping up open threads, and the story
+   concludes once it ends a response with the line `THE END` - after
+   that, no further acts or subplots generate automatically (manual
+   Plot/Subplot Manager edits still work, if you want to keep steering
+   the finale by hand).
+8. Scroll up to reread earlier scenes - older history loads in
+   automatically as you scroll, no pagination to click through.
+9. If the AI model is temporarily unreachable (rate limit, brief outage),
+   you'll see an error message and nothing will have been lost - your
+   previous scene and choices are untouched, just retry.
+10. The title bar can get in the way while reading - collapse it with the
+   chevron button in the top-right, and a small tab at the very top of the
+   screen brings it back whenever you want it.
+
+### How to Modify Acts and Subplots
+Sometimes the story doesn't head where you want it to on its own. From the
+gear icon ("Manage") in the top bar while playing a story, **Plot Manager**
+and **Subplot Manager** let you edit the story's structure directly,
+bypassing narration entirely. Treat these as power tools: the AI treats
+whatever's here as established fact going forward, so a vague or
+contradictory edit can break story coherence. Prefer letting the story
+arrive at a direction change on its own where possible; reach for these
+when you need to force a specific change the model isn't going to make by
+itself.
+
+**Plot Manager** (Manage → Plot Manager):
+- **Add Act** - add a new act to the main story: a title and description
+  of what happens, optionally marked Optional, inserted wherever you like.
+- **Edit Act** - change an existing act's title or description.
+- **Pivot Main Plot** - redirect the overall story goal entirely (new
+  title, description, and a reason for the change).
+- **Note Emergent Direction** - flag a direction the story already seems
+  to be drifting toward, without committing to it as a full act yet.
+- **Promote Emergent Direction to Act** - turn a previously noted
+  direction into a real act once you're sure you want it.
+- **Create Alternate Thread** - start a separate storyline running
+  alongside the main plot.
+- **Switch Focus** - change which thread (main, or an alternate) the
+  narration currently follows.
+- **Record Player Goal** / **Note Emerging Theme** - leave notes about
+  where the story should head, without immediately acting on them.
+
+**Subplot Manager** (Manage → Subplot Manager):
+- **Adjust Progress** - nudge a subplot's completion percentage up or down.
+- **Modify Subplot** - edit a subplot's title, description, priority, or
+  how it ties to the main plot (leave any field blank to keep it
+  unchanged).
+- **Activate Subplot** - start one of the story's not-yet-started subplots.
+- **Advance Act** - force the current act to complete right away; the next
+  act generates automatically the next time you take a turn.
+- **Reveal Memory Fragment** - manually surface one of the protagonist's
+  hidden backstory fragments.
+
+You rarely need any of this by hand - subplots regenerate automatically as
+old ones complete, and acts are open-ended with no fixed count - but it's
+here for when the story needs a deliberate push.
+
 ## File Structure
 - `stories/<slug>/template.json` — authored seed content for one story (meta,
   world, player, characters, plot, history_log). `stories/example/` is

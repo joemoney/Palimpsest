@@ -108,4 +108,34 @@ try:
 except se.LLMUnavailableError:
     print("OK: a malformed response body is wrapped as LLMUnavailableError, not a raw KeyError")
 
+
+# --- a call that hangs past OPENROUTER_TOTAL_TIMEOUT is caught even though it never trips
+# requests' own per-read timeout - regression test for a real production incident where a
+# slow-trickling OpenRouter response ran past gunicorn's --timeout and hard-crashed the
+# worker instead of returning a clean error. Shrinks the deadline rather than actually
+# sleeping 150s real seconds.
+import threading
+import time
+
+se.OPENROUTER_TOTAL_TIMEOUT = 0.2
+
+
+def _fake_post_hangs(url, headers=None, json=None, timeout=None):
+    # Blocks well past the shrunk deadline above - simulates a response that never
+    # completes (or trickles too slowly for requests' own gap-based timeout to fire).
+    threading.Event().wait(2)
+    return _FakeResponse(200, {"choices": [{"message": {"content": "too late"}}]})
+
+
+se.requests.post = _fake_post_hangs
+start = time.monotonic()
+try:
+    se.call_llm("some prompt")
+    raise AssertionError("expected LLMUnavailableError")
+except se.LLMUnavailableError:
+    elapsed = time.monotonic() - start
+    assert elapsed < 1.5, f"took {elapsed}s - should have given up at the shrunk deadline, not waited on the hang"
+    print("OK: a call that hangs past OPENROUTER_TOTAL_TIMEOUT is caught by the wall-clock "
+          "deadline, not left to hang indefinitely")
+
 print("\nALL CHECKS PASSED: test_openrouter")

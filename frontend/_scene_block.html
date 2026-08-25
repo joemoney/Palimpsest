@@ -5,7 +5,7 @@
 </div>
 {% endif %}
 <section class="card">
-  <p class="story" data-text="{{ turn.narration }}"
-     data-animate="{{ 'true' if turn.animate else 'false' }}">{{ '' if turn.animate else turn.narration }}</p>
+  <p class="story" data-text="{{ turn.narration }}" data-reveal-from="{{ turn.reveal_from }}"
+     data-animate="{{ 'true' if turn.animate else 'false' }}">{{ turn.narration[:turn.reveal_from] if turn.animate else turn.narration }}</p>
 </section>
 </div>

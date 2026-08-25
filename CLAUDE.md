@@ -200,6 +200,31 @@ sentinel pointing at the next-older batch, or omits it once
 `app.py`'s `_all_turns`) is exhausted. New UI work on this page should
 extend this pattern rather than introducing a parallel fetch-based one.
 
+**Inline narration formatting** (`frontend/play.html`): the LLM is instructed
+(`story_engine.py`'s `build_system_prompt`) to mark up emphasis with exactly
+three plain-text markers — `**bold**`, `*italic*`, `__underline__` — not full
+Markdown and not a parsing library, kept small and dependency-free like the
+rest of the project. `data-text` on each `.story` element (`_scene_block.html`)
+always carries the *raw* narration text; client-side JS renders it, for both
+the freshly-animated turn and every already-read one loaded via SSR/pagination
+(`processStoryElements`, gated by a `data-md-done` marker so a document-wide
+rescan on `htmx:afterSwap` never reprocesses the same element twice). Escaping
+always runs before the marker regexes (`escapeHtml`, via the DOM's own
+`textContent` → `innerHTML`, not a hand-rolled entity list) — LLM output can
+never inject real markup this way, only the three fixed tags we add ourselves.
+The typewriter reveal can't just slice a live HTML string once tags are
+involved (slicing mid-tag would produce invalid markup) — it builds the final
+`<strong>`/`<em>`/`<u>` DOM structure up front, then grows each text node's
+content in document order, so formatting is visually correct from the first
+revealed character rather than snapping in retroactively. The one subtlety:
+`reveal_from` (see `app.py`'s `play()` route — the opening scene's already-read
+"before name" prefix) is computed server-side as a *raw*-text character
+offset, but marker characters don't survive rendering, so `revealNarration`
+re-derives the equivalent *rendered* offset (`stripMarkdownMarkers`) before
+using it — this only stays correct if `narration_before_name` itself never
+contains markdown, which is true for every story's hand-authored opening today
+but isn't otherwise enforced.
+
 ## Multi-User, Multi-Story Architecture
 Many users, each with independent progress, and many stories (not just one
 the engine can ever run) — see `state_store.py`, the single storage layer

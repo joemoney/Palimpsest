@@ -10,6 +10,28 @@ services:
       FLASK_ENV: development
     restart: unless-stopped
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: palimpsest-tunnel
+    # Runs as the host user (owner of the mounted credentials file below, which stays
+    # at its original 400 permissions) instead of the image's default nonroot user -
+    # avoids loosening permissions on or copying the credentials file just to make it
+    # container-readable.
+    user: "1000:1000"
+    # Reuses the tunnel's already-registered DNS route (a subdomain on the operator's own
+    # domain, configured via `cloudflared tunnel route dns`), so --url is enough - no
+    # ingress config.yml needed for a single-hostname tunnel.
+    # `web` here is resolved via Docker Compose's default network, not localhost.
+    # Tunnel referenced by UUID, not name - running by name requires the origin cert
+    # (cert.pem) to resolve name -> ID via the API; the credentials file + UUID alone
+    # is enough, so cert.pem never needs to be mounted into the container.
+    command: tunnel --no-autoupdate run --url http://web:8000 --credentials-file /etc/cloudflared/creds.json ffe89a91-823b-4097-a95e-3072ff58b96c
+    volumes:
+      - ${HOME}/.cloudflared/ffe89a91-823b-4097-a95e-3072ff58b96c.json:/etc/cloudflared/creds.json:ro
+    depends_on:
+      - web
+    restart: unless-stopped
+
   story-engine:
     build: .
     container_name: palimpsest-story-engine

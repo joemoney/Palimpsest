@@ -64,17 +64,21 @@ def _all_turns(state: dict) -> list:
     return state["history_log"].get("full_transcript", []) + state["history_log"]["recent_turns"]
 
 
-def _render_turn(entry: str, index: int, animate: bool) -> dict:
+def _render_turn(entry: str, index: int, animate: bool, reveal_from: int = 0) -> dict:
     """Splits and options-strips one turn for display. parse_narration_and_options is run
     on every turn, not just the latest - the raw stored text is the LLM's full response
     including any trailing 'OPTIONS:' block, so an older turn left unstripped would show
     that block as literal text. options is only meaningful (and only rendered by
-    _controls.html) for the single latest turn - see _latest_rendered_turn."""
+    _controls.html) for the single latest turn - see _latest_rendered_turn.
+
+    reveal_from is a character offset into narration: text before it renders instantly
+    (already shown to the player elsewhere), only the remainder is typewriter-animated.
+    Only ever non-zero for the opening-scene turn - see play()'s comment on why."""
     player_action, raw_narration = _split_turn_entry(entry)
     narration, options = story_engine.parse_narration_and_options(raw_narration)
     return {
         "player_action": player_action, "narration": narration, "animate": animate,
-        "index": index, "options": options,
+        "index": index, "options": options, "reveal_from": reveal_from,
     }
 
 
@@ -137,6 +141,21 @@ def stories():
     return render_template("stories.html", stories=state_store.list_stories())
 
 
+@app.route("/help")
+@login_required
+def help_page():
+    # story_slug is optional here (an ?args query param, not part of the route) - the "?"
+    # icon is reachable from anywhere in the app, including before any story is loaded
+    # (base.html shows it whenever a session exists, regardless of story_slug). When it IS
+    # present (base.html's topbar link forwards the current page's story_slug whenever one
+    # exists), it both lets help.html render a "Back to Play" link and, via the same
+    # story_slug being in this render's own context, makes base.html's own topbar show its
+    # usual story-scoped icons (back-to-stories, Manage dropdown) on this page too. See
+    # README.md's "User Manual" section, which this mirrors - keep the two in sync when
+    # either changes.
+    return render_template("help.html", story_slug=request.args.get("story_slug"))
+
+
 @app.route("/play/<story_slug>", methods=["GET", "POST"])
 @login_required
 def play(story_slug):
@@ -163,8 +182,17 @@ def play(story_slug):
     all_turns = _all_turns(state)
     total = len(all_turns)
     oldest_index = max(0, total - INITIAL_TURNS_SHOWN)
+    # Turn 0's stored text is "narration_before_name\n\nnarration_after_name" (see
+    # apply_opening_name) - the before-name half was already shown, unanimated, on the
+    # name-entry form itself, so on this first fresh=1 load only the after-name half
+    # should type out. Without this offset the typewriter replays the whole opening from
+    # scratch, including text the player just read.
+    before_name_len = len(state["plot"]["opening_scene"]["narration_before_name"])
     initial_turns = [
-        _render_turn(entry, idx, animate=(animate and idx == total - 1))
+        _render_turn(
+            entry, idx, animate=(animate and idx == total - 1),
+            reveal_from=(before_name_len + 2 if idx == 0 else 0),
+        )
         for idx, entry in enumerate(all_turns[oldest_index:], start=oldest_index)
     ]
     latest = initial_turns[-1] if initial_turns else {"options": []}

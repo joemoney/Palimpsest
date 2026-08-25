@@ -1,3 +1,4 @@
+import concurrent.futures
 import copy
 import json
 import os
@@ -5,6 +6,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 from dotenv import load_dotenv
 import google.generativeai as genai
 import requests
@@ -70,19 +72,60 @@ class LLMUnavailableError(Exception):
     when this fires (call_llm always runs before any state is saved for the turn)."""
 
 
+# requests' own `timeout=` is NOT a total-call deadline - per the library's own docs, it
+# only fires if zero bytes arrive for that many seconds. A response that trickles in slowly
+# enough (no single gap that long) can run for many minutes without ever tripping it. That's
+# what actually happened in production: requests' timeout=120 never fired, and the call ran
+# past gunicorn's --timeout (Dockerfile CMD) instead, which hard-kills the worker via SIGABRT
+# - no clean response reaches the client, and the turn's state is never saved (see git log for
+# two real incidents). OPENROUTER_TOTAL_TIMEOUT below is a genuine wall-clock deadline around
+# the *whole* call, enforced by running it in a background thread and giving up on
+# .result(timeout=...) rather than waiting on it - comfortably under gunicorn's --timeout so
+# this always catches a hang first, cleanly, instead of gunicorn's SIGABRT.
+OPENROUTER_TOTAL_TIMEOUT = 150
+_openrouter_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=8, thread_name_prefix="openrouter-call"
+)
+
+
 def _call_llm_openrouter(prompt: str, model: str) -> str:
-    try:
+    def do_request():
         response = requests.post(
             OPENROUTER_URL,
             headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
-            json={"model": model, "messages": [{"role": "user", "content": prompt}]},
-            timeout=120,  # matches gunicorn's own --timeout, no point waiting past that
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                # deepseek-v4-flash-0731 (STATE_UPDATE_MODEL) alone is resold through 29
+                # different OpenRouter providers, with measured throughput ranging 6-109
+                # tok/s and TTFT 0.42-2.42s depending which one a request lands on -
+                # OpenRouter's default routing doesn't optimize for this, so a real
+                # production call landed on the slow end (see git log: an 83s state-update
+                # call was the dominant cost in a 132s turn). This asks OpenRouter to
+                # prefer whichever provider is currently fastest for the requested model,
+                # instead of leaving that to chance - same model, same price, just routed
+                # better. Applies to every OpenRouter call (narration included), not just
+                # the state-update tier, since it can only help.
+                "provider": {"sort": "throughput"},
+            },
+            # Still set (not None) as a lower-level guard: if the connection goes fully
+            # dead rather than just trickling, this bounds how long an abandoned thread
+            # lingers after OPENROUTER_TOTAL_TIMEOUT gives up on it below.
+            timeout=120,
         )
         response.raise_for_status()
+        return response.json()
+
+    future = _openrouter_executor.submit(do_request)
+    try:
+        data = future.result(timeout=OPENROUTER_TOTAL_TIMEOUT)
+    except concurrent.futures.TimeoutError:
+        raise LLMUnavailableError(
+            f"OpenRouter did not respond within {OPENROUTER_TOTAL_TIMEOUT}s"
+        )
     except requests.exceptions.RequestException as e:
         raise LLMUnavailableError(str(e)) from e
 
-    data = response.json()
     try:
         return data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as e:
@@ -125,6 +168,20 @@ def call_llm_json(prompt: str, model: str = STATE_UPDATE_MODEL) -> dict:
             lines = lines[:-1]
         raw = "\n".join(lines)
     return json.loads(raw)
+
+
+def _timed(label: str, fn):
+    """Wraps a single LLM call with wall-clock timing, printed to stdout (captured by
+    `docker logs`/gunicorn's access log, same as the existing narration print). A turn can
+    involve up to five sequential calls - narration, state-update, and conditionally
+    subplot generation, act-advancement judgment, and the summary rollover - so total
+    request duration alone (the access log's one number) doesn't say which of those is
+    actually where the time goes. Labels line up 1:1 with the call sites below."""
+    start = time.monotonic()
+    try:
+        return fn()
+    finally:
+        print(f"[TIMING] {label}: {time.monotonic() - start:.2f}s")
 
 
 def check_subplot_status(state: dict) -> dict:
@@ -188,7 +245,7 @@ Only include subplot ids, flags, fragment ids, items, and character names that a
 this turn. Use {{}}/[] for nothing changed."""
 
     try:
-        diff = call_llm_json(prompt)
+        diff = _timed("state_update", lambda: call_llm_json(prompt))
     except (json.JSONDecodeError, ValueError):
         return {}
 
@@ -312,7 +369,7 @@ Respond with ONLY a JSON object, no other text:
 }}"""
 
     try:
-        generated = call_llm_json(prompt)
+        generated = _timed("subplot_generation", lambda: call_llm_json(prompt))
         title = generated["title"]
         description = generated["description"]
     except (json.JSONDecodeError, KeyError, ValueError):
@@ -372,7 +429,7 @@ Respond with ONLY a JSON object, no other text:
 }}"""
 
     try:
-        generated = call_llm_json(prompt)
+        generated = _timed("end_story_final_arc", lambda: call_llm_json(prompt))
     except (json.JSONDecodeError, ValueError):
         generated = {}
 
@@ -455,7 +512,7 @@ Respond with ONLY a JSON object, no other text:
 }}"""
 
     try:
-        verdict = call_llm_json(prompt)
+        verdict = _timed("act_advancement_check", lambda: call_llm_json(prompt))
     except (json.JSONDecodeError, ValueError):
         return None
 
@@ -582,6 +639,11 @@ CURRENT SCENE ({scene['location']}): {scene['summary']}
 PLAYER: {player['name']} | Traits: {', '.join(player['traits'])} | Inventory: {', '.join(player['inventory']) or 'nothing'} | Relationships: {player.get('relationships', {})} | Flags: {player['flags_active']}
 
 Stay strictly within the established world, tone, and rules above.
+You may lightly mark up emphasis in your prose using exactly these three markers, used
+sparingly (most sentences should have none): **text** for bold, *text* for italic
+(e.g. internal thought or stressed words), __text__ for underline. Do not nest them,
+and do not use any other markdown (no headers, lists, links, code, or single/double
+underscores for anything other than underline).
 {instruction_footer}
 """
 
@@ -665,7 +727,9 @@ NEW EVENTS:
 {chr(10).join(overflow)}
 
 Respond with ONLY the updated summary text, under {SUMMARY_MAX_WORDS} words, no preamble."""
-        updated_summary = call_llm(summary_prompt, model=STATE_UPDATE_MODEL)
+        updated_summary = _timed(
+            "summary_rollover", lambda: call_llm(summary_prompt, model=STATE_UPDATE_MODEL)
+        )
         state["history_log"]["compressed_summary"] = updated_summary.strip()
 
     state_store.save_state(state, user_id, story_slug)
@@ -741,7 +805,7 @@ def _generate_and_apply_turn(
     (a deep copy of state from just before this turn) so a later regenerate_last_turn call can
     restore to exactly this point and re-roll. Returns True once the story has concluded."""
     prompt = build_system_prompt(state) + f"\n\nPlayer action: {player_action}\n\nNarrator:"
-    ai_response = call_llm(prompt)
+    ai_response = _timed("narration", lambda: call_llm(prompt))
     print(ai_response)
 
     update_state_after_turn(state, player_action, ai_response, user_id, story_slug)

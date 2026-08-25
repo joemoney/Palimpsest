@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Help - Palimpsest{% endblock %}
+{% block header_title %}Help{% endblock %}
+{% block content %}
+{% if story_slug %}
+<a href="{{ url_for('play', story_slug=story_slug) }}"><button style="width:100%;">&larr; Back to Play</button></a>
+{% endif %}
+<section class="card">
+  <div style="font-weight:700; margin-bottom:10px;">How to Play</div>
+  <ol style="padding-left:20px; display:flex; flex-direction:column; gap:10px; color:var(--text);">
+    <li>Pick a story from <a href="{{ url_for('stories') }}">your stories</a>.</li>
+    <li>The first time you play a given story, you're asked to name your protagonist -
+      typed in-fiction, as part of the opening scene itself, not a separate setup form.</li>
+    <li>Each turn shows the current scene, followed by up to three numbered choices as
+      buttons (a short label plus the full first-person action it'll submit if picked)
+      and a free-text box below them for typing your own action instead - "steer your
+      own way" if none of the three fit what you want to do.</li>
+    <li><strong>Regenerate</strong> - didn't like how the last scene played out? The
+      regenerate button (below the most recent scene) re-rolls it with a fresh response
+      to the same action, discarding the version you didn't like. Only ever affects the
+      single most recent scene.</li>
+    <li><strong>The story has no fixed length</strong> - there's no set number of acts or
+      a built-in ending waiting for you. Only the first act is pre-written; whenever the
+      current one feels resolved, the engine judges that for itself and generates the
+      next act on the spot, with no ceiling. Subplots work the same way, automatically
+      topping back up as old ones complete. Nothing here is scripted in advance, so
+      don't expect a fixed chapter count or a natural stopping point - the story keeps
+      going until you decide to end it (next).</li>
+    <li><strong>Ending the story</strong> - type one of <code>end story</code>,
+      <code>end the story</code>, <code>conclude the story</code>, or
+      <code>wrap up the story</code> as your action. The narration shifts into wrapping
+      up open threads, and the story concludes once it ends a response with the line
+      <code>THE END</code> - after that, no further acts or subplots generate
+      automatically (manual Plot/Subplot Manager edits still work, if you want to keep
+      steering the finale by hand).</li>
+    <li>Scroll up to reread earlier scenes - older history loads in automatically as you
+      scroll, no pagination to click through.</li>
+    <li>If the AI model is temporarily unreachable (rate limit, brief outage), you'll see
+      an error message and nothing will have been lost - your previous scene and choices
+      are untouched, just retry.</li>
+    <li>The title bar can get in the way while reading - collapse it with the chevron
+      button in the top-right, and a small tab at the very top of the screen brings it
+      back whenever you want it.</li>
+  </ol>
+</section>
+
+<section class="card warning-banner">
+  Plot Manager and Subplot Manager (below) edit the story's structure directly,
+  bypassing narration entirely. Treat these as power tools: the AI treats whatever's
+  here as established fact going forward, so a vague or contradictory edit can break
+  story coherence. Prefer letting the story arrive at a direction change on its own
+  where possible; reach for these when you need to force a specific change the model
+  isn't going to make by itself. Both are reachable from the gear icon ("Manage") in
+  the top bar while playing a story.
+</section>
+
+<details class="card">
+  <summary>Plot Manager</summary>
+  <div style="display:flex; flex-direction:column; gap:10px; margin-top:10px; color:var(--text);">
+    <div><strong>Add Act</strong> - add a new act to the main story: a title and
+      description of what happens, optionally marked Optional, inserted wherever you
+      like.</div>
+    <div><strong>Edit Act</strong> - change an existing act's title or description.</div>
+    <div><strong>Pivot Main Plot</strong> - redirect the overall story goal entirely (new
+      title, description, and a reason for the change).</div>
+    <div><strong>Note Emergent Direction</strong> - flag a direction the story already
+      seems to be drifting toward, without committing to it as a full act yet.</div>
+    <div><strong>Promote Emergent Direction to Act</strong> - turn a previously noted
+      direction into a real act once you're sure you want it.</div>
+    <div><strong>Create Alternate Thread</strong> - start a separate storyline running
+      alongside the main plot.</div>
+    <div><strong>Switch Focus</strong> - change which thread (main, or an alternate) the
+      narration currently follows.</div>
+    <div><strong>Record Player Goal</strong> / <strong>Note Emerging Theme</strong> -
+      leave notes about where the story should head, without immediately acting on
+      them.</div>
+  </div>
+</details>
+
+<details class="card">
+  <summary>Subplot Manager</summary>
+  <div style="display:flex; flex-direction:column; gap:10px; margin-top:10px; color:var(--text);">
+    <div><strong>Adjust Progress</strong> - nudge a subplot's completion percentage up
+      or down.</div>
+    <div><strong>Modify Subplot</strong> - edit a subplot's title, description,
+      priority, or how it ties to the main plot (leave any field blank to keep it
+      unchanged).</div>
+    <div><strong>Activate Subplot</strong> - start one of the story's not-yet-started
+      subplots.</div>
+    <div><strong>Advance Act</strong> - force the current act to complete right away;
+      the next act generates automatically the next time you take a turn.</div>
+    <div><strong>Reveal Memory Fragment</strong> - manually surface one of the
+      protagonist's hidden backstory fragments.</div>
+  </div>
+  <p style="color:var(--muted); font-size:0.85rem; margin-top:12px;">
+    You rarely need any of this by hand - subplots regenerate automatically as old ones
+    complete, and acts are open-ended with no fixed count - but it's here for when the
+    story needs a deliberate push.
+  </p>
+</details>
+{% endblock %}
