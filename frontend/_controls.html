@@ -4,7 +4,7 @@
 {% else %}
   {% if turn.player_action %}
   <div class="scene-actions">
-    <button type="button" class="icon-button"
+    <button type="button" class="icon-button" data-status-poll="true"
       hx-post="{{ url_for('regenerate_turn', story_slug=story_slug) }}"
       hx-target="#scene-list > .scene-block:last-child" hx-swap="outerHTML"
       hx-disabled-elt="#controls" hx-indicator="#controls, #busy-indicator"
@@ -14,7 +14,7 @@
   {% if options %}
   <section class="card choices" id="choices">
     {% for option in options %}
-    <button type="button" class="choice"
+    <button type="button" class="choice" data-status-poll="true"
       hx-post="{{ url_for('take_turn', story_slug=story_slug) }}"
       hx-vals='{"action": {{ option.prose | tojson }}}'
       hx-target="#scene-list" hx-swap="beforeend"
@@ -25,7 +25,7 @@
     {% endfor %}
   </section>
   {% endif %}
-  <form class="card"
+  <form class="card" data-status-poll="true"
     hx-post="{{ url_for('take_turn', story_slug=story_slug) }}"
     hx-target="#scene-list" hx-swap="beforeend"
     hx-disabled-elt="#controls" hx-indicator="#controls, #busy-indicator">

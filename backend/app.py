@@ -174,6 +174,30 @@ def play(story_slug):
             options=[], player_action=None, mode="name_entry", animate=False
         )
 
+    # A story opts into this entirely by authoring a top-level character_creation list (an
+    # ordered sequence of steps - e.g. new_babel's "class" then "starting_place") - absent/
+    # empty for a story that doesn't use the mechanic (e.g. the cozy-mystery example story),
+    # so this whole block is a no-op there. Independent of the opening_scene.played gate
+    # above (not nested inside "if not played") so it still applies correctly to a save
+    # whose opening already played but hasn't completed every step yet. One request handles
+    # exactly one step; a story with multiple steps naturally chains through them one screen
+    # at a time, since each redirect below re-enters play() and next_pending_creation_step
+    # picks up wherever the player left off.
+    step = story_engine.next_pending_creation_step(state)
+    if step:
+        error = None
+        if request.method == "POST":
+            chosen = story_engine.apply_creation_choice(state, step["key"], request.form.get("option_id", ""))
+            if chosen is not None:
+                state_store.save_state(state, user_id, story_slug)
+                return redirect(url_for("play", story_slug=story_slug, fresh=1))
+            error = "Please choose one of the options below."
+        prompt = step.get("prompt") or f"{step.get('label', step['key'].title())}: choose one."
+        return render_template(
+            "creation_step.html", story_title=story_title, story_slug=story_slug,
+            step=step, prompt=prompt, error=error,
+        )
+
     # Only the request immediately following the name-entry submission carries ?fresh=1 -
     # any other GET (resuming a save, refreshing, navigating back from the story picker)
     # renders every visible scene instantly instead of replaying the reveal animation.
@@ -201,6 +225,18 @@ def play(story_slug):
         initial_turns=initial_turns, oldest_index=oldest_index, has_older=oldest_index > 0,
         turn=latest, options=latest["options"], mode=mode, animate=animate,
     )
+
+
+@app.route("/play/<story_slug>/api/status", methods=["GET"])
+@login_required
+def turn_status(story_slug):
+    """Polled by play.html's busy indicator while a /api/turn or /api/regenerate request is
+    in flight, to show which of that turn's (possibly several) sequential LLM calls is
+    currently running (see story_engine.py's STATUS_LABELS/_timed) instead of a generic
+    "Working..." for the whole duration. Cheap: no LLM call, no state_store save-file lock -
+    just a small best-effort status file read (state_store.read_turn_status)."""
+    user_id = session["user_id"]
+    return {"label": state_store.read_turn_status(user_id, story_slug)}
 
 
 @app.route("/play/<story_slug>/api/turn", methods=["POST"])

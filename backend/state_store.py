@@ -108,6 +108,46 @@ def save_state(state: dict, user_id: str = DEFAULT_USER_ID, story_slug: str = DE
 
 
 # ---------------------------------------------------------------------------
+# Turn-in-progress status beacon (busy-indicator polling - app.py's /api/status route)
+# ---------------------------------------------------------------------------
+# Deliberately separate from the save file/lock above: this is a best-effort, ephemeral
+# "what's the engine doing right now" hint for the UI, written multiple times per turn
+# (once per LLM call - see story_engine.py's _timed()) and read by a poll from a different
+# request entirely. Sharing the save file's lock would serialize the poll behind whatever
+# long-running turn it's trying to report on, defeating the purpose. A stale or momentarily
+# missing read is harmless (the UI just keeps its last label for one more poll interval),
+# so this skips locking - os.replace's atomicity is enough to avoid a torn read of the file
+# itself.
+
+def _status_path(user_id: str, story_slug: str) -> str:
+    return _save_path(user_id, story_slug) + ".status"
+
+
+def write_turn_status(user_id: str, story_slug: str, label: str):
+    path = _status_path(user_id, story_slug)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = path + f".tmp{os.getpid()}"
+    with open(tmp_path, "w") as f:
+        f.write(label)
+    os.replace(tmp_path, path)
+
+
+def clear_turn_status(user_id: str, story_slug: str):
+    try:
+        os.remove(_status_path(user_id, story_slug))
+    except FileNotFoundError:
+        pass
+
+
+def read_turn_status(user_id: str, story_slug: str) -> str | None:
+    try:
+        with open(_status_path(user_id, story_slug), "r") as f:
+            return f.read().strip() or None
+    except FileNotFoundError:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Accounts (SQLite - the one place an atomic uniqueness check matters)
 # ---------------------------------------------------------------------------
 

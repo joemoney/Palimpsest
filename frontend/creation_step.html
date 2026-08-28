@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ story_title }} - Palimpsest{% endblock %}
+{% block header_title %}{{ story_title }}{% endblock %}
+{% block content %}
+<section class="card">
+  <p class="story">{{ prompt }}</p>
+  {% if error %}
+  <p class="story" style="color: var(--accent);">{{ error }}</p>
+  {% endif %}
+</section>
+<section class="card choices">
+  {% for opt in step.options %}
+  <form method="post" style="margin-top: 0;">
+    <input type="hidden" name="option_id" value="{{ opt.id }}">
+    <button type="submit" class="choice">
+      <span class="choice-action">{{ opt.name }}</span>
+      {% if opt.tagline %}<span class="choice-prose">{{ opt.tagline }}</span>{% endif %}
+    </button>
+  </form>
+  {% endfor %}
+</section>
+{% endblock %}

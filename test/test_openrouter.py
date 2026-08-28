@@ -2,20 +2,68 @@
 default LLM_PROVIDER in real use - Google is kept only for testing/debugging, see
 CLAUDE.md): a successful response is parsed correctly, model routing defaults to the right
 tier per call, and network/HTTP/malformed-response failures are all wrapped as the same
-LLMUnavailableError the Google path uses.
+LLMUnavailableError the Google path uses - by way of also exhausting call_llm's Gemini
+fail-safe (see test_failsafe.py for the fail-safe actually rescuing a failed call, the
+opposite case), since a bare OpenRouter failure alone no longer directly raises.
 
-Forces LLM_PROVIDER=openrouter for this file only - the rest of the suite defaults to
-LLM_PROVIDER=google via _llm_stubs.py, since that's the fully-stubbed path. Each test file
-runs in its own subprocess (see run_all.py), so this doesn't affect other test files.
+Forces LLM_PROVIDER=openrouter AND STATE_UPDATE_PROVIDER=openrouter for this file only -
+STATE_UPDATE_PROVIDER now defaults to "google" in real use (the state-update tier calls
+Gemini directly), but this file specifically exercises call_llm_json's OpenRouter path, so
+it overrides that default rather than needing a separate mock for the Google SDK too. The
+rest of the suite defaults to LLM_PROVIDER=google (and STATE_UPDATE_PROVIDER along with it)
+via _llm_stubs.py, since that's the fully-stubbed path. Each test file runs in its own
+subprocess (see run_all.py), so this doesn't affect other test files.
 
 Run directly: python3 test/test_openrouter.py
 """
 import os
 import sys
+import types
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.environ["LLM_PROVIDER"] = "openrouter"
+os.environ["STATE_UPDATE_PROVIDER"] = "openrouter"
 os.environ.setdefault("OPENROUTER_API_KEY", "test-key")
+os.environ.setdefault("GOOGLE_API_KEY", "test-key")
+
+# Installs BOTH a google.generativeai stub and a google.api_core.exceptions stub BEFORE
+# importing story_engine (matching _llm_stubs._install_stubs()'s own stubbing, which only
+# stubs a module if it isn't already present, so these survive) - this file's fail-safe
+# calls need to raise the EXACT GoogleAPIError class _call_llm_google's lazy `from
+# google.api_core.exceptions import GoogleAPIError` will resolve to, so it's stubbed here
+# directly rather than trying to import the real (likely not pip-installed) package. This
+# file is specifically about the OpenRouter path, so its fail-safe is made to fail
+# deterministically too - every failure-mode test below now exercises "OpenRouter down AND
+# the Gemini fail-safe also down" rather than the fail-safe silently rescuing what should
+# be a failure assertion (see test_failsafe.py for the fail-safe actually rescuing a call).
+_GoogleAPIError = type("GoogleAPIError", (Exception,), {})
+
+if "google" not in sys.modules:
+    sys.modules["google"] = types.ModuleType("google")
+_google_pkg = sys.modules["google"]
+
+_exceptions_stub = types.ModuleType("google.api_core.exceptions")
+_exceptions_stub.GoogleAPIError = _GoogleAPIError
+_api_core_stub = types.ModuleType("google.api_core")
+_api_core_stub.exceptions = _exceptions_stub
+sys.modules["google.api_core"] = _api_core_stub
+sys.modules["google.api_core.exceptions"] = _exceptions_stub
+_google_pkg.api_core = _api_core_stub
+
+
+class _AlwaysFailsGeminiModel:
+    def __init__(self, model_name):
+        pass
+
+    def generate_content(self, prompt):
+        raise _GoogleAPIError("gemini fail-safe also unavailable (test stub)")
+
+
+_genai_stub = types.ModuleType("google.generativeai")
+_genai_stub.configure = lambda **k: None
+_genai_stub.GenerativeModel = _AlwaysFailsGeminiModel
+_google_pkg.generativeai = _genai_stub
+sys.modules["google.generativeai"] = _genai_stub
 
 from _llm_stubs import load_story_engine  # noqa: E402
 

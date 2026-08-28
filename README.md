@@ -52,15 +52,22 @@ and `git submodule add <url> stories/<slug>` if you want it private.
 pip install -r requirements.txt
 python backend/story_engine.py
 ```
-Needs a `.env` file (not checked in) with `OPENROUTER_API_KEY` (an
-[OpenRouter](https://openrouter.ai/keys) key — the default LLM provider)
-and, for the web interface, `FLASK_SECRET_KEY` (any random string — used to
-sign session cookies). `GOOGLE_API_KEY` (a Gemini key from
-[Google AI Studio](https://aistudio.google.com/apikey)) is only needed if
-you set `LLM_PROVIDER=google` — Gemini is kept around for testing/debugging,
-not used by default. See `CLAUDE.md`'s "Backend / Model Notes" for the
-`NARRATION_MODEL`/`STATE_UPDATE_MODEL` env vars if you want to override the
-default DeepSeek models.
+Needs a `.env` file (not checked in) with both `OPENROUTER_API_KEY` (an
+[OpenRouter](https://openrouter.ai/keys) key, for narration) and
+`GOOGLE_API_KEY` (a Gemini key from
+[Google AI Studio](https://aistudio.google.com/apikey), for the
+state-update tier — called directly, not through OpenRouter — **and** as a
+fail-safe: if either tier's primary call fails, it's automatically retried
+once against your free-tier `GEMINI_MODEL`, so a `GOOGLE_API_KEY` is
+required either way), plus, for the web interface, `FLASK_SECRET_KEY` (any
+random string — used to sign session cookies). The two LLM calls default to
+different providers per tier, not one global switch, and
+`NARRATION_MODEL`/`STATE_UPDATE_MODEL` are freely swappable via `.env` if
+you want to try a different OpenRouter model for either tier — the Gemini
+fail-safe means an unreachable or misconfigured experiment won't take the
+whole app down. See `CLAUDE.md`'s "Backend / Model Notes" for the full
+`LLM_PROVIDER`/`STATE_UPDATE_PROVIDER`/`NARRATION_MODEL`/`STATE_UPDATE_MODEL`
+picture.
 Boots straight into `stories/example/`'s opening with no flags needed — the
 CLI defaults to a local single-player save against the public example story
 (`--user`/`--story` flags exist if you want to target a different one, e.g.

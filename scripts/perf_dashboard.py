@@ -5,6 +5,13 @@ state_update, subplot_generation, act_advancement_check, end_story_final_arc,
 summary_rollover) and the gunicorn access log's /api/turn and /api/regenerate lines,
 and reports latency stats for each.
 
+Each [TIMING] line carries the model name that call actually hit (e.g. "narration
+model=deepseek/deepseek-v4-pro-20260813: 12.34s"), so stats are grouped by (label,
+model) pair - NARRATION_MODEL/STATE_UPDATE_MODEL are meant to be freely swapped via
+.env for testing (see CLAUDE.md's Gemini fail-safe bullet), and a single retained log
+can span several different models across restarts. Grouping by model keeps those
+runs from being silently averaged together into a meaningless blend.
+
 Deliberately NOT a Flask route - this reads `docker logs` directly and needs shell/
 docker access to the host, so it's only reachable by whoever can already open a
 terminal on the server. Never wire this into app.py; a web route on the same process
@@ -16,7 +23,12 @@ recreation (not just `docker compose restart`) clears that history, so this repo
 recent performance, not a durable long-term record. Uses only the standard library,
 so it runs on the host's system Python with no project dependencies installed.
 
-Usage:
+Run this on the HOST (wherever the `docker` CLI can see palimpsest-web from outside),
+NOT inside the container via `docker exec` - a container doesn't have its own Docker
+client, so `docker logs` isn't available from in there. If you're already in a shell
+inside the container, `exit` first.
+
+Usage (from the host, in the repo root or anywhere - paths below aren't relative to cwd):
   python3 scripts/perf_dashboard.py                 # one-shot report, full retained log
   python3 scripts/perf_dashboard.py --since 2h       # only the last 2 hours (docker logs --since syntax)
   python3 scripts/perf_dashboard.py --watch 30       # re-run and reprint every 30s
@@ -27,7 +39,11 @@ import statistics
 import subprocess
 import sys
 
-TIMING_RE = re.compile(r"\[TIMING\] (\S+): ([\d.]+)s")
+TIMING_RE = re.compile(r"\[TIMING\] (\S+) model=(\S+): ([\d.]+)s")
+# Pre-model-tagging log lines (older retained logs, or a not-yet-restarted container)
+# lack "model=" - still parsed, just grouped under this placeholder rather than dropped.
+TIMING_RE_LEGACY = re.compile(r"\[TIMING\] (\S+): ([\d.]+)s")
+UNKNOWN_MODEL = "(unknown - pre model-tagging log line)"
 ACCESS_RE = re.compile(r'"(GET|POST) (\S+) HTTP/\S+"\s+(\d+)\s+([\d.]+)s')
 TURN_PATHS = ("/api/turn", "/api/regenerate")
 
@@ -36,7 +52,17 @@ def fetch_logs(container: str, since: str | None) -> str:
     cmd = ["docker", "logs", container]
     if since:
         cmd += ["--since", since]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        print(
+            "error: `docker` command not found. This script needs to run on the HOST,\n"
+            "not inside the palimpsest-web container - a container doesn't have its own\n"
+            "Docker client. If you're in a shell from `docker exec -it palimpsest-web bash`,\n"
+            "run `exit` first, then run this script from the host instead.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     if result.returncode != 0:
         print(f"error running `docker logs {container}`: {result.stderr.strip()}", file=sys.stderr)
         sys.exit(1)
@@ -59,14 +85,19 @@ def _stats(values: list) -> dict:
 
 
 def parse(log_text: str):
-    timings = {}
+    timings = {}  # {(label, model): [seconds, ...]}
     turn_durations = []
     status_counts = {}
     for line in log_text.splitlines():
         m = TIMING_RE.search(line)
         if m:
+            label, model, seconds = m.group(1), m.group(2), float(m.group(3))
+            timings.setdefault((label, model), []).append(seconds)
+            continue
+        m = TIMING_RE_LEGACY.search(line)
+        if m:
             label, seconds = m.group(1), float(m.group(2))
-            timings.setdefault(label, []).append(seconds)
+            timings.setdefault((label, UNKNOWN_MODEL), []).append(seconds)
             continue
         m = ACCESS_RE.search(line)
         if m and any(p in m.group(2) for p in TURN_PATHS):
@@ -96,15 +127,16 @@ def render(log_text: str):
     print("=" * 72)
 
     if timings:
-        print("\nPer-call LLM latency (seconds), by label:\n")
+        print("\nPer-call LLM latency (seconds), by label + model:\n")
         rows = []
-        for label in sorted(timings, key=lambda l: -sum(timings[l])):
-            s = _stats(timings[label])
+        for key in sorted(timings, key=lambda k: -sum(timings[k])):
+            label, model = key
+            s = _stats(timings[key])
             rows.append([
-                label, s["count"], f"{s['min']:.2f}", f"{s['mean']:.2f}",
+                label, model, s["count"], f"{s['min']:.2f}", f"{s['mean']:.2f}",
                 f"{s['p50']:.2f}", f"{s['p90']:.2f}", f"{s['max']:.2f}",
             ])
-        _print_table(rows, ["label", "count", "min", "mean", "p50", "p90", "max"])
+        _print_table(rows, ["label", "model", "count", "min", "mean", "p50", "p90", "max"])
     else:
         print("\nNo [TIMING] lines found in the retained logs.")
 

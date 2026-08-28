@@ -6,6 +6,7 @@ import re
 import shlex
 import subprocess
 import sys
+import threading
 import time
 from dotenv import load_dotenv
 import google.generativeai as genai
@@ -21,6 +22,12 @@ SUMMARY_MAX_WORDS = 2000
 SUBPLOT_TITLE_HISTORY_LIMIT = 15
 FLAGS_ACTIVE_LIMIT = 25
 RELATIONSHIPS_LIMIT = 20
+# Stats (player.stats) are a story-authored, per-class mechanic (see character_classes/
+# apply_class_selection below) - unlike relationships/flags there's no single fixed scale
+# across stories (one story might use 0-10 attributes, another a 0-100 meter like "health"),
+# so only a floor is enforced generically; each story's own class definitions imply their
+# own effective ceiling, same trust level as the already-unbounded traits/inventory lists.
+STAT_FLOOR = 0
 SCENE_WORD_MIN = 470
 SCENE_WORD_MAX = 500
 END_STORY_PHRASES = {"end story", "end the story", "conclude the story", "wrap up the story"}
@@ -33,10 +40,20 @@ STEER_WARNING = (
 )
 
 # --- LLM provider configuration ---
-# OpenRouter is the default endpoint for real play. Google/Gemini is kept available purely
-# for testing/debugging (set LLM_PROVIDER=google) - not a fallback, no automatic failover
-# between the two.
+# Each tier now has its OWN provider, not one global switch: narration always goes through
+# OpenRouter/DeepSeek (LLM_PROVIDER), while the state-update tier defaults to calling
+# Google's Gemini API directly (STATE_UPDATE_PROVIDER, the operator's own GOOGLE_API_KEY,
+# not routed through OpenRouter). This is NOT automatic failover - there's still no
+# fallback-on-failure between providers for a given call, each tier's provider is just a
+# fixed, deliberate choice, made independently per tier instead of once for the whole
+# process. LLM_PROVIDER=google (forced by the offline test suite, see test/_llm_stubs.py)
+# is the exception: it's a whole-process debug/testing override, and when active it wins
+# for BOTH tiers regardless of STATE_UPDATE_PROVIDER - see call_llm's docstring.
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter")
+STATE_UPDATE_PROVIDER = os.getenv("STATE_UPDATE_PROVIDER", "google")
+for _provider in (LLM_PROVIDER, STATE_UPDATE_PROVIDER):
+    if _provider not in ("openrouter", "google"):
+        raise ValueError(f"Unknown provider {_provider!r} - expected 'openrouter' or 'google'")
 
 # Two cost/quality tiers, matched to what each call actually needs: narration is the one
 # big creative generation per turn (see build_system_prompt); every other call - state-update
@@ -45,7 +62,9 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter")
 # is the better fit. call_llm/call_llm_json's own defaults already route to the right tier,
 # so most call sites below never need to pass model= explicitly.
 NARRATION_MODEL = os.getenv("NARRATION_MODEL", "deepseek/deepseek-v4-pro-20260813")
-STATE_UPDATE_MODEL = os.getenv("STATE_UPDATE_MODEL", "deepseek/deepseek-v4-flash-20260731")
+# A real Gemini model name (no "google/" prefix - that's OpenRouter's slug convention, not
+# the direct API's), since STATE_UPDATE_PROVIDER defaults to "google" above.
+STATE_UPDATE_MODEL = os.getenv("STATE_UPDATE_MODEL", "gemini-3.5-flash-lite")
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -53,15 +72,12 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
 
-if LLM_PROVIDER == "openrouter":
-    if not OPENROUTER_API_KEY:
-        raise ValueError("OPENROUTER_API_KEY not found in .env file")
-elif LLM_PROVIDER == "google":
+if "openrouter" in (LLM_PROVIDER, STATE_UPDATE_PROVIDER) and not OPENROUTER_API_KEY:
+    raise ValueError("OPENROUTER_API_KEY not found in .env file")
+if "google" in (LLM_PROVIDER, STATE_UPDATE_PROVIDER):
     if not GOOGLE_API_KEY:
         raise ValueError("GOOGLE_API_KEY not found in .env file")
     genai.configure(api_key=GOOGLE_API_KEY)
-else:
-    raise ValueError(f"Unknown LLM_PROVIDER {LLM_PROVIDER!r} - expected 'openrouter' or 'google'")
 
 
 class LLMUnavailableError(Exception):
@@ -78,13 +94,19 @@ class LLMUnavailableError(Exception):
 # what actually happened in production: requests' timeout=120 never fired, and the call ran
 # past gunicorn's --timeout (Dockerfile CMD) instead, which hard-kills the worker via SIGABRT
 # - no clean response reaches the client, and the turn's state is never saved (see git log for
-# two real incidents). OPENROUTER_TOTAL_TIMEOUT below is a genuine wall-clock deadline around
-# the *whole* call, enforced by running it in a background thread and giving up on
-# .result(timeout=...) rather than waiting on it - comfortably under gunicorn's --timeout so
-# this always catches a hang first, cleanly, instead of gunicorn's SIGABRT.
-OPENROUTER_TOTAL_TIMEOUT = 150
+# two real incidents). OPENROUTER_TOTAL_TIMEOUT/GOOGLE_TOTAL_TIMEOUT below are genuine
+# wall-clock deadlines around each *whole* call, enforced by running it in a background
+# thread and giving up on .result(timeout=...) rather than waiting on it. Sized so even the
+# worst case (primary call times out, then the Gemini fail-safe below also times out) stays
+# comfortably under gunicorn's --timeout (Dockerfile CMD), so a double-timeout is always
+# caught here first, cleanly, instead of by gunicorn's SIGABRT.
+OPENROUTER_TOTAL_TIMEOUT = 100
+GOOGLE_TOTAL_TIMEOUT = 60
 _openrouter_executor = concurrent.futures.ThreadPoolExecutor(
     max_workers=8, thread_name_prefix="openrouter-call"
+)
+_google_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=8, thread_name_prefix="google-call"
 )
 
 
@@ -132,34 +154,71 @@ def _call_llm_openrouter(prompt: str, model: str) -> str:
         raise LLMUnavailableError(f"Unexpected OpenRouter response shape: {data}") from e
 
 
-def _call_llm_google(prompt: str) -> str:
+def _call_llm_google(prompt: str, model: str) -> str:
     # Imported lazily so importing story_engine doesn't require the real google-api-core
     # package under LLM_PROVIDER=openrouter - the offline test suite stubs
     # google.generativeai but not this transitive dependency, and forces
     # LLM_PROVIDER=google specifically to exercise this path against the stub.
     from google.api_core.exceptions import GoogleAPIError
 
-    model = genai.GenerativeModel(GEMINI_MODEL)
+    def do_request():
+        gemini = genai.GenerativeModel(model)
+        return gemini.generate_content(prompt)
+
+    future = _google_executor.submit(do_request)
     try:
-        response = model.generate_content(prompt)
+        response = future.result(timeout=GOOGLE_TOTAL_TIMEOUT)
+    except concurrent.futures.TimeoutError:
+        raise LLMUnavailableError(f"Gemini did not respond within {GOOGLE_TOTAL_TIMEOUT}s")
     except GoogleAPIError as e:
         raise LLMUnavailableError(str(e)) from e
     return response.text
 
 
-def call_llm(prompt: str, model: str = NARRATION_MODEL) -> str:
-    """Sends prompt to the configured provider and returns the raw text response. model is
-    an OpenRouter model slug - ignored under LLM_PROVIDER=google, which always uses
-    GEMINI_MODEL regardless (that path is for testing/debugging, not for replicating the
-    Pro/Flash cost split)."""
-    if LLM_PROVIDER == "google":
-        return _call_llm_google(prompt)
-    return _call_llm_openrouter(prompt, model)
+def call_llm(prompt: str, model: str = NARRATION_MODEL, provider: str = None) -> str:
+    """Sends prompt to the given (or default) provider and returns the raw text response.
+    provider defaults to LLM_PROVIDER (the narration tier's setting); call_llm_json passes
+    STATE_UPDATE_PROVIDER explicitly instead, since that tier is routed independently (see
+    "LLM provider configuration" above) - as does update_state_after_turn's summary-rollover
+    call site, the one place that calls call_llm directly for a state-update-tier prompt.
+
+    Under the whole-process testing/debug override (LLM_PROVIDER=google, forced by the
+    offline test suite), model is ignored in favor of GEMINI_MODEL regardless of which
+    tier or provider triggered this - NARRATION_MODEL/STATE_UPDATE_MODEL default to model
+    names that aren't valid Gemini ones (an OpenRouter slug, a real Gemini name
+    respectively), so respecting them here would break that path. Outside of that
+    (STATE_UPDATE_PROVIDER=google in real production use), model IS respected.
+
+    Fail-safe: if the primary call raises LLMUnavailableError, this retries once against
+    the operator's own free-tier Gemini model (GEMINI_MODEL) via a direct Google API call,
+    before giving up - lets NARRATION_MODEL/STATE_UPDATE_MODEL be freely swapped to
+    whatever's being tried (e.g. an experimental OpenRouter model) without an unreachable
+    or misconfigured model taking the whole app down. This IS a genuine runtime fallback
+    (unlike LLM_PROVIDER/STATE_UPDATE_PROVIDER's fixed per-tier provider selection, which
+    still isn't one) - deliberately narrow in scope: it only ever falls back TO Gemini,
+    never away from it, and only on a request-level failure, never a silent retry on
+    output that merely looks wrong (e.g. malformed JSON - call_llm_json's caller decides
+    what to do with that, same as before). Compares against the model actually attempted
+    (effective_model), not the raw model argument, so this doesn't uselessly retry the
+    exact same Gemini call a second time when the testing override already substituted
+    GEMINI_MODEL in for a non-Gemini model argument."""
+    provider = provider or LLM_PROVIDER
+    effective_model = GEMINI_MODEL if provider == "google" and LLM_PROVIDER == "google" else model
+    try:
+        if provider == "google":
+            return _call_llm_google(prompt, effective_model)
+        return _call_llm_openrouter(prompt, model)
+    except LLMUnavailableError as primary_error:
+        if provider == "google" and effective_model == GEMINI_MODEL:
+            raise  # this WAS the fail-safe call - nothing left to fall back to
+        print(f"[FAILSAFE] primary call failed (provider={provider!r} model={effective_model!r}): "
+              f"{primary_error} - retrying via Gemini fail-safe ({GEMINI_MODEL})")
+        return _call_llm_google(prompt, GEMINI_MODEL)
 
 
 def call_llm_json(prompt: str, model: str = STATE_UPDATE_MODEL) -> dict:
     """Call the LLM expecting a single JSON object back, tolerating markdown code fences."""
-    raw = call_llm(prompt, model=model).strip()
+    raw = call_llm(prompt, model=model, provider=STATE_UPDATE_PROVIDER).strip()
     if raw.startswith("```"):
         lines = raw.splitlines()
         if lines and lines[0].startswith("```"):
@@ -170,18 +229,53 @@ def call_llm_json(prompt: str, model: str = STATE_UPDATE_MODEL) -> dict:
     return json.loads(raw)
 
 
-def _timed(label: str, fn):
+# One evocative word per _timed() label, in the same register as play.html's placeholder
+# busy-indicator words (Drafting, Weaving, Conjuring, ...) - shown in the web UI's busy
+# popup via the /api/status poll (app.py's turn_status route) so a player sees what phase
+# of the turn is actually running, not just a generic "Working...". Keep this in sync with
+# every _timed() call site below.
+STATUS_LABELS = {
+    "narration": "Narrating",
+    "state_update": "Reckoning",
+    "subplot_generation": "Branching",
+    "act_advancement_check": "Weighing",
+    "end_story_final_arc": "Concluding",
+    "summary_rollover": "Remembering",
+}
+
+# Sets (user_id, story_slug) for the duration of one take_turn/regenerate_last_turn call so
+# _timed() (several stack frames deeper, in functions that don't themselves take user_id/
+# story_slug) knows where to write its status beacon. Thread-local rather than a plain
+# module global: each gunicorn worker (Dockerfile's CMD - sync workers, one request at a
+# time per process) always runs one request's whole _timed() chain on its single main
+# thread (call_llm's own ThreadPoolExecutor use is internal to it - _timed() itself never
+# crosses threads), so thread-local storage stays correctly scoped per-request with no
+# locking - and it degrades safely rather than crossing users if a future change ever moves
+# this to threaded workers.
+_status_ctx = threading.local()
+
+
+def _timed(label: str, fn, model: str):
     """Wraps a single LLM call with wall-clock timing, printed to stdout (captured by
     `docker logs`/gunicorn's access log, same as the existing narration print). A turn can
     involve up to five sequential calls - narration, state-update, and conditionally
     subplot generation, act-advancement judgment, and the summary rollover - so total
     request duration alone (the access log's one number) doesn't say which of those is
-    actually where the time goes. Labels line up 1:1 with the call sites below."""
+    actually where the time goes. Labels line up 1:1 with the call sites below.
+    `model` is the actual model name that call is about to hit (NARRATION_MODEL/
+    STATE_UPDATE_MODEL, or an explicit override) - included in the log line so
+    perf_dashboard.py can group latency by model, not just by call label, since
+    NARRATION_MODEL/STATE_UPDATE_MODEL are now freely swapped via .env for testing.
+    Also writes a status beacon (STATUS_LABELS[label]) before running fn(), if
+    take_turn/regenerate_last_turn set one up for this thread - see _status_ctx above."""
+    ctx = getattr(_status_ctx, "user_id", None)
+    if ctx is not None:
+        state_store.write_turn_status(_status_ctx.user_id, _status_ctx.story_slug, STATUS_LABELS.get(label, label))
     start = time.monotonic()
     try:
         return fn()
     finally:
-        print(f"[TIMING] {label}: {time.monotonic() - start:.2f}s")
+        print(f"[TIMING] {label} model={model}: {time.monotonic() - start:.2f}s")
 
 
 def check_subplot_status(state: dict) -> dict:
@@ -215,6 +309,30 @@ def update_progress_from_turn(state: dict, player_action: str, ai_response: str)
         if not frag["revealed"]
     }
     relationships = state["player"].setdefault("relationships", {})
+    stats = state["player"].get("stats", {})
+    stats_block = f'\nCURRENT STATS ({", ".join(stats)}): {json.dumps(stats)}' if stats else ""
+
+    schema_fields = [
+        '  "subplot_progress": {"<subplot_id>": <integer 0-100, progress made this turn>}',
+        '  "flags_set": {"<flag_name>": {"value": true, "pinned": <true if this is a '
+        'foundational fact that should never be forgotten, e.g. a core revelation or '
+        "identity; false if it's situational and safe to eventually forget once it's no "
+        'longer recent>}}',
+        '  "memory_fragments_revealed": ["<fragment_id>", "..."]',
+        '  "entity_interaction": <true if the Architect appeared or acted this turn, else false>',
+        '  "items_gained": ["<short item description>", "..."]',
+        '  "items_lost": ["<item description, matching an existing inventory entry exactly>", "..."]',
+        '  "relationship_changes": {"<character name>": <integer delta this turn, typically '
+        "-10 to +10, positive for trust/warmth built, negative for damage done - only named "
+        'characters the player actually interacted with or was meaningfully affected by this turn>}',
+    ]
+    if stats:
+        schema_fields.append(
+            f'  "stat_changes": {{"<stat name, must be one of: {", ".join(stats)}>": <integer '
+            "delta this turn, positive or negative - only stats the turn's events actually "
+            "moved, never a stat name outside that fixed list>}"
+        )
+    schema_str = ",\n".join(schema_fields)
 
     prompt = f"""Given this turn of an interactive story, report what changed in the world state.
 
@@ -222,30 +340,20 @@ ACTIVE SUBPLOTS: {json.dumps(active_subplots)}
 UNREVEALED MEMORY FRAGMENT TRIGGERS: {json.dumps(unrevealed_fragments)}
 CURRENT FLAGS: {json.dumps(state["player"]["flags_active"])}
 CURRENT INVENTORY: {json.dumps(state["player"]["inventory"])}
-CURRENT RELATIONSHIPS (name: score from -100 hostile to +100 devoted, 0 neutral/unknown): {json.dumps(relationships)}
+CURRENT RELATIONSHIPS (name: score from -100 hostile to +100 devoted, 0 neutral/unknown): {json.dumps(relationships)}{stats_block}
 
 PLAYER ACTION: {player_action}
 NARRATION: {ai_response}
 
 Respond with ONLY a JSON object, no other text, in this exact shape:
 {{
-  "subplot_progress": {{"<subplot_id>": <integer 0-100, progress made this turn>}},
-  "flags_set": {{"<flag_name>": {{"value": true, "pinned": <true if this is a foundational fact
-    that should never be forgotten, e.g. a core revelation or identity; false if it's situational
-    and safe to eventually forget once it's no longer recent>}}}},
-  "memory_fragments_revealed": ["<fragment_id>", "..."],
-  "entity_interaction": <true if the Architect appeared or acted this turn, else false>,
-  "items_gained": ["<short item description>", "..."],
-  "items_lost": ["<item description, matching an existing inventory entry exactly>", "..."],
-  "relationship_changes": {{"<character name>": <integer delta this turn, typically -10 to +10,
-    positive for trust/warmth built, negative for damage done - only named characters the player
-    actually interacted with or was meaningfully affected by this turn>}}
+{schema_str}
 }}
-Only include subplot ids, flags, fragment ids, items, and character names that actually changed
-this turn. Use {{}}/[] for nothing changed."""
+Only include subplot ids, flags, fragment ids, items, character names, and stats that actually
+changed this turn. Use {{}}/[] for nothing changed."""
 
     try:
-        diff = _timed("state_update", lambda: call_llm_json(prompt))
+        diff = _timed("state_update", lambda: call_llm_json(prompt), model=STATE_UPDATE_MODEL)
     except (json.JSONDecodeError, ValueError):
         return {}
 
@@ -292,6 +400,14 @@ this turn. Use {{}}/[] for nothing changed."""
     if len(relationships) > RELATIONSHIPS_LIMIT:
         for name in sorted(relationships, key=lambda n: abs(relationships[n]))[:len(relationships) - RELATIONSHIPS_LIMIT]:
             del relationships[name]
+
+    # Only ever adjusts a stat that's already in player.stats (seeded once, at character
+    # creation, from the chosen class's starting_stats - see apply_class_selection) - the
+    # model can't introduce a new stat axis outside that fixed, story-authored set. No fixed
+    # ceiling (see STAT_FLOOR's comment - stories define their own effective scale).
+    for stat_name, delta in diff.get("stat_changes", {}).items():
+        if stat_name in stats:
+            stats[stat_name] = max(STAT_FLOOR, stats[stat_name] + int(delta))
 
     return diff
 
@@ -369,7 +485,7 @@ Respond with ONLY a JSON object, no other text:
 }}"""
 
     try:
-        generated = _timed("subplot_generation", lambda: call_llm_json(prompt))
+        generated = _timed("subplot_generation", lambda: call_llm_json(prompt), model=STATE_UPDATE_MODEL)
         title = generated["title"]
         description = generated["description"]
     except (json.JSONDecodeError, KeyError, ValueError):
@@ -429,7 +545,7 @@ Respond with ONLY a JSON object, no other text:
 }}"""
 
     try:
-        generated = _timed("end_story_final_arc", lambda: call_llm_json(prompt))
+        generated = _timed("end_story_final_arc", lambda: call_llm_json(prompt), model=STATE_UPDATE_MODEL)
     except (json.JSONDecodeError, ValueError):
         generated = {}
 
@@ -512,7 +628,7 @@ Respond with ONLY a JSON object, no other text:
 }}"""
 
     try:
-        verdict = _timed("act_advancement_check", lambda: call_llm_json(prompt))
+        verdict = _timed("act_advancement_check", lambda: call_llm_json(prompt), model=STATE_UPDATE_MODEL)
     except (json.JSONDecodeError, ValueError):
         return None
 
@@ -592,6 +708,29 @@ def build_system_prompt(state: dict) -> str:
     summary = state["history_log"]["compressed_summary"] or "The story has just begun."
     recent = "\n".join(state["history_log"]["recent_turns"][-RECENT_TURN_LIMIT:])
 
+    # One "| Label: chosen option name" per completed character-creation step (see
+    # apply_creation_choice) - built generically off whatever steps the story authored in
+    # character_creation, so a new step type (race, background, whatever a future story
+    # wants) needs no changes here. Empty string for a story that doesn't use the mechanic
+    # at all, so this adds nothing rather than showing empty labels for every story.
+    creation_str = ""
+    for step in state.get("character_creation", []):
+        option_id = player.get("creation_choices", {}).get(step["key"])
+        option = next((o for o in step["options"] if o["id"] == option_id), None)
+        if option:
+            creation_str += f" | {step.get('label', step['key'].title())}: {option['name']}"
+    # Internal-only: stats exist for you to reason about and adjust, never to be shown to
+    # the player as numbers - reflect their effect narratively (strain, confidence, risk)
+    # instead of stating a value. Conditional on the story actually using stats at all, so
+    # a story without them gets no irrelevant instruction clutter.
+    stats_str = f" | Stats (opaque to the player): {player['stats']}" if player.get("stats") else ""
+    stats_instruction = (
+        "\nThe PLAYER line's Stats are for your own internal reasoning only - never state a "
+        "stat's raw numeric value to the player. Reflect what it means narratively instead "
+        "(strain, fatigue, confidence, risk) without quoting the number."
+        if player.get("stats") else ""
+    )
+
     if endgame["requested"]:
         active_titles = [sp["title"] for sp in state["plot"]["subplots"].values() if sp["active"]]
         final_arc = endgame["final_arc"] or {}
@@ -619,7 +758,11 @@ its own line. Do not include an "OPTIONS:" block or numbered choices.
             "exactly 3 numbered options (1. / 2. / 3.), one per line, each in the exact format "
             "<short third-person action label> || <1-2 sentence first-person prose rendition of "
             "taking that action, in the player's voice>. Keep the action label under 15 words, "
-            "distinct, and plausible. No extra commentary after the list."
+            "distinct, and plausible. Each option must be a meaningfully different course of "
+            "action with real consequences for the story - never an option that just asks for "
+            "more detail, investigates further before committing to anything, or otherwise "
+            "stalls for more exposition instead of moving the scene forward. No extra "
+            "commentary after the list."
         )
 
     return f"""You are the narrator of an interactive story.
@@ -636,9 +779,25 @@ RECENT EXCHANGES:
 {recent}
 {pacing_instruction}
 CURRENT SCENE ({scene['location']}): {scene['summary']}
-PLAYER: {player['name']} | Traits: {', '.join(player['traits'])} | Inventory: {', '.join(player['inventory']) or 'nothing'} | Relationships: {player.get('relationships', {})} | Flags: {player['flags_active']}
+PLAYER: {player['name']}{creation_str} | Traits: {', '.join(player['traits'])}{stats_str} | Inventory: {', '.join(player['inventory']) or 'nothing'} | Relationships: {player.get('relationships', {})} | Flags: {player['flags_active']}
 
 Stay strictly within the established world, tone, and rules above.
+Pace scenes like fast-moving genre fiction, not literary atmosphere-writing:
+- Open on action or sensation already in motion, never on scene-setting.
+- Let dialogue carry most of the scene. Characters should talk and react to each other
+  far more than the narration describes what's around them - if a scene has other
+  characters in it, most of its words should be spent on what gets said and done between
+  people, not on the room they're standing in.
+- When something does need describing, fold it into a single clause inside a sentence of
+  action or dialogue, not a standalone descriptive paragraph. If you catch yourself
+  writing two or more consecutive sentences that are pure description with no character
+  doing or saying anything, cut it down to one folded-in detail instead.
+- Keep interior thoughts to a brief, sharp aside - a clause or one short sentence - never
+  an extended paragraph of introspection.
+- Describe physical action the way it actually happens: quick, concrete, verb-driven
+  (what a character's hands/body/voice do), not lingered on or narrated in slow motion.
+- Prefer short paragraphs (1-3 sentences) that alternate briskly between narration and
+  dialogue over long unbroken blocks of either.{stats_instruction}
 You may lightly mark up emphasis in your prose using exactly these three markers, used
 sparingly (most sentences should have none): **text** for bold, *text* for italic
 (e.g. internal thought or stressed words), __text__ for underline. Do not nest them,
@@ -728,7 +887,9 @@ NEW EVENTS:
 
 Respond with ONLY the updated summary text, under {SUMMARY_MAX_WORDS} words, no preamble."""
         updated_summary = _timed(
-            "summary_rollover", lambda: call_llm(summary_prompt, model=STATE_UPDATE_MODEL)
+            "summary_rollover",
+            lambda: call_llm(summary_prompt, model=STATE_UPDATE_MODEL, provider=STATE_UPDATE_PROVIDER),
+            model=STATE_UPDATE_MODEL,
         )
         state["history_log"]["compressed_summary"] = updated_summary.strip()
 
@@ -753,22 +914,79 @@ def apply_opening_name(state: dict, raw_name: str) -> str:
     return after_name
 
 
+def next_pending_creation_step(state: dict) -> dict:
+    """The first character-creation step (from the story's template-authored
+    character_creation list - see apply_creation_choice) the player hasn't completed yet,
+    or None once they're all done (or the story doesn't define any). A story opts into
+    this mechanic entirely by authoring that list - stories/new_babel/template.json has
+    a "class" step and a "starting_place" step, in that order; a story that doesn't
+    define character_creation at all (e.g. the cozy-mystery example story, where a class/
+    race pick wouldn't fit the genre) skips this entirely, same as before the mechanic
+    existed. Shared by the CLI loop below and app.py's play() route so both walk the same
+    steps in the same order without duplicating the "what's next" logic."""
+    choices = state["player"].get("creation_choices", {})
+    for step in state.get("character_creation", []):
+        if step["key"] not in choices:
+            return step
+    return None
+
+
+def apply_creation_choice(state: dict, step_key: str, option_id: str) -> dict:
+    """Pure state mutation, no I/O: applies one character-creation pick (step_key must
+    match a step in state["character_creation"], e.g. "class" or "starting_place").
+    Records player.creation_choices[step_key] = option_id, and merges the chosen option's
+    starting_stats (if it has any - a flavor-only step like "starting_place" typically
+    doesn't) into player.stats. Later steps merge on top of earlier ones for any stat name
+    both happen to touch, in step order. Returns the chosen option dict, or None for an
+    unrecognized step_key/option_id (a malformed/replayed POST) - callers must check for
+    that rather than assuming the pick always succeeds."""
+    steps = {s["key"]: s for s in state.get("character_creation", [])}
+    step = steps.get(step_key)
+    if not step:
+        return None
+    options = {o["id"]: o for o in step["options"]}
+    chosen = options.get(option_id)
+    if not chosen:
+        return None
+    state["player"].setdefault("creation_choices", {})[step_key] = option_id
+    if chosen.get("starting_stats"):
+        state["player"].setdefault("stats", {}).update(chosen["starting_stats"])
+    return chosen
+
+
 def run_opening_scene(user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_SLUG):
     """Plays the fixed, hand-authored opening (plot.opening_scene in the story's
     template) - the one constant beat every playthrough starts from, everything after
     branches from here. Captures the protagonist's name diegetically, in-fiction, as
-    part of the intake scene itself, rather than a raw pre-game prompt. No-ops if
-    already played, so resuming a save doesn't replay the intro."""
+    part of the intake scene itself, rather than a raw pre-game prompt, then walks
+    whatever character-creation steps the story defines (see next_pending_creation_step),
+    in order. Each part no-ops independently once already done, so resuming a save
+    doesn't replay any of it."""
     state = state_store.load_state(user_id, story_slug)
-    if state["plot"]["opening_scene"]["played"]:
-        return
 
-    print(state["plot"]["opening_scene"]["narration_before_name"])
-    raw_name = input("\n> ")
-    after_name = apply_opening_name(state, raw_name)
-    print(f"\n{after_name}")
+    if not state["plot"]["opening_scene"]["played"]:
+        print(state["plot"]["opening_scene"]["narration_before_name"])
+        raw_name = input("\n> ")
+        after_name = apply_opening_name(state, raw_name)
+        print(f"\n{after_name}")
+        state_store.save_state(state, user_id, story_slug)
 
-    state_store.save_state(state, user_id, story_slug)
+    step = next_pending_creation_step(state)
+    while step:
+        print(f"\n{step.get('label', step['key'].title())}:")
+        options = step["options"]
+        for i, opt in enumerate(options, 1):
+            tagline = f" - {opt['tagline']}" if opt.get("tagline") else ""
+            print(f"{i}. {opt['name']}{tagline}")
+        while True:
+            choice = input("\n> ").strip()
+            if choice.isdigit() and 1 <= int(choice) <= len(options):
+                chosen = apply_creation_choice(state, step["key"], options[int(choice) - 1]["id"])
+                print(f"\n{step.get('label', step['key'].title())}: {chosen['name']}.")
+                break
+            print(f"Please enter a number from 1 to {len(options)}.")
+        state_store.save_state(state, user_id, story_slug)
+        step = next_pending_creation_step(state)
 
 
 def handle_steer_command(
@@ -805,7 +1023,7 @@ def _generate_and_apply_turn(
     (a deep copy of state from just before this turn) so a later regenerate_last_turn call can
     restore to exactly this point and re-roll. Returns True once the story has concluded."""
     prompt = build_system_prompt(state) + f"\n\nPlayer action: {player_action}\n\nNarrator:"
-    ai_response = _timed("narration", lambda: call_llm(prompt))
+    ai_response = _timed("narration", lambda: call_llm(prompt), model=NARRATION_MODEL)
     print(ai_response)
 
     update_state_after_turn(state, player_action, ai_response, user_id, story_slug)
@@ -830,16 +1048,21 @@ def take_turn(
     story_slug: str = DEFAULT_STORY_SLUG,
 ) -> bool:
     """Runs one turn of the story. Returns True once the story has concluded (THE END)."""
-    state = state_store.load_state(user_id, story_slug)
+    _status_ctx.user_id, _status_ctx.story_slug = user_id, story_slug
+    try:
+        state = state_store.load_state(user_id, story_slug)
 
-    if is_end_story_command(player_action) and not state["plot"]["endgame"]["requested"]:
-        final_arc = handle_end_story_request(state)
-        state_store.save_state(state, user_id, story_slug)
-        print(f"\n[The story is moving toward its conclusion: {final_arc['title']}]\n")
+        if is_end_story_command(player_action) and not state["plot"]["endgame"]["requested"]:
+            final_arc = handle_end_story_request(state)
+            state_store.save_state(state, user_id, story_slug)
+            print(f"\n[The story is moving toward its conclusion: {final_arc['title']}]\n")
 
-    pre_turn_snapshot = copy.deepcopy(state)
-    pre_turn_snapshot["history_log"].pop("pending_regenerate", None)
-    return _generate_and_apply_turn(state, player_action, pre_turn_snapshot, user_id, story_slug)
+        pre_turn_snapshot = copy.deepcopy(state)
+        pre_turn_snapshot["history_log"].pop("pending_regenerate", None)
+        return _generate_and_apply_turn(state, player_action, pre_turn_snapshot, user_id, story_slug)
+    finally:
+        _status_ctx.user_id = None
+        state_store.clear_turn_status(user_id, story_slug)
 
 
 def regenerate_last_turn(
@@ -853,15 +1076,20 @@ def regenerate_last_turn(
 
     Returns False with no effect if there's nothing to regenerate (no turn taken yet, e.g. the
     fixed opening scene, or a save from before this feature existed)."""
-    state = state_store.load_state(user_id, story_slug)
-    pending = state["history_log"].get("pending_regenerate")
-    if not pending:
-        return False
+    _status_ctx.user_id, _status_ctx.story_slug = user_id, story_slug
+    try:
+        state = state_store.load_state(user_id, story_slug)
+        pending = state["history_log"].get("pending_regenerate")
+        if not pending:
+            return False
 
-    restored_state = pending["state"]
-    player_action = pending["player_action"]
-    pre_turn_snapshot = copy.deepcopy(restored_state)
-    return _generate_and_apply_turn(restored_state, player_action, pre_turn_snapshot, user_id, story_slug)
+        restored_state = pending["state"]
+        player_action = pending["player_action"]
+        pre_turn_snapshot = copy.deepcopy(restored_state)
+        return _generate_and_apply_turn(restored_state, player_action, pre_turn_snapshot, user_id, story_slug)
+    finally:
+        _status_ctx.user_id = None
+        state_store.clear_turn_status(user_id, story_slug)
 
 
 if __name__ == "__main__":

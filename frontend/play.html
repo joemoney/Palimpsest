@@ -46,6 +46,7 @@
 
 {% block scripts %}
 <script>
+  var STORY_SLUG = {{ story_slug | tojson }};
   var CHARS_PER_TICK = 4;
   var TICK_MS = 30;
 
@@ -187,18 +188,42 @@
     processStoryElements(document);
   });
 
-  // A fresh random status word each time a request starts, so the busy indicator reads
-  // as "the engine is at work" rather than a static, repeated label - picked on
-  // htmx:beforeRequest (fires for every htmx-initiated request, including pagination)
-  // so it's set before the indicator becomes visible.
-  var STATUS_WORDS = [
-    "Drafting", "Plotting", "Weaving", "Composing", "Imagining",
-    "Scripting", "Narrating", "Crafting", "Penning", "Conjuring"
-  ];
-  document.body.addEventListener("htmx:beforeRequest", function () {
+  // The busy indicator shows real backend progress for a take_turn/regenerate request
+  // (data-status-poll="true" on the triggering element - see _controls.html), polling
+  // /api/status for the label story_engine.py's _timed() just wrote (STATUS_LABELS:
+  // "Narrating", "Reckoning", "Branching", ...) instead of a single static word for the
+  // whole request. Plain pagination requests (the scroll sentinel) aren't tagged, so they
+  // fall back to a generic label with no polling - they're already near-instant and never
+  // touch story_engine's LLM-call chain.
+  var STATUS_POLL_MS = 400;
+  var statusPollTimer = null;
+
+  function pollTurnStatus() {
+    fetch("/play/" + STORY_SLUG + "/api/status")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        var label = document.getElementById("busy-indicator-label");
+        if (label && data && data.label) {
+          label.textContent = data.label + "…";
+        }
+      })
+      .catch(function () {});
+  }
+
+  document.body.addEventListener("htmx:beforeRequest", function (evt) {
     var label = document.getElementById("busy-indicator-label");
-    if (label) {
-      label.textContent = STATUS_WORDS[Math.floor(Math.random() * STATUS_WORDS.length)] + "…";
+    if (label) { label.textContent = "Working…"; }
+    var elt = evt.detail && evt.detail.elt;
+    if (elt && elt.hasAttribute && elt.hasAttribute("data-status-poll")) {
+      pollTurnStatus();
+      statusPollTimer = setInterval(pollTurnStatus, STATUS_POLL_MS);
+    }
+  });
+
+  document.body.addEventListener("htmx:afterRequest", function () {
+    if (statusPollTimer) {
+      clearInterval(statusPollTimer);
+      statusPollTimer = null;
     }
   });
 

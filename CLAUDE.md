@@ -110,17 +110,38 @@ treatment as these existing ones:
   targets the single latest turn. Also disk-only, never read by any prompt.
 
 ## Backend / Model Notes
-- **LLM provider: OpenRouter by default, Google/Gemini for testing/debugging
-  only** (`LLM_PROVIDER` env var, `"openrouter"` or `"google"`, no automatic
-  failover between them - picking one is a startup-time decision, not a
-  runtime fallback). `story_engine.py`'s `call_llm`/`call_llm_json` branch on
-  `LLM_PROVIDER` and dispatch to `_call_llm_openrouter`/`_call_llm_google`.
-  The offline test suite forces `LLM_PROVIDER=google` (see `test/
-  _llm_stubs.py`) specifically because that's the side with a stubbable SDK
-  (`google.generativeai`) - `test/test_openrouter.py` is the one file that
-  overrides this to exercise the OpenRouter path directly (mocking
-  `requests.post`), since each test file runs in its own subprocess and
-  can't affect the others' provider selection.
+- **LLM provider is chosen per tier, not once for the whole process**:
+  `LLM_PROVIDER` (`"openrouter"` or `"google"`, default `"openrouter"`)
+  governs the narration tier; `STATE_UPDATE_PROVIDER` (same two values,
+  default `"google"`) governs the state-update tier independently.
+  Narration defaults to OpenRouter/DeepSeek; state-update defaults to
+  calling Google's Gemini API **directly** (the operator's own
+  `GOOGLE_API_KEY`, not routed through OpenRouter) — each tier's *primary*
+  provider is still a fixed, deliberate per-tier choice, not automatic
+  failover between the two on its own terms (see the fail-safe bullet below
+  for the one place an actual runtime fallback now exists). Both SDKs can
+  therefore be live in the same process at once — `genai.configure()` and
+  the `OPENROUTER_API_KEY`/`GOOGLE_API_KEY` presence checks at module load
+  now trigger if *either* `LLM_PROVIDER` or `STATE_UPDATE_PROVIDER` needs
+  that provider, not just `LLM_PROVIDER` alone. `call_llm(prompt, model,
+  provider=None)` defaults `provider` to `LLM_PROVIDER`;
+  `call_llm_json`/the `compressed_summary` rollover call site (the one
+  place besides `call_llm_json` that calls `call_llm` directly) both pass
+  `provider=STATE_UPDATE_PROVIDER` explicitly. The offline test suite
+  forces `LLM_PROVIDER=google` (see `test/_llm_stubs.py`) specifically
+  because that's the side with a stubbable SDK (`google.generativeai`) -
+  `STATE_UPDATE_PROVIDER` isn't set there and so also defaults to
+  `"google"`, matching `LLM_PROVIDER` in that environment (no mixed-mode
+  behavior kicks in during the general offline suite).
+  `test/test_openrouter.py` overrides *both* env vars to `"openrouter"` to
+  exercise `_call_llm_openrouter` for both tiers via a mocked
+  `requests.post`; `test/test_mixed_provider.py` is the one file that
+  actually exercises the real default combination (narration via
+  OpenRouter, state-update via Google) together, with its own smarter
+  `google.generativeai` stub (records the model name it's constructed
+  with, rather than the generic stub's "return `None`"). Each test file
+  runs in its own subprocess (see `run_all.py`), so none of this leaks
+  between files.
 - **Two model tiers**, picked per call by `call_llm`'s/`call_llm_json`'s own
   default parameter values so most call sites never pass `model=` at all:
   `NARRATION_MODEL` (a bigger/pricier model - the one big creative
@@ -128,12 +149,42 @@ treatment as these existing ones:
   cheaper/faster model - every other call: `update_progress_from_turn`,
   `generate_new_subplot`, `check_and_advance_act`,
   `handle_end_story_request`, and the `compressed_summary` rollover in
-  `update_state_after_turn`, which is the one call site that has to pass
-  `model=STATE_UPDATE_MODEL` explicitly since it goes through `call_llm`
-  directly rather than `call_llm_json`). Under `LLM_PROVIDER=google`, the
-  `model` argument is ignored entirely - that path always uses
-  `GEMINI_MODEL`, since replicating the cost-tier split isn't the point of
-  the testing/debugging path.
+  `update_state_after_turn`). `STATE_UPDATE_MODEL` defaults to a real
+  Gemini model name (`gemini-3.5-flash-lite`, no `"google/"` prefix - that's
+  OpenRouter's slug convention, not the direct API's), matching
+  `STATE_UPDATE_PROVIDER`'s default. Under the whole-process
+  `LLM_PROVIDER=google` testing override specifically, `model` is ignored
+  in favor of `GEMINI_MODEL` regardless of which tier or provider triggered
+  the call - `NARRATION_MODEL` defaults to an OpenRouter slug that isn't a
+  valid Gemini name, so respecting it there would break that path; outside
+  of that override (i.e. real `STATE_UPDATE_PROVIDER=google` production
+  use), `model` **is** respected, since the operator deliberately set
+  `STATE_UPDATE_MODEL` to a real Gemini name in that case. See
+  `_call_llm_google`'s and `call_llm`'s docstrings for the exact logic.
+- **Gemini fail-safe**: if a tier's primary call raises `LLMUnavailableError`,
+  `call_llm` retries once against the operator's own free-tier `GEMINI_MODEL`
+  via a direct Google call, before giving up. This IS a genuine runtime
+  fallback (the one exception to the "no automatic failover" framing above) —
+  the point is to let `NARRATION_MODEL`/`STATE_UPDATE_MODEL` be freely swapped
+  to whatever's being tried (an experimental OpenRouter model, say) without an
+  unreachable or misconfigured model taking the whole app down. Narrow by
+  design: only ever falls back *to* Gemini, never away from it, and only on a
+  request-level failure — never a silent retry just because output looks
+  malformed (`call_llm_json`'s caller still decides what to do with bad JSON,
+  same as before). Skips the retry (raises immediately) if the primary call
+  *was already* Gemini/`GEMINI_MODEL` — nothing left to fall back to.
+  `test/test_failsafe.py` covers the fallback actually rescuing a call (both
+  tiers) plus a regression guard for a real bug caught during development: the
+  "already tried this" check has to compare against the model actually
+  attempted, not the raw `model=` argument, since the whole-process
+  `LLM_PROVIDER=google` testing override silently substitutes `GEMINI_MODEL`
+  in — comparing the wrong one caused a wasted duplicate retry.
+  `OPENROUTER_TOTAL_TIMEOUT` (100s) and `GOOGLE_TOTAL_TIMEOUT` (60s) are both
+  sized so the worst case — primary times out, then the fail-safe also times
+  out — stays under gunicorn's `--timeout` (Dockerfile `CMD`, 220s), for the
+  same reason the single-call version of this margin mattered before: a
+  double-timeout needs to be caught here first, cleanly, rather than by
+  gunicorn's harder `SIGABRT`.
 - `call_llm` wraps any provider-level failure (an HTTP error or
   `requests.exceptions.RequestException` from OpenRouter, or a
   `google.api_core.exceptions.GoogleAPIError` from Gemini) as `story_engine.
@@ -174,6 +225,52 @@ treatment as these existing ones:
   were set.
 - Summarization of `history_log` into `compressed_summary` runs periodically
   (on `recent_turns` overflow), not every turn, to save cost.
+- **Character creation is an opt-in, N-step mechanic, per story** - not a
+  required part of every template, and not hardcoded to "class" specifically.
+  A story authors a top-level `character_creation` list: an ordered sequence
+  of steps, each `{key, label, prompt, options}`, where each option is
+  `{id, name, tagline, starting_stats}` - `starting_stats` is a free-form
+  `{stat_name: int}` dict (optional; a flavor-only step like "where do you
+  start" typically omits it) with no fixed schema across stories, since one
+  story's scale might be 0-10 attributes and another's a 0-100 meter like
+  `health`. `next_pending_creation_step(state)` finds the first step the
+  player hasn't completed yet (`player.creation_choices` is `{step_key:
+  option_id}`); `apply_creation_choice(state, step_key, option_id)` records
+  the pick and merges that option's `starting_stats` (if any) into
+  `player.stats` - later steps merge on top of earlier ones for any stat name
+  both touch, in step order. One request/prompt handles exactly one step; a
+  multi-step story naturally chains through them one screen at a time since
+  each pick re-enters the same gate and `next_pending_creation_step` just
+  returns the next one. Web: `app.py`'s `play()` route (`creation_step.html`,
+  generic - renders whichever step it's given), gated independently of the
+  `opening_scene.played` check so it still applies to a save whose opening
+  already played but hasn't finished every step; CLI: `run_opening_scene()`'s
+  loop. A story that doesn't define `character_creation` (the `example` story
+  doesn't - a cozy mystery doesn't need an RPG-style class/origin pick) skips
+  this entirely, same as before the mechanic existed - `state.get
+  ("character_creation", [])`/`player.get("creation_choices", {})` degrade to
+  falsy/empty rather than raising, which is also what keeps this fully
+  backward-compatible with every save that predates the feature (a save
+  clones its template once at creation and never re-reads it, so an old save
+  simply lacks the key rather than being retroactively migrated). A stat can
+  only ever be adjusted turn-to-turn (via `update_progress_from_turn`'s
+  `stat_changes`, same delta-then-clamp pattern as `relationship_changes`)
+  **if it's already in `player.stats`** - the model can't introduce a new
+  stat axis outside whatever the story's own steps seeded. Only a floor
+  (`STAT_FLOOR = 0`) is enforced generically; no fixed ceiling, since each
+  story's own options imply their effective scale. `build_system_prompt`
+  builds the `PLAYER:` line's per-step "Label: chosen option name" segments
+  generically off `character_creation` + `creation_choices` - a new step type
+  needs no engine changes, just a new entry in the story's step list.
+  `new_babel` is the first story to use this: a `class` step
+  (`ghost_runner`/`cordon_asset`/`fractured_adept`, each weighting the
+  pre-existing but previously-inert `health`/`neural_load`/`attention_level`
+  stats differently) followed by a flavor-only `starting_place` step
+  (`spire`/`lowmarket`/`drowned_quarter` - deliberately doesn't touch
+  `player.stats` or branch the actual fixed opening scene, which stays the
+  one hand-authored constant every playthrough starts from per this doc's
+  "Continuous / Long-Running Structure" section; it just seeds a
+  `creation_choices` entry the narration prompt can reference).
 
 ## Web UI
 The `/play/<slug>` page is a single, continuously-appending transcript, not
