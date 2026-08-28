@@ -227,6 +227,35 @@
     }
   });
 
+  // Defense in depth against a duplicate turn submission: hx-disabled-elt only disables
+  // #controls once htmx's own click handling reaches htmx:beforeRequest, which leaves a
+  // brief window - a fast double-tap on a touch device can fire touchend's click plus a
+  // synthesized click before that happens - where a second click still gets through.
+  // Listening in the capture phase on document.body runs
+  // this before htmx's own bubble-phase listener on the button/form ever sees the event, so
+  // #controls is already disabled by the time a near-simultaneous second event is dispatched
+  // (JS event dispatch is synchronous, so there's no in-between for a second event to land).
+  // Disabling mid-dispatch doesn't cancel the click already in flight - htmx still processes
+  // this one normally - it only blocks a subsequent one. The server-side in-flight check
+  // (app.py's _turn_in_progress_response) is the actual backstop; this just closes the gap
+  // before it, so the earliest possible duplicate never leaves the browser.
+  function disableControlsOnClick(evt) {
+    var controls = document.getElementById("controls");
+    if (!controls || controls.disabled) { return; }
+    // Only an actual submit trigger (a button) should disable - a click anywhere else in
+    // #controls (e.g. focusing the free-text textarea) must not.
+    var btn = evt.target.closest && evt.target.closest("button");
+    if (btn && controls.contains(btn)) { controls.disabled = true; }
+  }
+  function disableControlsOnSubmit(evt) {
+    var controls = document.getElementById("controls");
+    if (controls && !controls.disabled && controls.contains(evt.target)) {
+      controls.disabled = true;
+    }
+  }
+  document.body.addEventListener("click", disableControlsOnClick, true);
+  document.body.addEventListener("submit", disableControlsOnSubmit, true);
+
   document.body.addEventListener("htmx:responseError", function (evt) {
     var modal = document.getElementById("llm-error-modal");
     var msg = document.getElementById("llm-error-message");

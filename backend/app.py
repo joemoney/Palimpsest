@@ -109,6 +109,19 @@ def _scene_and_controls_response(state: dict, story_slug: str) -> str:
     )
 
 
+def _turn_in_progress_response():
+    """Shared by take_turn/regenerate_turn: refuses to start a second turn for a save that
+    already has one running, rather than racing it - reuses state_store's turn-status beacon
+    (written by story_engine.py's _timed(), otherwise just a display hint for the busy
+    indicator) as a cheap in-flight lock. Guards against a duplicate POST /api/turn actually
+    doing anything - a proxy/tunnel retry on a slow request, a fast double-tap outrunning
+    hx-disabled-elt's disable, etc. - which previously produced two independent, fully valid
+    take_turn() calls against a state that had moved on between them, silently discarding
+    the player's intended action. 409, not 2xx: htmx doesn't swap a non-2xx response, so the
+    scene/choices are left untouched and only the turn already in flight ends up landing."""
+    return "A turn is already in progress for this story - please wait for it to finish.", 409
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -246,6 +259,8 @@ def take_turn(story_slug):
     action = request.form.get("action", "")
     if not action.strip():
         return ""  # matches the textarea's required attribute - nothing to submit
+    if state_store.read_turn_status(user_id, story_slug) is not None:
+        return _turn_in_progress_response()
     try:
         story_engine.take_turn(action, user_id, story_slug)
     except story_engine.LLMUnavailableError as e:
@@ -261,6 +276,8 @@ def take_turn(story_slug):
 @login_required
 def regenerate_turn(story_slug):
     user_id = session["user_id"]
+    if state_store.read_turn_status(user_id, story_slug) is not None:
+        return _turn_in_progress_response()
     try:
         story_engine.regenerate_last_turn(user_id, story_slug)
     except story_engine.LLMUnavailableError as e:

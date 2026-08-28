@@ -172,6 +172,21 @@ try:
     assert resp.get_json() == {"label": None}
     print("OK: GET /api/status is cleared back to None after the turn completes")
 
+    # --- a turn already in flight for this save makes /api/turn and /api/regenerate refuse
+    # to start a second one, rather than racing it - the turn-status beacon doubles as a
+    # cheap in-flight lock, not just a display hint for the busy indicator. Simulated
+    # directly via the beacon rather than a real concurrent request - Flask's test client
+    # runs requests synchronously, so two genuinely overlapping requests aren't reachable
+    # here; this exercises the same check the routes make either way. ---
+    ss.write_turn_status(alice_id, "new_babel", "Narrating")
+    resp = client.post("/play/new_babel/api/turn", data={"action": "look around"})
+    assert resp.status_code == 409, resp.status_code
+    resp = client.post("/play/new_babel/api/regenerate")
+    assert resp.status_code == 409, resp.status_code
+    ss.clear_turn_status(alice_id, "new_babel")
+    print("OK: a turn already in flight makes /api/turn and /api/regenerate return 409 "
+          "instead of racing a second take_turn/regenerate_last_turn call")
+
     # --- POST /api/regenerate replaces the last turn instead of appending ---
     turns_before = len(state["history_log"]["recent_turns"])
     resp = client.post("/play/new_babel/api/regenerate")
