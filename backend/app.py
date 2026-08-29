@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 from functools import wraps
 
@@ -121,6 +122,37 @@ def _turn_in_progress_response():
     the player's intended action. 409, not 2xx: htmx doesn't swap a non-2xx response, so the
     scene/choices are left untouched and only the turn already in flight ends up landing."""
     return "A turn is already in progress for this story - please wait for it to finish.", 409
+
+
+def _start_turn_job(fn, user_id: str, story_slug: str):
+    """Shared by take_turn/regenerate_turn: runs fn (a take_turn or regenerate_last_turn
+    call, already bound to its args) on a background thread instead of inline, so the HTTP
+    request that started it resolves in well under a second regardless of how long the
+    turn's LLM pipeline actually takes. A turn can run 100s+ end to end (narration +
+    state-update + subplot generation + act check + summary rollover, several of which can
+    individually be slow) - holding one HTTP response open for that whole time was getting
+    silently killed by the Cloudflare tunnel in front of this app (its edge cancels the
+    connection to the origin past ~100-125s - "context canceled" in the tunnel's logs - even
+    though gunicorn keeps running and the turn saves fine a few seconds later). The client
+    instead polls GET /api/status (already existed, for the busy-indicator) and, once that
+    reports idle again, fetches the outcome from GET /api/turn/result below - each of those
+    is a small, fast, lock-free read, in no danger of a similar timeout.
+
+    write_turn_status here, before the thread even starts, closes a race that otherwise
+    exists in the gap before fn's own first _timed() call writes its own beacon: a fast
+    double-submit landing in that gap would previously have found no beacon yet and started
+    a second, independent turn against a state that had moved on. state_store.
+    read_turn_status now sees something immediately, not a few milliseconds later."""
+    state_store.write_turn_status(user_id, story_slug, "queued")
+
+    def run():
+        try:
+            fn()
+            state_store.write_turn_result(user_id, story_slug, ok=True)
+        except story_engine.LLMUnavailableError as e:
+            state_store.write_turn_result(user_id, story_slug, ok=False, error=str(e))
+
+    threading.Thread(target=run, daemon=True).start()
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -279,15 +311,8 @@ def take_turn(story_slug):
         return ""  # matches the textarea's required attribute - nothing to submit
     if state_store.read_turn_status(user_id, story_slug) is not None:
         return _turn_in_progress_response()
-    try:
-        story_engine.take_turn(action, user_id, story_slug)
-    except story_engine.LLMUnavailableError as e:
-        # call_llm always runs before any state is saved for the turn, so nothing was
-        # lost - htmx doesn't swap on a non-2xx response, so #scene-list/#controls are
-        # left exactly as they were and the player can just retry the same choice.
-        return str(e), 503
-    state = state_store.load_state(user_id, story_slug)
-    return _scene_and_controls_response(state, story_slug)
+    _start_turn_job(lambda: story_engine.take_turn(action, user_id, story_slug), user_id, story_slug)
+    return "", 202
 
 
 @app.route("/play/<story_slug>/api/regenerate", methods=["POST"])
@@ -296,10 +321,43 @@ def regenerate_turn(story_slug):
     user_id = session["user_id"]
     if state_store.read_turn_status(user_id, story_slug) is not None:
         return _turn_in_progress_response()
-    try:
-        story_engine.regenerate_last_turn(user_id, story_slug)
-    except story_engine.LLMUnavailableError as e:
-        return str(e), 503
+    _start_turn_job(lambda: story_engine.regenerate_last_turn(user_id, story_slug), user_id, story_slug)
+    return "", 202
+
+
+@app.route("/play/<story_slug>/api/turn/result", methods=["GET"])
+@login_required
+def turn_result(story_slug):
+    """Polled once play.html's status poll (GET /api/status) reports the turn kicked off by
+    /api/turn or /api/regenerate has gone idle again - fetches the outcome _start_turn_job's
+    background thread produced and, on success, the same scene+controls htmx fragment those
+    routes used to return directly. Loops briefly rather than assuming the result is already
+    there the instant status goes idle: story_engine.take_turn/regenerate_last_turn clear
+    the status beacon in their own `finally` block a couple of Python statements before
+    _start_turn_job's wrapper writes the matching result - both fast, in-process steps, but
+    not atomic together, so a poll landing in that gap needs a moment to catch up rather than
+    being told the turn vanished."""
+    user_id = session["user_id"]
+    result = None
+    for _ in range(20):
+        if state_store.read_turn_status(user_id, story_slug) is not None:
+            return _turn_in_progress_response()
+        result = state_store.read_and_clear_turn_result(user_id, story_slug)
+        if result is not None:
+            break
+        time.sleep(0.05)
+    if result is None:
+        return (
+            "Lost track of that turn's result - refreshing the page will show whatever was "
+            "actually saved.",
+            503,
+        )
+    if not result["ok"]:
+        # Mirrors the old synchronous 503 path: call_llm always runs before any state is
+        # saved for the turn, so nothing was lost - htmx doesn't swap on a non-2xx response,
+        # so #scene-list/#controls are left exactly as they were and the player can just
+        # retry the same choice.
+        return result["error"], 503
     state = state_store.load_state(user_id, story_slug)
     return _scene_and_controls_response(state, story_slug)
 

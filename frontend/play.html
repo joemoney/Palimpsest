@@ -195,24 +195,41 @@
     processStoryElements(document);
   });
 
-  // The busy indicator shows real backend progress for a take_turn/regenerate request
-  // (data-status-poll="true" on the triggering element - see _controls.html), polling
-  // /api/status for the label story_engine.py's _timed() just wrote (STATUS_LABELS:
-  // "Narrating", "Reckoning", "Branching", ...) instead of a single static word for the
-  // whole request. Plain pagination requests (the scroll sentinel) aren't tagged, so they
-  // fall back to a generic label with no polling - they're already near-instant and never
-  // touch story_engine's LLM-call chain.
-  //
-  // `progress` (0-99, or null) estimates how far into the current step the request is,
-  // as a percent of that step's rolling P50 (median) duration (app.py's /api/status route,
-  // backed by state_store's per-label latency samples) - null until enough samples exist
-  // for a label, in which case the bar stays hidden and only the spinner shows. Never
-  // reaches 100 from the estimate alone: the fill only visually completes when the step
-  // actually finishes, i.e. the next poll reports a different label (or htmx:afterRequest
-  // fires) - median means a slower-than-typical call will sit at the 99% cap for a while
-  // before that happens, which is expected, not a bug.
+  // A take_turn/regenerate submission is a two-step handoff, not one request-response:
+  // _controls.html's buttons/form POST to /api/turn or /api/regenerate with hx-swap="none"
+  // (data-status-poll="true" marks them), which now only *starts* the turn on a background
+  // thread and returns almost immediately - see app.py's _start_turn_job for why (a slow
+  // turn holding one HTTP response open for minutes was getting killed by the Cloudflare
+  // tunnel's own edge timeout well before the turn itself finished). This poll is what
+  // watches for the turn to actually finish: it drives the busy indicator's real progress
+  // (the label story_engine.py's _timed() just wrote - "Narrating", "Reckoning",
+  // "Branching", ... - and a 0-99 estimate of how far into that step the request is, as a
+  // percent of its rolling P50 duration, null/hidden-bar until enough samples exist for a
+  // label), and once the label goes back to null - the background thread is done - fetches
+  // the outcome from GET /api/turn/result and stops. Plain pagination requests (the scroll
+  // sentinel) aren't tagged data-status-poll, so they never start this at all - they're
+  // already near-instant and never touch story_engine's LLM-call chain.
   var STATUS_POLL_MS = 400;
   var statusPollTimer = null;
+  // Set at kickoff (htmx:beforeRequest below) from the triggering element's
+  // data-result-target/data-result-swap - take_turn appends a new scene block
+  // (#scene-list, beforeend), regenerate replaces the existing last one in place
+  // (#scene-list > .scene-block:last-child, outerHTML). awaitingResult is what lets
+  // pollTurnStatus tell "the label just went idle because the turn we started finished"
+  // apart from "idle because nothing is running" (e.g. a stray poll after the result was
+  // already fetched).
+  var awaitingResult = false;
+  var resultTarget = null;
+  var resultSwap = null;
+
+  function showBusyIndicator() {
+    var el = document.getElementById("busy-indicator");
+    if (el) { el.classList.add("htmx-request"); }
+  }
+  function hideBusyIndicator() {
+    var el = document.getElementById("busy-indicator");
+    if (el) { el.classList.remove("htmx-request"); }
+  }
 
   function pollTurnStatus() {
     fetch("/play/" + STORY_SLUG + "/api/status")
@@ -233,8 +250,29 @@
             fill.style.width = "0%";
           }
         }
+        if (awaitingResult && !(data && data.label)) {
+          awaitingResult = false;
+          if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null; }
+          fetchTurnResult();
+        }
       })
       .catch(function () {});
+  }
+
+  // Fires the second half of the handoff once pollTurnStatus sees the turn go idle:
+  // fetches GET /api/turn/result as a normal htmx request (so a non-2xx - the turn
+  // actually failed - flows through the exact same htmx:responseError modal as any other
+  // htmx call) targeting whichever element/swap the kickoff captured. #controls' own
+  // re-enable rides along on success (the OOB <fieldset id="controls" hx-swap-oob="true">
+  // in that response is a fresh, non-disabled element replacing the one this sequence
+  // disabled); the error handlers below cover the failure case, since there's no OOB swap
+  // to do it there.
+  function fetchTurnResult() {
+    var target = resultTarget, swap = resultSwap;
+    resultTarget = null;
+    resultSwap = null;
+    htmx.ajax("GET", "/play/" + STORY_SLUG + "/api/turn/result", { target: target, swap: swap })
+      .then(hideBusyIndicator);
   }
 
   document.body.addEventListener("htmx:beforeRequest", function (evt) {
@@ -246,15 +284,12 @@
     if (fill) { fill.style.width = "0%"; }
     var elt = evt.detail && evt.detail.elt;
     if (elt && elt.hasAttribute && elt.hasAttribute("data-status-poll")) {
+      resultTarget = elt.getAttribute("data-result-target");
+      resultSwap = elt.getAttribute("data-result-swap");
+      awaitingResult = true;
+      showBusyIndicator();
       pollTurnStatus();
       statusPollTimer = setInterval(pollTurnStatus, STATUS_POLL_MS);
-    }
-  });
-
-  document.body.addEventListener("htmx:afterRequest", function () {
-    if (statusPollTimer) {
-      clearInterval(statusPollTimer);
-      statusPollTimer = null;
     }
   });
 
@@ -268,8 +303,13 @@
   // (JS event dispatch is synchronous, so there's no in-between for a second event to land).
   // Disabling mid-dispatch doesn't cancel the click already in flight - htmx still processes
   // this one normally - it only blocks a subsequent one. The server-side in-flight check
-  // (app.py's _turn_in_progress_response) is the actual backstop; this just closes the gap
-  // before it, so the earliest possible duplicate never leaves the browser.
+  // (app.py's _turn_in_progress_response, now also backed by _start_turn_job writing its
+  // "queued" beacon before the kickoff request even returns) is the actual backstop; this
+  // just closes the gap before it, so the earliest possible duplicate never leaves the
+  // browser. #controls is deliberately *not* re-enabled here or by htmx automatically
+  // (hx-disabled-elt was dropped from _controls.html's elements) - the turn this starts
+  // isn't done when the kickoff request settles, only once fetchTurnResult's swap or the
+  // error handlers below re-enable it.
   function disableControlsOnClick(evt) {
     var controls = document.getElementById("controls");
     if (!controls || controls.disabled) { return; }
@@ -287,44 +327,60 @@
   document.body.addEventListener("click", disableControlsOnClick, true);
   document.body.addEventListener("submit", disableControlsOnSubmit, true);
 
+  // Neither of #controls' automatic re-enable paths applies to an error: the OOB
+  // <fieldset id="controls" hx-swap-oob="true"> swap that normally does it only ever rides
+  // along on a *successful* /api/turn/result fetch (see fetchTurnResult above), and
+  // hx-disabled-elt was deliberately dropped from _controls.html's elements (it would
+  // re-enable #controls right after the near-instant kickoff POST/GET settles, long before
+  // the turn it started is actually done). So both failure paths below have to do it
+  // themselves - along with stopping any poll still running (a 409 "already in progress"
+  // on the kickoff request can land here with awaitingResult already true) and hiding the
+  // busy indicator, which has the same gap now that it's shown/hidden manually instead of
+  // via hx-indicator.
+  function recoverControlsAfterError() {
+    var controls = document.getElementById("controls");
+    if (controls) { controls.disabled = false; }
+    awaitingResult = false;
+    if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null; }
+    hideBusyIndicator();
+  }
+
   document.body.addEventListener("htmx:responseError", function (evt) {
     var modal = document.getElementById("llm-error-modal");
     var msg = document.getElementById("llm-error-message");
     if (msg) { msg.textContent = evt.detail.xhr.responseText; }
     if (modal) { modal.showModal(); }
+    recoverControlsAfterError();
   });
 
   // htmx:responseError only covers a request that got a real (non-2xx) HTTP response.
   // htmx:sendError is the other failure mode - the request never got a response at all
   // (DNS hiccup, connection reset, or - the case this was added for - a mobile browser
   // tearing down a backgrounded tab's in-flight connection when the player tabs away
-  // mid-turn). Without this, that failure was completely silent: htmx:afterRequest still
-  // fires either way (it's the lifecycle wrap-up, not a success signal), so the busy
-  // indicator hides exactly as if the turn had finished, but no swap ever lands and
-  // #controls - only ever re-enabled by the OOB swap in a real response - stays disabled
-  // with no explanation. responseText is empty here (there was no response), hence the
+  // mid-turn, or the status/result requests below getting cut off the same way). Without
+  // this, that failure was completely silent: #controls stays disabled with no explanation
+  // and no swap ever lands. responseText is empty here (there was no response), hence the
   // fallback message.
   document.body.addEventListener("htmx:sendError", function () {
     var modal = document.getElementById("llm-error-modal");
     var msg = document.getElementById("llm-error-message");
     if (msg) { msg.textContent = "The request never reached the server (connection lost)."; }
     if (modal) { modal.showModal(); }
+    recoverControlsAfterError();
   });
 
   // Mobile-browser recovery: tabbing away mid-turn and back can leave the page stuck even
   // when the turn actually completed successfully server-side (confirmed via bug report -
-  // Brave/Android backgrounding the tab loses the in-flight response, or delivers it too
-  // late for htmx to apply the swap) - the busy indicator disappears (htmx:afterRequest
-  // fires regardless of outcome) but the new scene never renders and #controls stays
-  // disabled forever, since nothing but a successful swap's OOB update ever re-enables it.
+  // Brave/Android backgrounding the tab loses an in-flight status/result request, or
+  // delivers it too late for the poll loop or htmx to act on) - #controls stays disabled
+  // forever with nothing left running client-side to notice the turn actually finished.
   // Manually refreshing the page always fixes it (the server-rendered page reflects
   // whatever was actually saved) - this does the same thing automatically. The 800ms delay
-  // before checking gives a genuinely-still-in-flight response (queued while the page was
+  // before checking gives a genuinely-still-in-flight poll (queued while the page was
   // frozen, about to resolve normally on its own) a moment to land first, so this only
   // reloads when #controls is still disabled AND the server confirms no turn is actually
   // in progress - never while a turn is still legitimately running.
-  document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState !== "visible") { return; }
+  function resyncIfStale() {
     window.setTimeout(function () {
       var controls = document.getElementById("controls");
       if (!controls || !controls.disabled) { return; }
@@ -337,7 +393,26 @@
         })
         .catch(function () {});
     }, 800);
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") { resyncIfStale(); }
   });
+
+  // Belt-and-suspenders alongside recoverControlsAfterError above: that handles the common
+  // case (the request that just failed is the one #controls/the busy indicator are waiting
+  // on), but can't help if the failure was e.g. one dropped poll tick that never surfaced
+  // an htmx event at all, or the background thread's turn genuinely finished but this tab
+  // missed the transition. Closing the modal (the "close" event fires for the Close button
+  // and for Escape) is the moment the player is telling us they're done looking at the
+  // error, so double-check server-reality here too before giving up on the same page.
+  // (Historically this was also where the Cloudflare tunnel's own ~100-125s edge timeout
+  // showed up - see git history/CLAUDE.md - but /api/turn and /api/regenerate now return
+  // almost immediately regardless of how long the turn itself takes, so that specific
+  // failure mode shouldn't reach here anymore.)
+  var errorModal = document.getElementById("llm-error-modal");
+  if (errorModal) {
+    errorModal.addEventListener("close", resyncIfStale);
+  }
 
   // Preserve scroll position when older scenes are prepended above the fold -
   // without this, inserting content above the viewport visually "jumps" the page.

@@ -184,17 +184,33 @@ treatment as these existing ones:
   out — stays under gunicorn's `--timeout` (Dockerfile `CMD`, 220s), for the
   same reason the single-call version of this margin mattered before: a
   double-timeout needs to be caught here first, cleanly, rather than by
-  gunicorn's harder `SIGABRT`.
+  gunicorn's harder `SIGABRT`. (`app.py`'s `take_turn`/`regenerate_turn` now
+  run this whole call chain on a background thread rather than inline in the
+  request — see "Asynchronous turn-taking" under "Web UI" — so gunicorn's
+  own `--timeout` no longer has a request to measure this against at all;
+  these constants stay in place regardless, since they're still what makes
+  an individual call give up and hand off to the fail-safe rather than
+  hanging indefinitely.)
 - `call_llm` wraps any provider-level failure (an HTTP error or
   `requests.exceptions.RequestException` from OpenRouter, or a
   `google.api_core.exceptions.GoogleAPIError` from Gemini) as `story_engine.
   LLMUnavailableError` — a single stable type regardless of which provider
-  raised it. `app.py`'s `take_turn`/`regenerate_turn` views (the only two
-  web-reachable paths that ever call `call_llm`) each catch it directly and
-  return `(str(e), 503)` instead of swapping any content — since both are
-  htmx endpoints (see "Web UI" below), a non-2xx response is never swapped
-  into the page, so the previous scene/choices are left completely
-  untouched and the player can just retry. `play.html`'s
+  raised it. Also raised now if a provider returns a 200 with empty/`None`
+  narration content (observed in production: an OpenRouter model returning
+  `message.content: null`, which used to flow straight through and get
+  saved verbatim as `"Narrator: None"` — see `_call_llm_openrouter`'s and
+  `_call_llm_google`'s empty-content guards). `app.py`'s `take_turn`/
+  `regenerate_turn` routes (the only web-reachable paths that ever call
+  `call_llm`) hand `story_engine.take_turn`/`regenerate_last_turn` to
+  `_start_turn_job`, which catches it on the background thread and records
+  it via `state_store.write_turn_result(..., ok=False, error=str(e))`; the
+  `GET /api/turn/result` route (see "Asynchronous turn-taking") is what actually
+  returns `(str(e), 503)` to the browser, once the client polls its way to
+  fetching that result — not `take_turn`/`regenerate_turn` themselves
+  anymore, since those now return `202` before the LLM call even starts.
+  Since that route is also an htmx endpoint, a non-2xx response is still
+  never swapped into the page, so the previous scene/choices are left
+  completely untouched and the player can just retry. `play.html`'s
   `htmx:responseError` listener reads the response body into the
   `#llm-error-modal` `<dialog>` and shows it. Safe to treat as fully
   recoverable either way: `call_llm` always runs before
@@ -280,22 +296,97 @@ regenerate never triggers a full navigation. This is built with **HTMX**
 — not pulled from a CDN, since the app is self-hosted/Dockerized and
 shouldn't depend on an external host at page-load time), not hand-written
 `fetch`/DOM-patch JS — declarative `hx-*` attributes in `frontend/
-_controls.html` drive submission, and `app.py`'s `take_turn`/
-`regenerate_turn`/`turn_history` views return HTML fragments (rendered from
-the same `frontend/_scene_block.html`/`_controls.html` partials used for
-the initial page load), not JSON. An out-of-band swap (`hx-swap-oob`) on
-`<fieldset id="controls">` is what makes a single response both append the
-new scene and refresh the choices in one round trip — `#controls` is a
-`<fieldset>` specifically so `hx-disabled-elt="#controls"` can disable
-every descendant control during a request (a plain `<div>` doesn't cascade
-`disabled` to its children). Scrollback is "reverse infinite scroll":
-`/play/<slug>/api/history` follows htmx's standard self-chaining sentinel
-pattern (`#scroll-sentinel`, `hx-trigger="revealed"`) rather than any
-client-tracked pagination state — each response either includes a fresh
-sentinel pointing at the next-older batch, or omits it once
+_controls.html` drive submission, and `app.py`'s `turn_result`/
+`turn_history` views return HTML fragments (rendered from the same
+`frontend/_scene_block.html`/`_controls.html` partials used for the initial
+page load), not JSON. An out-of-band swap (`hx-swap-oob`) on `<fieldset
+id="controls">` is what makes a single response both append the new scene
+and refresh the choices in one round trip — `#controls` is a `<fieldset>`
+so disabling cascades to every descendant control (a plain `<div>` doesn't
+cascade `disabled` to its children); see "Asynchronous turn-taking" below
+for how that disabling is actually driven now. Scrollback is "reverse
+infinite scroll": `/play/<slug>/api/history` follows htmx's standard
+self-chaining sentinel pattern (`#scroll-sentinel`, `hx-trigger="revealed"`)
+rather than any client-tracked pagination state — each response either
+includes a fresh sentinel pointing at the next-older batch, or omits it once
 `history_log.full_transcript` (concatenated with `recent_turns` via
 `app.py`'s `_all_turns`) is exhausted. New UI work on this page should
 extend this pattern rather than introducing a parallel fetch-based one.
+
+### Asynchronous turn-taking (kickoff → poll → fetch)
+`POST /play/<slug>/api/turn` and `POST /play/<slug>/api/regenerate` do
+**not** run the turn inline and return its result — they only *start* it.
+Each checks `state_store.read_turn_status` for an in-flight beacon (409 if
+one exists), then calls `app.py`'s `_start_turn_job`, which writes a
+`"queued"` turn-status beacon and runs `story_engine.take_turn`/
+`regenerate_last_turn` on a background `threading.Thread`, and the route
+returns `202` with an empty body almost immediately — regardless of how
+long the turn's own LLM pipeline (narration + state-update + optionally
+subplot generation/act-advancement/summary-rollover, several of which can
+individually be slow) ends up taking. This exists because a real production
+incident showed a single long-held HTTP response isn't safe end-to-end: the
+Cloudflare tunnel in front of this app (see `docker-compose.yml`) cancels
+its connection to the origin past roughly 100-125s ("context canceled" in
+`cloudflared`'s logs) even though gunicorn keeps running and the turn saves
+correctly a few seconds later — the player just sees a spurious connection-
+lost error on an otherwise-successful turn.
+
+The client closes the loop itself, entirely through polling:
+1. `_controls.html`'s buttons/form POST with `hx-swap="none"` (no swap from
+   this response) and carry `data-status-poll="true"` plus
+   `data-result-target`/`data-result-swap` (take_turn appends to
+   `#scene-list`; regenerate replaces `#scene-list > .scene-block:last-child`
+   in place with `outerHTML` — the same distinction the old direct-swap
+   attributes used to encode).
+2. `play.html`'s `htmx:beforeRequest` handler, seeing `data-status-poll`,
+   captures those two data attributes and starts polling `GET
+   .../api/status` (the same beacon-driven endpoint that already fed the
+   busy indicator's step label/progress bar) every `STATUS_POLL_MS` (400ms).
+3. Once that poll sees the label go back to `null` — the background thread
+   is done — it fetches `GET .../api/turn/result` via `htmx.ajax(...)`,
+   targeting whichever element/swap step 1 captured. Being a real htmx
+   request, a non-2xx response there flows through the exact same
+   `htmx:responseError` → `#llm-error-modal` path any other htmx call uses.
+4. `app.py`'s `turn_result` view answers that fetch: it retries briefly (up
+   to ~1s) reading `state_store.read_and_clear_turn_result` — a one-shot,
+   bounded-to-one-entry disk handoff (`write_turn_result`/
+   `read_and_clear_turn_result` in `state_store.py`, same shape/tradeoffs as
+   the existing turn-status beacon) that `_start_turn_job`'s background
+   thread writes right after `fn()` returns or raises
+   `story_engine.LLMUnavailableError` — rather than assuming it's already
+   there the instant the status beacon clears, since story_engine's
+   `finally` block clears that beacon a couple of Python statements before
+   the result gets written, and the two aren't atomic together. On success
+   it returns the same scene+controls fragment `take_turn`/`regenerate_turn`
+   used to return directly; on failure it returns `(error, 503)`, same as
+   the old synchronous path.
+
+Because `hx-disabled-elt`/`hx-indicator` are scoped to a single request's
+lifecycle, and the *kickoff* POST/GET pair here settles almost instantly
+while the actual turn is still running, `#controls` and `#busy-indicator`
+are no longer driven by htmx's automatic wiring at all —
+`disableControlsOnClick`/`disableControlsOnSubmit` (capture-phase,
+unchanged from before) do the disabling, and `play.html`'s own
+`showBusyIndicator`/`hideBusyIndicator`
+(manually toggling the same `.htmx-request` CSS class htmx used to manage)
+do the indicator. Re-enabling `#controls` happens either via the OOB
+`<fieldset id="controls" hx-swap-oob="true">` in a successful
+`/api/turn/result` response (a fresh, non-disabled element replacing the
+disabled one), or explicitly in the `htmx:responseError`/`htmx:sendError`
+handlers on failure (`recoverControlsAfterError`) — there's no OOB swap to
+do it there. See `frontend/play.html`'s and `frontend/_controls.html`'s own
+comments for the exact mechanics.
+
+Side effect worth knowing: since gunicorn's own `--timeout` (Dockerfile
+`CMD`, 220s) only measures a worker's request-handling responsiveness, and
+the kickoff request now returns in well under a second, that timeout no
+longer applies to the turn's own processing at all — closing a second,
+separate historical failure mode where a turn that ran long enough to hit
+it got the whole worker `SIGABRT`-killed mid-turn, losing the save
+entirely. The turn-status beacon's own `TURN_STATUS_STALE_SECONDS` (240s,
+`state_store.py`) backstop still exists for the cases that remain (a
+container restart, an unhandled exception in the background thread, an OOM
+kill).
 
 **Inline narration formatting** (`frontend/play.html`): the LLM is instructed
 (`story_engine.py`'s `build_system_prompt`) to mark up emphasis with exactly
@@ -406,3 +497,15 @@ contains (subplot count, memory fragments, etc.) rather than hardcoding
 assumptions from one specific story - `DEFAULT_STORY_SLUG` has changed once
 already (New Babel → example) and content-specific assumptions silently
 broke two tests when it did.
+
+`test_app_routes.py` exercises `POST /api/turn`/`/api/regenerate` through
+Flask's real (synchronous) test client, but the routes themselves now kick
+the actual turn off on a background thread and return `202` almost
+immediately (see "Asynchronous turn-taking" under "Web UI") — the test
+client's `.post(...)` call returning does *not* mean `story_engine.take_turn`
+has run yet. `wait_for_idle(user_id, ...)` (defined in that file, polling
+`state_store.read_turn_status` directly rather than over HTTP) has to be
+called before asserting on save-file state or fetching `GET
+/api/turn/result` — any new turn-taking assertion added to that file needs
+to follow the same poll-then-fetch shape the real client uses, not assume
+the kickoff POST already did the work.

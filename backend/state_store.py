@@ -147,19 +147,21 @@ def clear_turn_status(user_id: str, story_slug: str):
 
 
 # clear_turn_status() lives in story_engine.py's take_turn/regenerate_last_turn `finally`
-# blocks, so it only runs if that Python frame gets to unwind. It doesn't if the worker
-# process is killed out from under it - gunicorn's own --timeout (Dockerfile CMD, 220s)
-# hard-kills a worker that runs long enough, and that's a strictly harder deadline than
-# anything story_engine.py's own OPENROUTER_TOTAL_TIMEOUT/GOOGLE_TOTAL_TIMEOUT fail-safes
-# are sized to prevent by themselves (see Dockerfile's comment on --timeout) - a request
-# that chains multiple slow _timed() calls in one turn can still exceed it even though any
-# one call is individually bounded. Left unhandled, a beacon from a request like that never
-# gets cleared, which - since app.py's take_turn/regenerate_turn treat "a beacon exists" as
-# "a turn is already running" - would otherwise soft-lock that save out of every future turn
-# forever, not just the one that actually failed. 240s (20s past gunicorn's own timeout,
-# so a beacon is only ever called stale after gunicorn itself would already have given up)
-# is deliberately not tied to any single call's own timeout constant - it's a backstop for
-# "the process is simply gone," not a latency budget.
+# blocks, so it only runs if that Python frame gets to unwind. It doesn't if the thread
+# running it is killed out from under it - historically gunicorn's own --timeout (Dockerfile
+# CMD, 220s) hard-killing a worker that ran long enough was the main way that happened (a
+# request that chains multiple slow _timed() calls in one turn could exceed it even though
+# any one call is individually bounded - see Dockerfile's comment on --timeout). app.py's
+# take_turn/regenerate_turn now run that whole call chain on a background thread instead of
+# inline in the request (see app.py's _start_turn_job), so gunicorn's own --timeout no
+# longer applies to it at all - but the container/process can still die out from under a
+# turn in other ways (a restart, an unhandled exception in the background thread, an OOM
+# kill), so this backstop stays. Left unhandled, a beacon from a turn like that never gets
+# cleared, which - since app.py's take_turn/regenerate_turn treat "a beacon exists" as "a
+# turn is already running" - would otherwise soft-lock that save out of every future turn
+# forever, not just the one that actually failed. 240s is deliberately not tied to any
+# single call's own timeout constant - it's a backstop for "the process/thread is simply
+# gone," not a latency budget.
 TURN_STATUS_STALE_SECONDS = 240
 
 
@@ -173,6 +175,47 @@ def read_turn_status(user_id: str, story_slug: str) -> dict | None:
         clear_turn_status(user_id, story_slug)
         return None
     return status
+
+
+# ---------------------------------------------------------------------------
+# Turn-result handoff (app.py's /api/turn and /api/regenerate kick off
+# take_turn/regenerate_last_turn on a background thread and return immediately - a slow
+# turn holding one HTTP request open for minutes was getting killed by the Cloudflare
+# tunnel's own edge timeout, well before gunicorn or story_engine's own fail-safes would
+# ever give up. The client instead polls the turn-status beacon above and, once it goes
+# idle again, fetches the outcome from here via GET /api/turn/result.)
+# ---------------------------------------------------------------------------
+# Bounded to exactly one entry, overwritten every turn - same shape as the save file's own
+# history_log.pending_regenerate (see CLAUDE.md) - and consumed on read (one-shot) so a
+# stray duplicate fetch can't re-append the same scene twice. Best-effort/unlocked, same
+# tradeoff as the status beacon above: this is a handoff between one background thread and
+# the one poll that's actually waiting on it, not durable state anything else reads.
+
+def _result_path(user_id: str, story_slug: str) -> str:
+    return _save_path(user_id, story_slug) + ".result"
+
+
+def write_turn_result(user_id: str, story_slug: str, ok: bool, error: str | None = None):
+    path = _result_path(user_id, story_slug)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = path + f".tmp{os.getpid()}"
+    with open(tmp_path, "w") as f:
+        json.dump({"ok": ok, "error": error}, f)
+    os.replace(tmp_path, path)
+
+
+def read_and_clear_turn_result(user_id: str, story_slug: str) -> dict | None:
+    path = _result_path(user_id, story_slug)
+    try:
+        with open(path, "r") as f:
+            result = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    return result
 
 
 # ---------------------------------------------------------------------------

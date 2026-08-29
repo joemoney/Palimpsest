@@ -99,7 +99,12 @@ class LLMUnavailableError(Exception):
 # thread and giving up on .result(timeout=...) rather than waiting on it. Sized so even the
 # worst case (primary call times out, then the Gemini fail-safe below also times out) stays
 # comfortably under gunicorn's --timeout (Dockerfile CMD), so a double-timeout is always
-# caught here first, cleanly, instead of by gunicorn's SIGABRT.
+# caught here first, cleanly, instead of by gunicorn's SIGABRT. (app.py's take_turn/
+# regenerate_turn now run this whole call chain on a background thread rather than inline
+# in the request - see _start_turn_job - so gunicorn's own --timeout no longer has a
+# request to measure this against at all; these constants stay in place regardless, since
+# they're still what makes an individual call give up and hand off to the fail-safe rather
+# than hanging indefinitely.)
 OPENROUTER_TOTAL_TIMEOUT = 100
 GOOGLE_TOTAL_TIMEOUT = 60
 _openrouter_executor = concurrent.futures.ThreadPoolExecutor(
@@ -149,9 +154,19 @@ def _call_llm_openrouter(prompt: str, model: str) -> str:
         raise LLMUnavailableError(str(e)) from e
 
     try:
-        return data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as e:
         raise LLMUnavailableError(f"Unexpected OpenRouter response shape: {data}") from e
+    # Some models (observed with deepseek-v4-pro) can return a 200 with
+    # message.content null/empty - e.g. the reply landed entirely in a
+    # "reasoning" field, or the model stopped before producing output. That's
+    # not a valid narration, so treat it the same as a request-level failure
+    # rather than silently handing None back up to call_llm - which would
+    # otherwise skip the Gemini fail-safe and let "None" get saved as the
+    # scene text (see git history for a real incident this caused).
+    if not content:
+        raise LLMUnavailableError(f"OpenRouter returned empty content: {data}")
+    return content
 
 
 def _call_llm_google(prompt: str, model: str) -> str:
@@ -172,6 +187,10 @@ def _call_llm_google(prompt: str, model: str) -> str:
         raise LLMUnavailableError(f"Gemini did not respond within {GOOGLE_TOTAL_TIMEOUT}s")
     except GoogleAPIError as e:
         raise LLMUnavailableError(str(e)) from e
+    # Same empty-response guard as _call_llm_openrouter - e.g. a prompt-blocked
+    # response has no candidates and response.text raises/returns nothing usable.
+    if not response.text:
+        raise LLMUnavailableError(f"Gemini returned empty content: {response!r}")
     return response.text
 
 
@@ -235,6 +254,11 @@ def call_llm_json(prompt: str, model: str = STATE_UPDATE_MODEL) -> dict:
 # of the turn is actually running, not just a generic "Working...". Keep this in sync with
 # every _timed() call site below.
 STATUS_LABELS = {
+    # Written directly by app.py, before it even hands the turn off to a background
+    # thread - not one of the _timed() labels below, so it has no DEFAULT_STEP_ESTIMATE_
+    # SECONDS entry either (falls back to no progress bar, just the spinner, which suits a
+    # step that's normally over in well under a second).
+    "queued": "Starting",
     "narration": "Narrating",
     "state_update": "Reckoning",
     "subplot_generation": "Branching",

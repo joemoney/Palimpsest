@@ -5,9 +5,8 @@
   {% if turn.player_action %}
   <div class="scene-actions">
     <button type="button" class="icon-button" data-status-poll="true"
-      hx-post="{{ url_for('regenerate_turn', story_slug=story_slug) }}"
-      hx-target="#scene-list > .scene-block:last-child" hx-swap="outerHTML"
-      hx-disabled-elt="#controls" hx-indicator="#controls, #busy-indicator"
+      data-result-target="#scene-list > .scene-block:last-child" data-result-swap="outerHTML"
+      hx-post="{{ url_for('regenerate_turn', story_slug=story_slug) }}" hx-swap="none"
       title="Regenerate this scene">&#8635; Regenerate</button>
   </div>
   {% endif %}
@@ -15,10 +14,9 @@
   <section class="card choices" id="choices">
     {% for option in options %}
     <button type="button" class="choice" data-status-poll="true"
+      data-result-target="#scene-list" data-result-swap="beforeend"
       hx-post="{{ url_for('take_turn', story_slug=story_slug) }}"
-      hx-vals='{"action": {{ option.prose | tojson }}}'
-      hx-target="#scene-list" hx-swap="beforeend"
-      hx-disabled-elt="#controls" hx-indicator="#controls, #busy-indicator">
+      hx-vals='{"action": {{ option.prose | tojson }}}' hx-swap="none">
       <span class="choice-action">{{ loop.index }}. {{ option.action }}</span>
       <span class="choice-prose">{{ option.prose }}</span>
     </button>
@@ -26,9 +24,8 @@
   </section>
   {% endif %}
   <form class="card" data-status-poll="true"
-    hx-post="{{ url_for('take_turn', story_slug=story_slug) }}"
-    hx-target="#scene-list" hx-swap="beforeend"
-    hx-disabled-elt="#controls" hx-indicator="#controls, #busy-indicator">
+    data-result-target="#scene-list" data-result-swap="beforeend"
+    hx-post="{{ url_for('take_turn', story_slug=story_slug) }}" hx-swap="none">
     <label for="action-input">{{ "Or, steer your own way" if options else "What do you do?" }}</label>
     <textarea id="action-input" name="action" rows="2" required></textarea>
     <button type="submit">{{ "4. Steer" if options else "Continue" }}</button>

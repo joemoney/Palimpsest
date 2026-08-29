@@ -18,6 +18,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _llm_stubs import CannedResponses, load_state_store  # noqa: E402
@@ -76,6 +77,22 @@ try:
     app = flask_app_module.app
     app.testing = True
     client = app.test_client()
+
+    def wait_for_idle(user_id, story_slug="new_babel", timeout=5.0):
+        """/api/turn and /api/regenerate now kick off take_turn/regenerate_last_turn on a
+        background thread and return immediately (see app.py's _start_turn_job) rather than
+        blocking the request on the whole LLM pipeline - the real client polls GET
+        /api/status until it goes idle again before fetching GET /api/turn/result, and a
+        test exercising the real HTTP contract has to do the same rather than assuming the
+        background thread has already finished by the time the kickoff POST returns."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if ss.read_turn_status(user_id, story_slug) is None:
+                return
+            time.sleep(0.01)
+        raise AssertionError(
+            f"turn for {user_id!r}/{story_slug!r} did not finish within {timeout}s"
+        )
 
     # --- unauthenticated access redirects to login ---
     resp = client.get("/stories", follow_redirects=False)
@@ -156,14 +173,21 @@ try:
     assert resp.get_json() == {"label": None, "progress": None}
     print("OK: GET /api/status with no turn in flight reports label: None")
 
-    # --- POST /api/turn calls take_turn and returns a scene+controls htmx fragment ---
+    # --- POST /api/turn kicks off take_turn on a background thread and returns almost
+    # immediately (202, no body) rather than blocking on the whole LLM pipeline - the client
+    # has to poll /api/status for completion, then fetch the outcome from
+    # GET /api/turn/result, which is where the scene+controls htmx fragment now comes from ---
     resp = client.post("/play/new_babel/api/turn", data={"action": "look around"})
+    assert resp.status_code == 202, resp.status_code
+    wait_for_idle(alice_id)
+    resp = client.get("/play/new_babel/api/turn/result")
     assert resp.status_code == 200
     assert b'class="scene-block"' in resp.data
     assert b'id="controls"' in resp.data and b'hx-swap-oob="true"' in resp.data
     state = ss.load_state(alice_id, "new_babel")
     assert state["plot"]["pacing"]["turn_count"] == 1
-    print("OK: POST /api/turn advances the turn count and returns a scene+controls fragment")
+    print("OK: POST /api/turn (async) advances the turn count and GET /api/turn/result "
+          "returns a scene+controls fragment once it's done")
 
     # --- the status beacon is cleared once the turn completes (take_turn's finally),
     # not left showing a stale "Reckoning"/"Narrating" from the just-finished turn ---
@@ -183,31 +207,44 @@ try:
     assert resp.status_code == 409, resp.status_code
     resp = client.post("/play/new_babel/api/regenerate")
     assert resp.status_code == 409, resp.status_code
+    resp = client.get("/play/new_babel/api/turn/result")
+    assert resp.status_code == 409, resp.status_code
     ss.clear_turn_status(alice_id, "new_babel")
-    print("OK: a turn already in flight makes /api/turn and /api/regenerate return 409 "
-          "instead of racing a second take_turn/regenerate_last_turn call")
+    print("OK: a turn already in flight makes /api/turn, /api/regenerate, and "
+          "/api/turn/result all return 409 instead of racing/misreading a second call")
 
     # --- POST /api/regenerate replaces the last turn instead of appending ---
     turns_before = len(state["history_log"]["recent_turns"])
     resp = client.post("/play/new_babel/api/regenerate")
+    assert resp.status_code == 202, resp.status_code
+    wait_for_idle(alice_id)
+    resp = client.get("/play/new_babel/api/turn/result")
     assert resp.status_code == 200
     assert b"different corridor" in resp.data
     state = ss.load_state(alice_id, "new_babel")
     assert len(state["history_log"]["recent_turns"]) == turns_before
     print("OK: POST /api/regenerate re-rolls the last turn without growing recent_turns")
 
-    # --- a blank action is a no-op (matches the textarea's required attribute) ---
+    # --- a blank action is a no-op (matches the textarea's required attribute) - still
+    # synchronous, since take_turn's own emptiness check runs before _start_turn_job would
+    # ever spawn a background thread ---
     resp = client.post("/play/new_babel/api/turn", data={"action": "   "})
     assert resp.status_code == 200
     assert resp.data == b""
     state = ss.load_state(alice_id, "new_babel")
     assert len(state["history_log"]["recent_turns"]) == turns_before
-    print("OK: POST /api/turn with a blank action is a no-op")
+    print("OK: POST /api/turn with a blank action is a synchronous no-op")
 
     # --- two more turns build up enough history to exercise pagination ---
     resp = client.post("/play/new_babel/api/turn", data={"action": "push forward"})
+    assert resp.status_code == 202, resp.status_code
+    wait_for_idle(alice_id)
+    resp = client.get("/play/new_babel/api/turn/result")
     assert resp.status_code == 200
     resp = client.post("/play/new_babel/api/turn", data={"action": "rest a moment"})
+    assert resp.status_code == 202, resp.status_code
+    wait_for_idle(alice_id)
+    resp = client.get("/play/new_babel/api/turn/result")
     assert resp.status_code == 200
     state = ss.load_state(alice_id, "new_babel")
     all_turns = state["history_log"].get("full_transcript", []) + state["history_log"]["recent_turns"]
@@ -262,6 +299,9 @@ try:
     se.call_llm = _narration_checks_status
     se.call_llm_json = _state_update_checks_status
     resp = carol_client.post("/play/new_babel/api/turn", data={"action": "wait"})
+    assert resp.status_code == 202, resp.status_code
+    wait_for_idle(carol_id)
+    resp = carol_client.get("/play/new_babel/api/turn/result")
     assert resp.status_code == 200
     assert seen_labels == ["narration", "state_update"], seen_labels
     print("OK: the status beacon shows 'narration' during the narration call and "

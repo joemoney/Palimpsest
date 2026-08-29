@@ -43,3 +43,22 @@ content below" and "prepend older content above on scroll" are both native
 HTMX swap patterns (`hx-swap="beforeend"` / `"afterbegin"`) without much
 custom JS — and it pairs directly with the Python backend already doing
 all the state/LLM work in `story_engine.py`.
+
+## Turn Latency (as implemented)
+One turn is not one request-response round trip. A turn can take anywhere
+from a few seconds to well over a minute (narration, plus a follow-up
+state-update call, plus - conditionally - subplot generation, act-
+advancement judgment, and a summary rollover, run in sequence), and a real
+incident showed that holding a single HTTP response open for that whole
+span isn't safe through every network path a deployment might sit behind -
+an intermediate proxy/tunnel can cancel a connection well before the
+backend actually finishes and saves. So step 2 ("player selects a choice")
+above is, as implemented, a three-part handoff rather than one call: the
+submission starts the turn and returns almost immediately, the client polls
+a status endpoint for progress, and once that reports done, a second fetch
+retrieves the actual new scene and choices to append to the feed. This is
+invisible to the "Core Interaction Model" above - the feed still only ever
+grows by appending narration/choice pairs - but any reimplementation on a
+different stack should budget for this as a polling loop, not a single
+request/response per turn. See `CLAUDE.md`'s "Web UI" → "Asynchronous
+turn-taking" for the exact mechanics as built.
