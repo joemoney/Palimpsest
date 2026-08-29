@@ -1,4 +1,5 @@
 import os
+import time
 from functools import wraps
 
 from dotenv import load_dotenv
@@ -247,9 +248,26 @@ def turn_status(story_slug):
     in flight, to show which of that turn's (possibly several) sequential LLM calls is
     currently running (see story_engine.py's STATUS_LABELS/_timed) instead of a generic
     "Working..." for the whole duration. Cheap: no LLM call, no state_store save-file lock -
-    just a small best-effort status file read (state_store.read_turn_status)."""
+    just a small best-effort status file read (state_store.read_turn_status).
+
+    `progress` estimates how far into the current step the request is, as a 0-99 percent
+    of that step's rolling P50 (median) duration (state_store.p50_duration, falling back to
+    story_engine.DEFAULT_STEP_ESTIMATE_SECONDS until real samples exist for this label -
+    otherwise a fresh deploy would show no progress bar at all for anyone's first several
+    turns) - capped below 100 since the step is, by definition, still running while this
+    route can be polled; the UI's progress-bar fill only ever reaches 100% when the step
+    actually finishes (the next poll reports a different label, or the request completes).
+    P50 rather than P90 - a typical call fills the bar at roughly the pace it actually
+    completes, at the cost of a slower-than-typical call sitting at the 99% cap for a
+    while longer before it actually finishes."""
     user_id = session["user_id"]
-    return {"label": state_store.read_turn_status(user_id, story_slug)}
+    status = state_store.read_turn_status(user_id, story_slug)
+    if status is None:
+        return {"label": None, "progress": None}
+    label_key = status["label_key"]
+    estimate = state_store.p50_duration(label_key) or story_engine.DEFAULT_STEP_ESTIMATE_SECONDS.get(label_key)
+    progress = min(99, round((time.time() - status["started_at"]) / estimate * 100)) if estimate else None
+    return {"label": story_engine.STATUS_LABELS.get(label_key, label_key), "progress": progress}
 
 
 @app.route("/play/<story_slug>/api/turn", methods=["POST"])

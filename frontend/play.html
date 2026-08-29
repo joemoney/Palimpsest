@@ -38,8 +38,15 @@
   </form>
 </dialog>
 <div id="busy-indicator" class="busy-indicator" role="status" aria-live="polite">
-  <span class="spinner-ring"></span>
-  <span id="busy-indicator-label">Working…</span>
+  <div class="busy-indicator-card">
+    <div class="busy-indicator-top">
+      <span class="spinner-ring"></span>
+      <span id="busy-indicator-label">Working…</span>
+    </div>
+    <div id="busy-progress" class="busy-progress hidden">
+      <div id="busy-progress-fill" class="busy-progress-fill"></div>
+    </div>
+  </div>
 </div>
 {% endif %}
 {% endblock %}
@@ -195,6 +202,15 @@
   // whole request. Plain pagination requests (the scroll sentinel) aren't tagged, so they
   // fall back to a generic label with no polling - they're already near-instant and never
   // touch story_engine's LLM-call chain.
+  //
+  // `progress` (0-99, or null) estimates how far into the current step the request is,
+  // as a percent of that step's rolling P50 (median) duration (app.py's /api/status route,
+  // backed by state_store's per-label latency samples) - null until enough samples exist
+  // for a label, in which case the bar stays hidden and only the spinner shows. Never
+  // reaches 100 from the estimate alone: the fill only visually completes when the step
+  // actually finishes, i.e. the next poll reports a different label (or htmx:afterRequest
+  // fires) - median means a slower-than-typical call will sit at the 99% cap for a while
+  // before that happens, which is expected, not a bug.
   var STATUS_POLL_MS = 400;
   var statusPollTimer = null;
 
@@ -206,6 +222,17 @@
         if (label && data && data.label) {
           label.textContent = data.label + "…";
         }
+        var progressWrap = document.getElementById("busy-progress");
+        var fill = document.getElementById("busy-progress-fill");
+        if (progressWrap && fill) {
+          if (data && typeof data.progress === "number") {
+            progressWrap.classList.remove("hidden");
+            fill.style.width = data.progress + "%";
+          } else {
+            progressWrap.classList.add("hidden");
+            fill.style.width = "0%";
+          }
+        }
       })
       .catch(function () {});
   }
@@ -213,6 +240,10 @@
   document.body.addEventListener("htmx:beforeRequest", function (evt) {
     var label = document.getElementById("busy-indicator-label");
     if (label) { label.textContent = "Working…"; }
+    var progressWrap = document.getElementById("busy-progress");
+    var fill = document.getElementById("busy-progress-fill");
+    if (progressWrap) { progressWrap.classList.add("hidden"); }
+    if (fill) { fill.style.width = "0%"; }
     var elt = evt.detail && evt.detail.elt;
     if (elt && elt.hasAttribute && elt.hasAttribute("data-status-poll")) {
       pollTurnStatus();
@@ -261,6 +292,51 @@
     var msg = document.getElementById("llm-error-message");
     if (msg) { msg.textContent = evt.detail.xhr.responseText; }
     if (modal) { modal.showModal(); }
+  });
+
+  // htmx:responseError only covers a request that got a real (non-2xx) HTTP response.
+  // htmx:sendError is the other failure mode - the request never got a response at all
+  // (DNS hiccup, connection reset, or - the case this was added for - a mobile browser
+  // tearing down a backgrounded tab's in-flight connection when the player tabs away
+  // mid-turn). Without this, that failure was completely silent: htmx:afterRequest still
+  // fires either way (it's the lifecycle wrap-up, not a success signal), so the busy
+  // indicator hides exactly as if the turn had finished, but no swap ever lands and
+  // #controls - only ever re-enabled by the OOB swap in a real response - stays disabled
+  // with no explanation. responseText is empty here (there was no response), hence the
+  // fallback message.
+  document.body.addEventListener("htmx:sendError", function () {
+    var modal = document.getElementById("llm-error-modal");
+    var msg = document.getElementById("llm-error-message");
+    if (msg) { msg.textContent = "The request never reached the server (connection lost)."; }
+    if (modal) { modal.showModal(); }
+  });
+
+  // Mobile-browser recovery: tabbing away mid-turn and back can leave the page stuck even
+  // when the turn actually completed successfully server-side (confirmed via bug report -
+  // Brave/Android backgrounding the tab loses the in-flight response, or delivers it too
+  // late for htmx to apply the swap) - the busy indicator disappears (htmx:afterRequest
+  // fires regardless of outcome) but the new scene never renders and #controls stays
+  // disabled forever, since nothing but a successful swap's OOB update ever re-enables it.
+  // Manually refreshing the page always fixes it (the server-rendered page reflects
+  // whatever was actually saved) - this does the same thing automatically. The 800ms delay
+  // before checking gives a genuinely-still-in-flight response (queued while the page was
+  // frozen, about to resolve normally on its own) a moment to land first, so this only
+  // reloads when #controls is still disabled AND the server confirms no turn is actually
+  // in progress - never while a turn is still legitimately running.
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState !== "visible") { return; }
+    window.setTimeout(function () {
+      var controls = document.getElementById("controls");
+      if (!controls || !controls.disabled) { return; }
+      fetch("/play/" + STORY_SLUG + "/api/status")
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (controls.disabled && data && data.label === null) {
+            window.location.reload();
+          }
+        })
+        .catch(function () {});
+    }, 800);
   });
 
   // Preserve scroll position when older scenes are prepended above the fold -

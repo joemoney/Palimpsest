@@ -20,6 +20,7 @@ import copy
 import hashlib
 import os
 import sys
+import tempfile
 import types
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -94,11 +95,33 @@ def _install_stubs():
         sys.modules["werkzeug"] = werkzeug_stub
 
 
+def _redirect_data_dir(ss, data_dir):
+    """Points every DATA_DIR-derived path (runtime-only: saves/, accounts.db,
+    perf_stats.json) at data_dir. Shared by load_story_engine/load_state_store below so the
+    two never drift apart - both need every path state_store derives from DATA_DIR
+    redirected, not just the ones each test file happens to touch directly. In particular
+    PERF_STATS_PATH: story_engine.py's _timed() calls state_store.record_call_duration() on
+    every single call unconditionally (unlike the turn-status beacon, which only writes
+    when a real take_turn/regenerate_last_turn call set up _status_ctx) - any test that
+    exercises story_engine's LLM-call machinery at all would otherwise leak stub/test
+    timings into the real data/perf_stats.json on disk, which is exactly what happened
+    before this helper existed (load_story_engine() didn't redirect DATA_DIR, only
+    load_state_store() did)."""
+    ss.DATA_DIR = data_dir
+    ss.SAVES_DIR = os.path.join(ss.DATA_DIR, "saves")
+    ss.ACCOUNTS_DB_PATH = os.path.join(ss.DATA_DIR, "accounts.db")
+    ss.PERF_STATS_PATH = os.path.join(ss.DATA_DIR, "perf_stats.json")
+
+
 def load_story_engine():
     """Import story_engine (and its state_store dependency) with external deps
     stubbed out. Idempotent - safe to call from multiple test files in the same
-    run. Does NOT redirect state_store's storage paths - use load_state_store()
-    for tests that exercise the storage layer itself."""
+    run. Redirects state_store's runtime storage (DATA_DIR and everything derived from
+    it) to a fresh tmp dir per call, same as load_state_store() below - but leaves
+    STORIES_DIR alone, since tests here deliberately read the real, committed stories/
+    content (e.g. DEFAULT_STORY_SLUG's template.json) rather than a fixture. Use
+    load_state_store() instead for tests that exercise the storage layer itself and need
+    STORIES_DIR redirected too."""
     os.chdir(REPO_ROOT)  # engine modules resolve stories/, data/ relative to cwd
     os.environ.setdefault("GOOGLE_API_KEY", "test-key")
     # story_engine.py defaults LLM_PROVIDER to "openrouter" in real use, but Google is the
@@ -113,6 +136,7 @@ def load_story_engine():
         sys.path.insert(0, BACKEND_DIR)
 
     import story_engine as se
+    _redirect_data_dir(se.state_store, os.path.join(tempfile.mkdtemp(prefix="cyoa_story_engine_test_"), "data"))
     return se
 
 
@@ -129,9 +153,7 @@ def load_state_store(tmp_path):
 
     import state_store as ss
     ss.STORIES_DIR = os.path.join(tmp_path, "stories")
-    ss.DATA_DIR = os.path.join(tmp_path, "data")
-    ss.SAVES_DIR = os.path.join(ss.DATA_DIR, "saves")
-    ss.ACCOUNTS_DB_PATH = os.path.join(ss.DATA_DIR, "accounts.db")
+    _redirect_data_dir(ss, os.path.join(tmp_path, "data"))
     os.makedirs(ss.STORIES_DIR, exist_ok=True)
     return ss
 

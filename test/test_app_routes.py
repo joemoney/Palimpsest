@@ -153,7 +153,7 @@ try:
     # around from a previous request that never happened) ---
     resp = client.get("/play/new_babel/api/status")
     assert resp.status_code == 200
-    assert resp.get_json() == {"label": None}
+    assert resp.get_json() == {"label": None, "progress": None}
     print("OK: GET /api/status with no turn in flight reports label: None")
 
     # --- POST /api/turn calls take_turn and returns a scene+controls htmx fragment ---
@@ -169,7 +169,7 @@ try:
     # not left showing a stale "Reckoning"/"Narrating" from the just-finished turn ---
     resp = client.get("/play/new_babel/api/status")
     assert resp.status_code == 200
-    assert resp.get_json() == {"label": None}
+    assert resp.get_json() == {"label": None, "progress": None}
     print("OK: GET /api/status is cleared back to None after the turn completes")
 
     # --- a turn already in flight for this save makes /api/turn and /api/regenerate refuse
@@ -178,7 +178,7 @@ try:
     # directly via the beacon rather than a real concurrent request - Flask's test client
     # runs requests synchronously, so two genuinely overlapping requests aren't reachable
     # here; this exercises the same check the routes make either way. ---
-    ss.write_turn_status(alice_id, "new_babel", "Narrating")
+    ss.write_turn_status(alice_id, "new_babel", "narration")
     resp = client.post("/play/new_babel/api/turn", data={"action": "look around"})
     assert resp.status_code == 409, resp.status_code
     resp = client.post("/play/new_babel/api/regenerate")
@@ -252,20 +252,20 @@ try:
     seen_labels = []
 
     def _narration_checks_status(prompt):
-        seen_labels.append(ss.read_turn_status(carol_id, "new_babel"))
+        seen_labels.append(ss.read_turn_status(carol_id, "new_babel")["label_key"])
         return "Carol's narration.\n\n1. Wait.\n2. Go."
 
     def _state_update_checks_status(prompt):
-        seen_labels.append(ss.read_turn_status(carol_id, "new_babel"))
+        seen_labels.append(ss.read_turn_status(carol_id, "new_babel")["label_key"])
         return dict(state_update)
 
     se.call_llm = _narration_checks_status
     se.call_llm_json = _state_update_checks_status
     resp = carol_client.post("/play/new_babel/api/turn", data={"action": "wait"})
     assert resp.status_code == 200
-    assert seen_labels == ["Narrating", "Reckoning"], seen_labels
-    print("OK: the status beacon shows 'Narrating' during the narration call and "
-          "'Reckoning' during the following state-update call")
+    assert seen_labels == ["narration", "state_update"], seen_labels
+    print("OK: the status beacon shows 'narration' during the narration call and "
+          "'state_update' during the following state-update call")
     se.call_llm = call_queue
     se.call_llm_json = json_queue
 

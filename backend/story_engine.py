@@ -243,6 +243,32 @@ STATUS_LABELS = {
     "summary_rollover": "Remembering",
 }
 
+# Seed estimate (seconds) for the busy indicator's per-step progress bar before
+# state_store.p50_duration has any real samples for a label - a brand-new deploy (or a
+# freshly cleared data/perf_stats.json) would otherwise show no progress bar at all for
+# every player's first several turns, since p50_duration returns None with zero samples.
+# app.py's /api/status route only falls back to this when p50_duration is None - one real
+# completed call is enough for the rolling median to take over from then on.
+#
+# Values below are the actual P50s (median) measured off this deployment's own deepseek
+# call history (scripts/perf_dashboard.py against palimpsest-web's retained docker logs,
+# 2026-08-29 - narration/state_update/summary_rollover/act_advancement_check/
+# subplot_generation all had real samples; data/perf_stats.json was seeded from the same
+# log data at the same time, so in practice these constants only matter again after that
+# file is lost or reset), not guesses - keep them roughly in line with reality if the
+# active models change materially, so a fresh deploy's first few turns aren't wildly off.
+# end_story_final_arc has no production samples yet (nobody's ended a story since timing
+# was added) - its value is still an estimate, sized similarly to the other single-shot
+# generation calls (subplot_generation, summary_rollover) above rather than measured.
+DEFAULT_STEP_ESTIMATE_SECONDS = {
+    "narration": 17,
+    "state_update": 23,
+    "subplot_generation": 6,
+    "act_advancement_check": 4,
+    "end_story_final_arc": 15,
+    "summary_rollover": 19,
+}
+
 # Sets (user_id, story_slug) for the duration of one take_turn/regenerate_last_turn call so
 # _timed() (several stack frames deeper, in functions that don't themselves take user_id/
 # story_slug) knows where to write its status beacon. Thread-local rather than a plain
@@ -266,16 +292,23 @@ def _timed(label: str, fn, model: str):
     STATE_UPDATE_MODEL, or an explicit override) - included in the log line so
     perf_dashboard.py can group latency by model, not just by call label, since
     NARRATION_MODEL/STATE_UPDATE_MODEL are now freely swapped via .env for testing.
-    Also writes a status beacon (STATUS_LABELS[label]) before running fn(), if
-    take_turn/regenerate_last_turn set one up for this thread - see _status_ctx above."""
+    Also writes a status beacon (the raw label - app.py maps it through STATUS_LABELS for
+    display) before running fn(), if take_turn/regenerate_last_turn set one up for this
+    thread - see _status_ctx above. After fn() returns, records the elapsed duration into
+    state_store's rolling per-label stats (state_store.record_call_duration), which feeds
+    the busy indicator's per-step progress-bar estimate (p50_duration) on the next turn -
+    deliberately separate from perf_dashboard.py's docker-logs-based durable record, see
+    that file's docstring for why this process never reads docker logs itself."""
     ctx = getattr(_status_ctx, "user_id", None)
     if ctx is not None:
-        state_store.write_turn_status(_status_ctx.user_id, _status_ctx.story_slug, STATUS_LABELS.get(label, label))
+        state_store.write_turn_status(_status_ctx.user_id, _status_ctx.story_slug, label)
     start = time.monotonic()
     try:
         return fn()
     finally:
-        print(f"[TIMING] {label} model={model}: {time.monotonic() - start:.2f}s")
+        elapsed = time.monotonic() - start
+        print(f"[TIMING] {label} model={model}: {elapsed:.2f}s")
+        state_store.record_call_duration(label, elapsed)
 
 
 def check_subplot_status(state: dict) -> dict:

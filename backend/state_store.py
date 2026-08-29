@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sqlite3
+import time
 import uuid
 
 import filelock
@@ -123,12 +124,18 @@ def _status_path(user_id: str, story_slug: str) -> str:
     return _save_path(user_id, story_slug) + ".status"
 
 
-def write_turn_status(user_id: str, story_slug: str, label: str):
+def write_turn_status(user_id: str, story_slug: str, label_key: str):
+    """label_key is the raw _timed() label (e.g. "narration"), not the display word -
+    display mapping (story_engine.STATUS_LABELS) and P50 lookup (p50_duration below) both
+    key off this same raw label, so app.py's /api/status route does both off one value.
+    started_at (wall-clock, not story_engine's monotonic timer - this crosses a process/
+    request boundary via the poll, so it needs to be comparable to another process's
+    time.time() call) lets that route estimate how far into the step the request is."""
     path = _status_path(user_id, story_slug)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp_path = path + f".tmp{os.getpid()}"
     with open(tmp_path, "w") as f:
-        f.write(label)
+        json.dump({"label_key": label_key, "started_at": time.time()}, f)
     os.replace(tmp_path, path)
 
 
@@ -139,12 +146,97 @@ def clear_turn_status(user_id: str, story_slug: str):
         pass
 
 
-def read_turn_status(user_id: str, story_slug: str) -> str | None:
+# clear_turn_status() lives in story_engine.py's take_turn/regenerate_last_turn `finally`
+# blocks, so it only runs if that Python frame gets to unwind. It doesn't if the worker
+# process is killed out from under it - gunicorn's own --timeout (Dockerfile CMD, 220s)
+# hard-kills a worker that runs long enough, and that's a strictly harder deadline than
+# anything story_engine.py's own OPENROUTER_TOTAL_TIMEOUT/GOOGLE_TOTAL_TIMEOUT fail-safes
+# are sized to prevent by themselves (see Dockerfile's comment on --timeout) - a request
+# that chains multiple slow _timed() calls in one turn can still exceed it even though any
+# one call is individually bounded. Left unhandled, a beacon from a request like that never
+# gets cleared, which - since app.py's take_turn/regenerate_turn treat "a beacon exists" as
+# "a turn is already running" - would otherwise soft-lock that save out of every future turn
+# forever, not just the one that actually failed. 240s (20s past gunicorn's own timeout,
+# so a beacon is only ever called stale after gunicorn itself would already have given up)
+# is deliberately not tied to any single call's own timeout constant - it's a backstop for
+# "the process is simply gone," not a latency budget.
+TURN_STATUS_STALE_SECONDS = 240
+
+
+def read_turn_status(user_id: str, story_slug: str) -> dict | None:
     try:
         with open(_status_path(user_id, story_slug), "r") as f:
-            return f.read().strip() or None
-    except FileNotFoundError:
+            status = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
         return None
+    if time.time() - status.get("started_at", 0) > TURN_STATUS_STALE_SECONDS:
+        clear_turn_status(user_id, story_slug)
+        return None
+    return status
+
+
+# ---------------------------------------------------------------------------
+# Per-step latency stats (busy-indicator progress bar - app.py's /api/status route)
+# ---------------------------------------------------------------------------
+# A rolling sample window per _timed() label, used only to estimate how full a step's
+# progress bar should be (elapsed / p50) while it's still running - NOT the durable
+# performance record (that's scripts/perf_dashboard.py, which reads docker logs directly
+# from the host and is deliberately never wired into this web process - see its
+# docstring). This file is small, in-process-readable, and global across users/stories
+# (latency is a property of the label/model doing the work, not of any one player's
+# story), which is exactly what a live progress estimate needs and perf_dashboard.py's
+# docker-logs approach can't give a running request.
+#
+# Read-modify-write with no locking, same tradeoff as the status beacon above: two
+# concurrent turns (different users, different gunicorn worker processes) racing this
+# file can lose one one's sample, but os.replace keeps the file itself always valid JSON,
+# and losing an occasional sample only slightly skews an estimate - never worth a lock on
+# every single LLM call.
+PERF_STATS_PATH = os.path.join(DATA_DIR, "perf_stats.json")
+PERF_STATS_WINDOW = 50
+
+
+def record_call_duration(label: str, seconds: float):
+    try:
+        try:
+            with open(PERF_STATS_PATH, "r") as f:
+                stats = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            stats = {}
+        samples = stats.setdefault(label, [])
+        samples.append(seconds)
+        del samples[:-PERF_STATS_WINDOW]
+        os.makedirs(os.path.dirname(PERF_STATS_PATH), exist_ok=True)
+        tmp_path = PERF_STATS_PATH + f".tmp{os.getpid()}"
+        with open(tmp_path, "w") as f:
+            json.dump(stats, f)
+        os.replace(tmp_path, PERF_STATS_PATH)
+    except OSError:
+        pass  # best-effort - never let stats bookkeeping break a turn
+
+
+def p50_duration(label: str) -> float | None:
+    """Median (not mean) call duration for this label - the mean gets dragged around by
+    the rare very-slow outlier (see scripts/perf_dashboard.py's own p50/mean columns),
+    where the median tracks the typical-case call. Chosen over p90 deliberately: p90 is
+    the safer "won't finish early" choice, but fills the bar too slowly for a typical call
+    - median fills at the pace most calls actually complete at, at the cost of the bar
+    more often hitting 100% and sitting there briefly on a slower-than-typical call (capped
+    at 99% by app.py's /api/status route for exactly that reason). None until enough
+    samples exist for this label - callers should fall back to a label with no progress
+    bar (just the spinner) in that case, not a fabricated estimate."""
+    try:
+        with open(PERF_STATS_PATH, "r") as f:
+            samples = json.load(f).get(label, [])
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    if not samples:
+        return None
+    ordered = sorted(samples)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2
 
 
 # ---------------------------------------------------------------------------
