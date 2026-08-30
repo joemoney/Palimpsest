@@ -219,6 +219,20 @@
   // apart from "idle because nothing is running" (e.g. a stray poll after the result was
   // already fetched).
   var awaitingResult = false;
+  // pollTurnStatus() is called once synchronously from htmx:beforeRequest below, which
+  // fires before the kickoff POST has even reached the server - there's a real race where
+  // that very first /api/status check lands before app.py's _start_turn_job has written
+  // its "queued" beacon, reads back label: null, and (without this guard) gets mistaken
+  // for "the turn already finished." That prematurely calls fetchTurnResult(), which then
+  // hits /api/turn/result while the turn is still genuinely running, draws a 409, and
+  // htmx:responseError treats it as a hard failure - popping the error modal and
+  // re-enabling #controls while the actual background turn keeps running unobserved (it
+  // still finishes and saves correctly, but nothing is left polling for it, so a later
+  // click on a new action correctly - but confusingly - gets its own "already in progress"
+  // 409 from the server). sawInFlight requires the poll to have actually observed the
+  // turn running at least once before "idle" is trusted as "done", closing that race
+  // regardless of how it's timed.
+  var sawInFlight = false;
   var resultTarget = null;
   var resultSwap = null;
 
@@ -250,7 +264,8 @@
             fill.style.width = "0%";
           }
         }
-        if (awaitingResult && !(data && data.label)) {
+        if (data && data.label) { sawInFlight = true; }
+        if (awaitingResult && sawInFlight && !(data && data.label)) {
           awaitingResult = false;
           if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null; }
           fetchTurnResult();
@@ -287,6 +302,7 @@
       resultTarget = elt.getAttribute("data-result-target");
       resultSwap = elt.getAttribute("data-result-swap");
       awaitingResult = true;
+      sawInFlight = false;
       showBusyIndicator();
       pollTurnStatus();
       statusPollTimer = setInterval(pollTurnStatus, STATUS_POLL_MS);
@@ -341,6 +357,7 @@
     var controls = document.getElementById("controls");
     if (controls) { controls.disabled = false; }
     awaitingResult = false;
+    sawInFlight = false;
     if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null; }
     hideBusyIndicator();
   }
