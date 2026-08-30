@@ -66,6 +66,109 @@
 </section>
 {% endif %}
 
+{% if characters %}
+<section class="card">
+  <div style="font-weight:700; margin-bottom:10px;">Characters</div>
+  {% for cid, char in characters.items() %}
+  <div style="padding:8px 0; {% if not loop.first %}border-top:1px solid rgba(148,163,184,0.15);{% endif %}">
+    <div style="font-weight:600;">{{ char.name or cid }}
+      {% if char.type == 'npc' %}
+      <span style="color:var(--muted); font-weight:400; font-size:0.8rem;">
+        ({{ "introduced" if char.introduced else "not yet introduced" }})
+      </span>
+      {% endif %}
+    </div>
+    {% if char.description %}
+    <div style="color:var(--muted); font-size:0.9rem; margin-top:2px;">{{ char.description }}</div>
+    {% endif %}
+    {% if char.role or char.relationship_to_player %}
+    <div style="color:var(--muted); font-size:0.8rem; margin-top:4px;">
+      {% if char.role %}Role: {{ char.role }}{% endif %}
+      {% if char.role and char.relationship_to_player %} &middot; {% endif %}
+      {% if char.relationship_to_player %}Relationship: {{ char.relationship_to_player }}{% endif %}
+    </div>
+    {% endif %}
+    {% if char.hook and not char.introduced %}
+    <div style="color:var(--muted); font-size:0.8rem; margin-top:4px;">Hook: {{ char.hook }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% set pending_seeds = plot.thread_steering.pending_seeds if plot.thread_steering else [] %}
+{% if pending_seeds %}
+<section class="card">
+  <div style="font-weight:700; margin-bottom:10px;">Pending Review ({{ pending_seeds | length }})</div>
+  <p style="color:var(--muted); font-size:0.85rem; margin-bottom:10px;">
+    Generated from a freeform note (see "Seed a Future Addition" below) — nothing here is
+    part of the story yet. Edit any field before applying, or discard it.
+  </p>
+  {% for seed in pending_seeds %}
+  <div style="padding:12px 0; {% if not loop.first %}border-top:1px solid rgba(148,163,184,0.15);{% endif %}">
+    <div style="font-weight:600; margin-bottom:6px;">[{{ seed.type }}] from: &ldquo;{{ seed.note }}&rdquo;</div>
+    <form method="post">
+      <input type="hidden" name="command" value="seed-apply">
+      <input type="hidden" name="seed_id" value="{{ seed.id }}">
+      {% if seed.type == 'character' %}
+      <label for="seed-{{ seed.id }}-name">Name</label>
+      <input type="text" id="seed-{{ seed.id }}-name" name="name" value="{{ seed.draft.name or '' }}">
+      <label for="seed-{{ seed.id }}-desc">Description</label>
+      <textarea id="seed-{{ seed.id }}-desc" name="description" rows="2">{{ seed.draft.description or '' }}</textarea>
+      <label for="seed-{{ seed.id }}-role">Role</label>
+      <input type="text" id="seed-{{ seed.id }}-role" name="role" value="{{ seed.draft.role or '' }}">
+      <label for="seed-{{ seed.id }}-rel">Relationship to player</label>
+      <input type="text" id="seed-{{ seed.id }}-rel" name="relationship_to_player" value="{{ seed.draft.relationship_to_player or '' }}">
+      <label for="seed-{{ seed.id }}-hook">Hook (how/when they enter)</label>
+      <textarea id="seed-{{ seed.id }}-hook" name="hook" rows="2">{{ seed.draft.hook or '' }}</textarea>
+      {% elif seed.type == 'subplot' %}
+      <label for="seed-{{ seed.id }}-title">Title</label>
+      <input type="text" id="seed-{{ seed.id }}-title" name="title" value="{{ seed.draft.title or '' }}">
+      <label for="seed-{{ seed.id }}-desc">Description</label>
+      <textarea id="seed-{{ seed.id }}-desc" name="description" rows="2">{{ seed.draft.description or '' }}</textarea>
+      <label for="seed-{{ seed.id }}-priority">Priority</label>
+      <select id="seed-{{ seed.id }}-priority" name="priority">
+        {% for p in ['high', 'medium', 'low'] %}
+        <option value="{{ p }}" {% if seed.draft.priority == p %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+      <label for="seed-{{ seed.id }}-ties">Ties to main plot</label>
+      <input type="text" id="seed-{{ seed.id }}-ties" name="ties_to_main_plot" value="{{ seed.draft.ties_to_main_plot or '' }}">
+      {% elif seed.type == 'direction' %}
+      <label for="seed-{{ seed.id }}-title">Title</label>
+      <input type="text" id="seed-{{ seed.id }}-title" name="title" value="{{ seed.draft.title or '' }}">
+      <label for="seed-{{ seed.id }}-desc">Description</label>
+      <textarea id="seed-{{ seed.id }}-desc" name="description" rows="2">{{ seed.draft.description or '' }}</textarea>
+      {% endif %}
+      <button type="submit">Apply</button>
+    </form>
+    <form method="post" style="margin-top:6px;">
+      <input type="hidden" name="command" value="seed-discard">
+      <input type="hidden" name="seed_id" value="{{ seed.id }}">
+      <button type="submit" style="background:var(--danger);">Discard</button>
+    </form>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<details class="card">
+  <summary>Seed a Future Addition</summary>
+  <p style="color:var(--muted); font-size:0.85rem;">
+    Describe something to work into the story going forward — not a scene action to
+    narrate now. The LLM decides whether it's best realized as a new character, a new
+    subplot, or a looser plot direction, and drafts it for your review above before
+    anything is added.
+  </p>
+  <form method="post">
+    <input type="hidden" name="command" value="seed-generate">
+    <label for="seed-note">Note</label>
+    <textarea id="seed-note" name="note" rows="2" required
+      placeholder="e.g. Add a new female character who becomes romantically tied to the protagonist"></textarea>
+    <button type="submit">Generate Draft</button>
+  </form>
+</details>
+
 <details class="card">
   <summary>Add Act</summary>
   <form method="post">

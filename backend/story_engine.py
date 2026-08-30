@@ -36,7 +36,8 @@ STEER_WARNING = (
     "    It can easily contradict what's already happened or break story coherence\n"
     "    if the command isn't well thought out. Use plot_manager.py's commands\n"
     "    ('overview', 'add-act', 'pivot', 'add-emergent', 'promote-emergent',\n"
-    "    'create-alt', 'focus', 'add-goal', 'add-theme'). ***"
+    "    'create-alt', 'focus', 'add-goal', 'add-theme', 'seed', 'seed-apply',\n"
+    "    'seed-discard', 'seed-list'). ***"
 )
 
 # --- LLM provider configuration ---
@@ -447,10 +448,19 @@ changed this turn. Use {{}}/[] for nothing changed."""
         if item in inventory:
             inventory.remove(item)
 
+    characters = state.get("characters", {})
     for char_name, delta in diff.get("relationship_changes", {}).items():
         if not char_name:
             continue
         relationships[char_name] = max(-100, min(100, relationships.get(char_name, 0) + int(delta)))
+        # A seeded NPC (see generate_steering_seed/apply_steering_seed) stays off
+        # generate_pacing_nudge's "CHARACTERS TO WEAVE IN" line once the player has actually
+        # interacted with them - this is the only signal that already exists for "the model
+        # brought this character into a scene", so no separate LLM call is needed just to
+        # detect it.
+        for char in characters.values():
+            if char.get("type") == "npc" and char.get("name") == char_name:
+                char["introduced"] = True
     # Bounded like flags_active: if a story accumulates more named relationships than this,
     # drop the least narratively significant ones first (closest to neutral), not the oldest -
     # a strongly-loved or strongly-hated character should never be the one that gets evicted.
@@ -497,6 +507,43 @@ def archive_stale_flags(state: dict):
                 break
             player["flags_archive"][name] = player["flags_active"].pop(name)
             player["flags_meta"].pop(name, None)
+
+
+def _next_subplot_id(subplots: dict) -> str:
+    existing_numbers = [
+        int(sid.rsplit("_", 1)[-1])
+        for sid in subplots
+        if sid.rsplit("_", 1)[-1].isdigit()
+    ]
+    next_number = (max(existing_numbers) + 1) if existing_numbers else 1
+    return f"subplot_{next_number:03d}"
+
+
+def insert_subplot(state: dict, title: str, description: str, priority: str = "medium",
+                     ties_to_main_plot: str = "") -> str:
+    """Shared by generate_new_subplot and plot_manager.apply_steering_seed: assigns the
+    next subplot_NNN id, activates it if there's room under max_parallel_subplots, and
+    inserts it into plot.subplots. Doesn't itself decide the content - callers already
+    have title/description/priority/ties_to_main_plot from wherever they got generated."""
+    plot = state["plot"]
+    subplots = plot["subplots"]
+    new_id = _next_subplot_id(subplots)
+
+    active_count = sum(1 for sp in subplots.values() if sp["active"])
+    make_active = active_count < plot["pacing"]["max_parallel_subplots"]
+
+    subplots[new_id] = {
+        "id": new_id,
+        "title": title,
+        "description": description,
+        "priority": priority,
+        "status": "active" if make_active else "not_started",
+        "progress": 0,
+        "completion_threshold": 100,
+        "ties_to_main_plot": ties_to_main_plot,
+        "active": make_active,
+    }
+    return new_id
 
 
 def generate_new_subplot(state: dict):
@@ -548,29 +595,67 @@ Respond with ONLY a JSON object, no other text:
     except (json.JSONDecodeError, KeyError, ValueError):
         return None
 
-    existing_numbers = [
-        int(sid.rsplit("_", 1)[-1])
-        for sid in subplots
-        if sid.rsplit("_", 1)[-1].isdigit()
-    ]
-    next_number = (max(existing_numbers) + 1) if existing_numbers else 1
-    new_id = f"subplot_{next_number:03d}"
+    return insert_subplot(
+        state, title, description,
+        priority=generated.get("priority", "medium"),
+        ties_to_main_plot=generated.get("ties_to_main_plot", ""),
+    )
 
-    active_count = sum(1 for sp in subplots.values() if sp["active"])
-    make_active = active_count < plot["pacing"]["max_parallel_subplots"]
 
-    subplots[new_id] = {
-        "id": new_id,
-        "title": title,
-        "description": description,
-        "priority": generated.get("priority", "medium"),
-        "status": "active" if make_active else "not_started",
-        "progress": 0,
-        "completion_threshold": 100,
-        "ties_to_main_plot": generated.get("ties_to_main_plot", ""),
-        "active": make_active,
-    }
-    return new_id
+def generate_steering_seed(state: dict, note: str):
+    """Mid-adventure steering, LLM-assisted: turns a freeform background note - not a scene
+    action to narrate now, a suggestion for something to work into the story going forward -
+    into a structured draft. Infers whether the note is best realized as a new CHARACTER, a
+    new SUBPLOT, or a looser plot DIRECTION, and generates the matching content. Never
+    mutates state or commits anything - returns {"type": ..., "draft": {...}} for
+    plot_manager.stage_steering_seed to hold for the player to review/edit before anything
+    is applied (see apply_steering_seed), same as generate_new_subplot returning None on a
+    bad generation rather than raising, so a failed attempt just costs nothing."""
+    plot = state["plot"]
+    main_thread = plot["main_thread"]
+    current_act = main_thread["acts"][main_thread["current_act"] - 1]
+    live_titles = [sp["title"] for sp in plot["subplots"].values() if sp["status"] != "completed"]
+    existing_characters = [c["name"] for c in state.get("characters", {}).values() if c.get("name")]
+    summary = state["history_log"]["compressed_summary"] or "The story has just begun."
+
+    prompt = f"""You are helping the player steer an ongoing interactive story between turns.
+They've given you a background note - NOT a scene action to narrate right now, but a
+suggestion for something to work into the story going forward. Decide what kind of
+addition it implies, and generate it.
+
+WORLD RULES:
+{chr(10).join(f"- {r}" for r in state["world"]["rules"])}
+
+MAIN THREAD: {main_thread['title']} - {main_thread['description']}
+CURRENT ACT: {current_act['title']} - {current_act['description']}
+STORY SO FAR: {summary}
+EXISTING SUBPLOT TITLES (do not repeat): {', '.join(live_titles) or 'none'}
+EXISTING CHARACTERS (do not repeat): {', '.join(existing_characters) or 'none'}
+
+PLAYER'S NOTE: {note}
+
+Decide whether this note is best realized as a new CHARACTER, a new SUBPLOT, or a plot
+DIRECTION (a looser narrative hook not tied to one character or a self-contained subplot).
+Respond with ONLY a JSON object, no other text, in exactly one of these three shapes:
+
+{{"type": "character", "character": {{"name": "<full name>", "description": "<who they are, appearance, personality>", "role": "<their narrative role, e.g. 'potential romantic interest'>", "relationship_to_player": "<initial stance toward the player>", "hook": "<a concrete, specific way they could naturally enter the story soon>"}}}}
+
+{{"type": "subplot", "subplot": {{"title": "<short subplot title>", "description": "<1-2 sentences>", "priority": "<high|medium|low>", "ties_to_main_plot": "<how this connects to the main thread>"}}}}
+
+{{"type": "direction", "direction": {{"title": "<short title>", "description": "<1-2 sentences>"}}}}"""
+
+    try:
+        generated = _timed("steering_seed_generation", lambda: call_llm_json(prompt), model=STATE_UPDATE_MODEL)
+        seed_type = generated["type"]
+        if seed_type not in ("character", "subplot", "direction"):
+            raise KeyError(seed_type)
+        draft = generated[seed_type]
+        if not isinstance(draft, dict):
+            raise ValueError(draft)
+    except (json.JSONDecodeError, KeyError, ValueError):
+        return None
+
+    return {"type": seed_type, "draft": draft}
 
 
 def is_end_story_command(action: str) -> bool:
@@ -749,6 +834,35 @@ def generate_pacing_nudge(state: dict) -> str:
         inactive_subplots = [(sid, sp) for sid, sp in subplots.items() if sp["status"] == "not_started"]
         if inactive_subplots:
             nudge_parts.append(f"SUBPLOT OPPORTUNITY: Consider introducing hooks for '{inactive_subplots[0][1]['title']}' when appropriate.")
+
+    # Steering content noted between turns - via plot_manager.py's add-emergent/add-goal, or
+    # an applied steering seed (generate_steering_seed/apply_steering_seed) - used to be
+    # write-only: recorded in state but never read back into the narration prompt. Surfaced
+    # here in the same "when appropriate" register as the subplot opportunity line above.
+    # Each list stays unbounded on disk (same as completed_subplots); only the most recent
+    # couple of *unresolved* entries are ever pulled into the prompt - a promoted direction
+    # or an introduced character stops appearing on its own via the flag that already marks
+    # it resolved, no separate eviction needed.
+    pending_characters = [
+        c for c in state.get("characters", {}).values()
+        if c.get("type") == "npc" and not c.get("introduced") and c.get("hook")
+    ]
+    if pending_characters:
+        hooks = "; ".join(f"{c['name']} - {c['hook']}" for c in pending_characters[-2:])
+        nudge_parts.append(f"CHARACTERS TO WEAVE IN: {hooks}")
+
+    pending_directions = [d for d in main_thread.get("emergent_directions", []) if not d.get("promoted")]
+    if pending_directions:
+        directions = "; ".join(f"{d['title']} - {d['description']}" for d in pending_directions[-2:])
+        nudge_parts.append(f"NOTED DIRECTION: {directions}")
+
+    active_goals = [
+        g for g in state["plot"].get("thread_steering", {}).get("player_driven_goals", [])
+        if g.get("active")
+    ]
+    if active_goals:
+        goals = "; ".join(g["description"] for g in active_goals[-2:])
+        nudge_parts.append(f"PLAYER GOAL: {goals}")
 
     pacing["last_pacing_direction"] = " | ".join(nudge_parts)
     return "\n".join(nudge_parts)

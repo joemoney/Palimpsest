@@ -439,11 +439,29 @@ def plot_manager_view(story_slug):
             plot_manager.add_player_goal(state, request.form.get("goal", ""))
         elif command == "add-theme":
             plot_manager.add_emerging_theme(state, request.form.get("theme", ""))
+        elif command == "seed-generate":
+            # A single JSON-only LLM call (story_engine.generate_steering_seed) - same
+            # complexity class as the already-synchronous subplot_generation/
+            # act_advancement_check calls, which run in single-digit seconds in practice,
+            # well under the Cloudflare tunnel's ~100-125s cutoff - so this stays inline
+            # like every other command on this route, unlike take_turn/regenerate_turn's
+            # background-thread + poll handoff (see "Asynchronous turn-taking" in
+            # CLAUDE.md), which exists specifically for the much longer full turn chain.
+            plot_manager.stage_steering_seed(state, request.form.get("note", ""))
+        elif command == "seed-apply":
+            overrides = {}
+            for field in ("name", "title", "description", "role", "relationship_to_player", "hook", "priority", "ties_to_main_plot"):
+                if request.form.get(field):
+                    overrides[field] = request.form[field]
+            plot_manager.apply_steering_seed(state, request.form.get("seed_id", ""), **overrides)
+        elif command == "seed-discard":
+            plot_manager.discard_steering_seed(state, request.form.get("seed_id", ""))
         state_store.save_state(state, user_id, story_slug)
         return redirect(url_for("plot_manager_view", story_slug=story_slug))
 
     return render_template(
-        "plot_manager.html", story_title=state["meta"]["title"], story_slug=story_slug, plot=state["plot"]
+        "plot_manager.html", story_title=state["meta"]["title"], story_slug=story_slug,
+        plot=state["plot"], characters=state.get("characters", {}),
     )
 
 

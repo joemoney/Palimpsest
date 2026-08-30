@@ -7,6 +7,7 @@ import sys
 from datetime import datetime
 
 import state_store
+import story_engine
 
 
 def show_plot_overview(state):
@@ -79,6 +80,37 @@ def show_plot_overview(state):
         print("-" * 70)
         for pivot in steering["pivot_history"][-3:]:  # Show last 3 pivots
             print(f"Turn {pivot['turn']}: {pivot['reason']}")
+        print()
+
+    # Show characters (the pre-authored "Architect"-style entries as well as any seeded via
+    # 'seed'/'seed-apply' - see apply_steering_seed). Only place either kind is displayed;
+    # a seeded character would otherwise be invisible for review outside the raw save file.
+    characters = state.get("characters", {})
+    if characters:
+        print("-" * 70)
+        print("CHARACTERS")
+        print("-" * 70)
+        for char_id, char in characters.items():
+            marker = ""
+            if char.get("type") == "npc":
+                marker = " (introduced)" if char.get("introduced") else " (not yet introduced)"
+            print(f"{char.get('name', char_id)} [{char_id}]{marker}")
+            if char.get("description"):
+                print(f"  {char['description']}")
+            if char.get("hook"):
+                print(f"  Hook: {char['hook']}")
+            print()
+
+    # Show pending steering seeds awaiting review (see stage_steering_seed) - nothing here
+    # has been committed to the save yet.
+    pending = steering.get("pending_seeds", [])
+    if pending:
+        print("-" * 70)
+        print(f"PENDING SEEDS ({len(pending)} awaiting review)")
+        print("-" * 70)
+        for seed in pending:
+            print(f"{seed['id']} [{seed['type']}] - from note: \"{seed['note']}\"")
+        print("Run 'seed-list' for full details, 'seed-apply <id>' or 'seed-discard <id>'.")
         print()
 
 
@@ -289,6 +321,154 @@ def add_emerging_theme(state, theme):
         print(f"Theme already noted: {theme}")
 
 
+# --- Freeform LLM-assisted steering seeds ---
+# Unlike every command above (pure local edits), 'seed' makes one LLM call
+# (story_engine.generate_steering_seed) to turn a freeform note into a draft addition -
+# a new character, subplot, or plot direction - which the player reviews (and can edit via
+# seed-apply's overrides) before anything lands in the save. This two-step stage/apply split
+# is what makes review possible: a single combined "generate and commit" command would give
+# the player no chance to reject or tweak a bad generation before it's already in the save.
+
+_SEED_FIELDS = {
+    "character": ("name", "description", "role", "relationship_to_player", "hook"),
+    "subplot": ("title", "description", "priority", "ties_to_main_plot"),
+    "direction": ("title", "description"),
+}
+
+
+def _next_seed_id(pending_seeds):
+    existing_numbers = [
+        int(s["id"].rsplit("_", 1)[-1])
+        for s in pending_seeds
+        if s["id"].rsplit("_", 1)[-1].isdigit()
+    ]
+    next_number = (max(existing_numbers) + 1) if existing_numbers else 1
+    return f"seed_{next_number:03d}"
+
+
+def stage_steering_seed(state, note):
+    """Generate a draft character/subplot/direction from a freeform note (see
+    story_engine.generate_steering_seed) and hold it in plot.thread_steering.pending_seeds
+    for review - nothing is committed to the save until apply_steering_seed confirms it.
+    Returns the new seed's id, or None if generation failed (bad/empty LLM output - same
+    "costs nothing, just try again" failure mode as generate_new_subplot)."""
+    generated = story_engine.generate_steering_seed(state, note)
+    if generated is None:
+        print("Could not generate a seed from that note - try rephrasing it.")
+        return None
+
+    steering = state["plot"].setdefault("thread_steering", {})
+    pending = steering.setdefault("pending_seeds", [])
+    seed_id = _next_seed_id(pending)
+    pending.append({
+        "id": seed_id,
+        "note": note,
+        "turn_added": state["plot"]["pacing"]["turn_count"],
+        "type": generated["type"],
+        "draft": generated["draft"],
+    })
+
+    print(f"Staged {generated['type']} seed '{seed_id}' for review:")
+    for key, value in generated["draft"].items():
+        print(f"  {key}: {value}")
+    print(f"Run 'seed-apply {seed_id}' to commit it (pass --<field> '<override>' to edit "
+          f"a value first), or 'seed-discard {seed_id}' to drop it.")
+    return seed_id
+
+
+def apply_steering_seed(state, seed_id, **overrides):
+    """Commit a staged seed (see stage_steering_seed) to the save, applying any field
+    overrides the player supplied to edit it first. Dispatches by the seed's type into the
+    same shapes the rest of the engine already produces/expects, so a seeded addition is
+    indistinguishable from one the story generated on its own:
+    - character -> new `characters` entry, introduced: false (surfaces via
+      story_engine.generate_pacing_nudge until the player actually meets them - see
+      update_progress_from_turn's auto-flip when they do).
+    - subplot -> story_engine.insert_subplot, the same insertion generate_new_subplot uses.
+    - direction -> an emergent_directions entry, the same shape add_emergent_direction
+      already produces (and, since the pacing-nudge fix, actually read back now)."""
+    steering = state["plot"].setdefault("thread_steering", {})
+    pending = steering.setdefault("pending_seeds", [])
+    seed = next((s for s in pending if s["id"] == seed_id), None)
+    if seed is None:
+        print(f"Error: no pending seed '{seed_id}'")
+        return None
+
+    seed_type = seed["type"]
+    fields = dict(seed["draft"])
+    for key in _SEED_FIELDS.get(seed_type, ()):
+        if overrides.get(key):
+            fields[key] = overrides[key]
+
+    if seed_type == "character":
+        characters = state.setdefault("characters", {})
+        char_id = f"char_{len(characters) + 1:03d}"
+        while char_id in characters:
+            char_id = f"char_{int(char_id.rsplit('_', 1)[-1]) + 1:03d}"
+        characters[char_id] = {
+            "type": "npc",
+            "name": fields.get("name", ""),
+            "description": fields.get("description", ""),
+            "role": fields.get("role", ""),
+            "relationship_to_player": fields.get("relationship_to_player", ""),
+            "hook": fields.get("hook", ""),
+            "introduced": False,
+            "seed_note": seed["note"],
+        }
+        result_id = char_id
+        print(f"Added character '{fields.get('name', '')}' ({char_id})")
+    elif seed_type == "subplot":
+        result_id = story_engine.insert_subplot(
+            state, fields.get("title", ""), fields.get("description", ""),
+            priority=fields.get("priority", "medium"),
+            ties_to_main_plot=fields.get("ties_to_main_plot", ""),
+        )
+        print(f"Added subplot '{fields.get('title', '')}' ({result_id})")
+    elif seed_type == "direction":
+        directions = state["plot"]["main_thread"].setdefault("emergent_directions", [])
+        directions.append({
+            "title": fields.get("title", ""),
+            "description": fields.get("description", ""),
+            "turn": state["plot"]["pacing"]["turn_count"],
+            "promoted": False,
+        })
+        result_id = None
+        print(f"Noted direction: {fields.get('title', '')}")
+    else:
+        print(f"Error: unknown seed type '{seed_type}'")
+        return None
+
+    pending.remove(seed)
+    return result_id
+
+
+def list_pending_seeds(state):
+    """Print every pending seed's full draft (unlike show_plot_overview's one-line-each
+    summary) so the player has enough detail to decide whether to seed-apply as-is, with
+    overrides, or seed-discard."""
+    pending = state["plot"].get("thread_steering", {}).get("pending_seeds", [])
+    if not pending:
+        print("No pending seeds.")
+        return
+    for seed in pending:
+        print(f"{seed['id']} [{seed['type']}] - from note: \"{seed['note']}\"")
+        for key, value in seed["draft"].items():
+            print(f"  {key}: {value}")
+        print()
+
+
+def discard_steering_seed(state, seed_id):
+    """Drop a pending seed without applying it."""
+    steering = state["plot"].setdefault("thread_steering", {})
+    pending = steering.setdefault("pending_seeds", [])
+    seed = next((s for s in pending if s["id"] == seed_id), None)
+    if seed is None:
+        print(f"Error: no pending seed '{seed_id}'")
+        return
+    pending.remove(seed)
+    print(f"Discarded seed '{seed_id}'")
+
+
 def main():
     user_id, story_slug, parsed_argv = state_store.parse_user_story_args(sys.argv[1:])
     # keep a program-name placeholder at index 0 so every sys.argv[N] below still
@@ -306,6 +486,14 @@ def main():
         print("  python plot_manager.py add-emergent '<title>' '<description>'")
         print("  python plot_manager.py add-goal '<goal description>'")
         print("  python plot_manager.py add-theme '<theme>'")
+        print("\nFreeform steering seeds (LLM infers character/subplot/direction from a note,")
+        print("stages a draft for review before anything is committed - see 'seed-list'):")
+        print("  python plot_manager.py seed '<freeform note>'")
+        print("  python plot_manager.py seed-list")
+        print("  python plot_manager.py seed-apply <seed_id> [--name/--title '<override>']")
+        print("      [--description '<override>'] [--role '<override>'] [--relationship '<override>']")
+        print("      [--hook '<override>'] [--priority '<override>'] [--ties '<override>']")
+        print("  python plot_manager.py seed-discard <seed_id>")
         print("\nModifying:")
         print("  python plot_manager.py modify-act <act_number> --title '<new title>' --description '<new desc>'")
         print("  python plot_manager.py pivot '<new title>' '<new description>' '<reason>'")
@@ -410,7 +598,49 @@ def main():
         theme = argv[2]
         add_emerging_theme(state, theme)
         state_store.save_state(state, user_id, story_slug)
-    
+
+    elif command == "seed":
+        if len(argv) < 3:
+            print("Usage: python plot_manager.py seed '<freeform note>'")
+            return
+        note = argv[2]
+        stage_steering_seed(state, note)
+        state_store.save_state(state, user_id, story_slug)
+
+    elif command == "seed-list":
+        list_pending_seeds(state)
+
+    elif command == "seed-apply":
+        if len(argv) < 3:
+            print("Usage: python plot_manager.py seed-apply <seed_id> [--name/--title '<override>'] "
+                  "[--description '<override>'] [--role '<override>'] [--relationship '<override>'] "
+                  "[--hook '<override>'] [--priority '<override>'] [--ties '<override>']")
+            return
+        seed_id = argv[2]
+        kwargs = {}
+        i = 3
+        flag_map = {
+            "--name": "name", "--title": "title", "--description": "description",
+            "--role": "role", "--relationship": "relationship_to_player",
+            "--hook": "hook", "--priority": "priority", "--ties": "ties_to_main_plot",
+        }
+        while i < len(argv):
+            if argv[i] in flag_map and i + 1 < len(argv):
+                kwargs[flag_map[argv[i]]] = argv[i + 1]
+                i += 2
+            else:
+                i += 1
+        apply_steering_seed(state, seed_id, **kwargs)
+        state_store.save_state(state, user_id, story_slug)
+
+    elif command == "seed-discard":
+        if len(argv) < 3:
+            print("Usage: python plot_manager.py seed-discard <seed_id>")
+            return
+        seed_id = argv[2]
+        discard_steering_seed(state, seed_id)
+        state_store.save_state(state, user_id, story_slug)
+
     else:
         print(f"Unknown command: {command}")
         print("Run 'python plot_manager.py' for usage")
