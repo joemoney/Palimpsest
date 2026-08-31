@@ -32,6 +32,7 @@
     <div style="font-weight:600;">
       {{ "✓" if sp.status == "completed" else ("●" if sp.active else "○") }} {{ sp.title }}
       <span style="color:var(--muted); font-weight:400; font-size:0.8rem;">({{ sid }}, {{ sp.priority }})</span>
+      {% if sp.span == 'multi_act' %}<span style="color:var(--accent-2); font-weight:400; font-size:0.8rem;">[multi-act]</span>{% endif %}
     </div>
     <div style="color:var(--muted); font-size:0.9rem; margin-top:2px;">{{ sp.description }}</div>
     <div style="font-size:0.8rem; color:var(--muted); margin-top:6px;">{{ sp.status }} — {{ sp.progress }}/{{ sp.completion_threshold }}</div>

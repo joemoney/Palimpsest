@@ -103,7 +103,8 @@
         "progress": 0,
         "completion_threshold": 100,
         "ties_to_main_plot": "The innkeeper may be the first to slip and contradict yesterday's version of events.",
-        "active": true
+        "active": true,
+        "span": "single_act"
       },
       "subplot_002": {
         "id": "subplot_002",
@@ -114,7 +115,8 @@
         "progress": 0,
         "completion_threshold": 100,
         "ties_to_main_plot": "Every excuse to stay away from it seems to be protecting something specific.",
-        "active": false
+        "active": false,
+        "span": "single_act"
       }
     },
     "completed_subplots": [],
@@ -129,6 +131,8 @@
       "turn_count": 0,
       "turns_since_last_pacing_nudge": 0,
       "pacing_nudge_frequency": 8,
+      "turns_since_last_act_check": 0,
+      "act_check_frequency": 12,
       "max_parallel_subplots": 3,
       "subplots_completed_this_act": 0,
       "ready_for_main_plot_advancement": false,

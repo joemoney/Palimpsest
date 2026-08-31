@@ -45,12 +45,39 @@ meant to be open-ended. Don't reintroduce one.
   call so the pool stays topped up to `pacing.max_parallel_subplots`. Also
   fires from the manual `subplot_manager.py progress` path, so manual and
   automatic play stay consistent.
+- **Most subplots resolve within roughly one act, but some are deliberately
+  longer.** Every subplot carries a `span`: `"single_act"` (the default,
+  `completion_threshold: 100`) or `"multi_act"`
+  (`completion_threshold: MULTI_ACT_SUBPLOT_THRESHOLD`, currently 250) — set
+  once at creation by whichever LLM call invented it
+  (`generate_new_subplot`, or a subplot-type steering seed via
+  `generate_steering_seed`/`plot_manager.apply_steering_seed`) and passed to
+  `story_engine.insert_subplot`, the single place that actually decides the
+  threshold. `update_progress_from_turn`/`check_subplot_status` are generic
+  over whatever threshold a subplot has, so nothing else needed to change
+  for a `multi_act` subplot to correctly take longer to resolve. Each
+  generation prompt is steered to make `multi_act` the exception, not the
+  rule ("I would like *some* subplots to span multiple acts," not most).
 - **Acts are endless chapters, not a fixed 3-act structure.** Only Act 1
-  ships pre-authored. At each pacing checkpoint (once at least one subplot
-  has completed this act), `story_engine.check_and_advance_act()` asks the
-  LLM to judge — qualitatively, against `completion_signals` context, not a
-  numeric threshold — whether the act feels resolved, and if so generates
-  the next one in the same call. There is no ceiling.
+  ships pre-authored. At each pacing checkpoint,
+  `story_engine.check_and_advance_act()` asks the LLM to judge —
+  qualitatively, against `completion_signals` context, not a numeric
+  threshold — whether the act feels resolved, and if so generates the next
+  one in the same call. There is no ceiling. The checkpoint itself fires on
+  *either* of two conditions, not just the first: at least one subplot
+  completed this act (`pacing.subplots_completed_this_act >= 1`, the fast
+  path), or it's simply been `pacing.act_check_frequency` turns since the
+  last check (`pacing.turns_since_last_act_check`, mirroring
+  `pacing_nudge_frequency`/`turns_since_last_pacing_nudge`'s existing
+  pattern) — reset to 0 whenever the check actually runs, whether or not it
+  results in advancement. Requiring only the first condition used to mean
+  no act could ever advance without a subplot completing inside it first,
+  which structurally forced every subplot toward single-act length — this
+  is exactly what a `multi_act` subplot needs *not* to happen, so don't
+  reintroduce a hard dependency between act advancement and subplot
+  completion. The prompt also lists any currently-active `multi_act`
+  subplots explicitly, so the director doesn't read one's ongoing
+  non-completion as a sign the act hasn't resolved.
 - **The story only ends when the player asks.** A recognized phrase ("end
   story", "end the story", "conclude the story", "wrap up the story")
   triggers `story_engine.handle_end_story_request()`, which generates a

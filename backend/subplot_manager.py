@@ -43,9 +43,14 @@ def show_status(state):
     for sid, subplot in plot["subplots"].items():
         status_icon = "✓" if subplot["status"] == "completed" else "●" if subplot["active"] else "○"
         priority = subplot["priority"].upper()
-        progress_bar = "█" * int(subplot["progress"] / 10) + "░" * (10 - int(subplot["progress"] / 10))
-        
-        print(f"{status_icon} [{priority:6}] {subplot['title']}")
+        # Scaled against this subplot's own completion_threshold, not a hardcoded /10 assuming
+        # 100 - a "multi_act" subplot (see story_engine.insert_subplot) has a higher threshold
+        # (MULTI_ACT_SUBPLOT_THRESHOLD), so the old fixed-scale math would overfill the bar.
+        filled = int(10 * subplot["progress"] / subplot["completion_threshold"]) if subplot["completion_threshold"] else 0
+        progress_bar = "█" * filled + "░" * max(0, 10 - filled)
+        span_tag = " [multi-act]" if subplot.get("span") == "multi_act" else ""
+
+        print(f"{status_icon} [{priority:6}] {subplot['title']}{span_tag}")
         print(f"   Status: {subplot['status']} | Progress: [{progress_bar}] {subplot['progress']}/{subplot['completion_threshold']}")
         print(f"   {subplot['description']}")
         print()

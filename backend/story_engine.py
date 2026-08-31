@@ -9,19 +9,30 @@ import sys
 import threading
 import time
 from dotenv import load_dotenv
+
+load_dotenv()
+
 import google.generativeai as genai
 import requests
 
 import state_store
 from state_store import DEFAULT_STORY_SLUG, DEFAULT_USER_ID
 
-load_dotenv()
-
 RECENT_TURN_LIMIT = 10
 SUMMARY_MAX_WORDS = 2000
 SUBPLOT_TITLE_HISTORY_LIMIT = 15
 FLAGS_ACTIVE_LIMIT = 25
 RELATIONSHIPS_LIMIT = 20
+# The completion_threshold a "multi_act"-span subplot gets instead of the normal 100 (see
+# insert_subplot) - the only lever that actually makes one take longer to resolve, since
+# progress/completion tracking (update_progress_from_turn, check_subplot_status) is generic
+# over whatever threshold a subplot was given. Not story-authored/tunable per-story like
+# pacing_nudge_frequency - this is a mechanical pacing constant, not narrative content.
+MULTI_ACT_SUBPLOT_THRESHOLD = 250
+# Fallback used only for a save/template that predates the act_check_frequency field (see
+# check_and_advance_act) - every current template authors its own value, same convention as
+# pacing_nudge_frequency.
+DEFAULT_ACT_CHECK_FREQUENCY = 12
 # Stats (player.stats) are a story-authored, per-class mechanic (see character_classes/
 # apply_class_selection below) - unlike relationships/flags there's no single fixed scale
 # across stories (one story might use 0-10 attributes, another a 0-100 meter like "health"),
@@ -75,10 +86,13 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
 
 if "openrouter" in (LLM_PROVIDER, STATE_UPDATE_PROVIDER) and not OPENROUTER_API_KEY:
     raise ValueError("OPENROUTER_API_KEY not found in .env file")
-if "google" in (LLM_PROVIDER, STATE_UPDATE_PROVIDER):
-    if not GOOGLE_API_KEY:
-        raise ValueError("GOOGLE_API_KEY not found in .env file")
-    genai.configure(api_key=GOOGLE_API_KEY)
+# Required unconditionally, not just when a tier's primary provider is "google" - the
+# Gemini fail-safe (see call_llm) can fire regardless of which provider is primary, so an
+# openrouter-only deployment still needs a working Gemini client configured for it to have
+# anywhere to fall back to.
+if not GOOGLE_API_KEY:
+    raise ValueError("GOOGLE_API_KEY not found in .env file")
+genai.configure(api_key=GOOGLE_API_KEY)
 
 
 class LLMUnavailableError(Exception):
@@ -135,6 +149,17 @@ def _call_llm_openrouter(prompt: str, model: str) -> str:
                 # better. Applies to every OpenRouter call (narration included), not just
                 # the state-update tier, since it can only help.
                 "provider": {"sort": "throughput"},
+                # A reasoning-capable model (observed with deepseek-v4-pro) can finish
+                # normally (finish_reason "stop") while leaving message.content null and
+                # putting the entire finished reply - including a correctly-formatted
+                # OPTIONS block - in message.reasoning instead, because nothing here told
+                # it to ever close its reasoning phase. exclude:true forces the API to
+                # always land the final answer in content (reasoning still happens
+                # internally, it's just not echoed back) rather than leaving content empty
+                # and burning a real generation that the empty-content guard below then has
+                # to discard. Applies to every OpenRouter call, same as "provider" above -
+                # a no-op for models without reasoning support.
+                "reasoning": {"exclude": True},
             },
             # Still set (not None) as a lower-level guard: if the connection goes fully
             # dead rather than just trickling, this bounds how long an abandoned thread
@@ -520,11 +545,16 @@ def _next_subplot_id(subplots: dict) -> str:
 
 
 def insert_subplot(state: dict, title: str, description: str, priority: str = "medium",
-                     ties_to_main_plot: str = "") -> str:
+                     ties_to_main_plot: str = "", span: str = "single_act") -> str:
     """Shared by generate_new_subplot and plot_manager.apply_steering_seed: assigns the
     next subplot_NNN id, activates it if there's room under max_parallel_subplots, and
-    inserts it into plot.subplots. Doesn't itself decide the content - callers already
-    have title/description/priority/ties_to_main_plot from wherever they got generated."""
+    inserts it into plot.subplots. Doesn't itself decide most of the content - callers
+    already have title/description/priority/ties_to_main_plot from wherever they got
+    generated. span is the one field this function actually acts on: "multi_act" gets
+    MULTI_ACT_SUBPLOT_THRESHOLD instead of the normal 100, which is the actual lever that
+    makes it take meaningfully longer to resolve - update_progress_from_turn/
+    check_subplot_status are already generic over whatever threshold a subplot was given,
+    so nothing else needs to change for a longer-running subplot to behave correctly."""
     plot = state["plot"]
     subplots = plot["subplots"]
     new_id = _next_subplot_id(subplots)
@@ -539,9 +569,10 @@ def insert_subplot(state: dict, title: str, description: str, priority: str = "m
         "priority": priority,
         "status": "active" if make_active else "not_started",
         "progress": 0,
-        "completion_threshold": 100,
+        "completion_threshold": MULTI_ACT_SUBPLOT_THRESHOLD if span == "multi_act" else 100,
         "ties_to_main_plot": ties_to_main_plot,
         "active": make_active,
+        "span": span,
     }
     return new_id
 
@@ -585,8 +616,13 @@ Respond with ONLY a JSON object, no other text:
   "title": "<short subplot title>",
   "description": "<1-2 sentence description>",
   "priority": "<high|medium|low>",
-  "ties_to_main_plot": "<how this connects to the main thread>"
-}}"""
+  "ties_to_main_plot": "<how this connects to the main thread>",
+  "span": "<single_act|multi_act>"
+}}
+Most subplots should be "single_act" - resolved within roughly the current act. Only mark
+"multi_act" if the idea is substantial enough to reasonably develop over several acts -
+these should feel like a throughline, not a quick errand, and should be the exception, not
+the rule."""
 
     try:
         generated = _timed("subplot_generation", lambda: call_llm_json(prompt), model=STATE_UPDATE_MODEL)
@@ -599,6 +635,7 @@ Respond with ONLY a JSON object, no other text:
         state, title, description,
         priority=generated.get("priority", "medium"),
         ties_to_main_plot=generated.get("ties_to_main_plot", ""),
+        span=generated.get("span") if generated.get("span") in ("single_act", "multi_act") else "single_act",
     )
 
 
@@ -640,7 +677,7 @@ Respond with ONLY a JSON object, no other text, in exactly one of these three sh
 
 {{"type": "character", "character": {{"name": "<full name>", "description": "<who they are, appearance, personality>", "role": "<their narrative role, e.g. 'potential romantic interest'>", "relationship_to_player": "<initial stance toward the player>", "hook": "<a concrete, specific way they could naturally enter the story soon>"}}}}
 
-{{"type": "subplot", "subplot": {{"title": "<short subplot title>", "description": "<1-2 sentences>", "priority": "<high|medium|low>", "ties_to_main_plot": "<how this connects to the main thread>"}}}}
+{{"type": "subplot", "subplot": {{"title": "<short subplot title>", "description": "<1-2 sentences>", "priority": "<high|medium|low>", "ties_to_main_plot": "<how this connects to the main thread>", "span": "<single_act|multi_act - multi_act only if the note clearly implies something substantial enough to develop over several acts, not a quick errand>"}}}}
 
 {{"type": "direction", "direction": {{"title": "<short title>", "description": "<1-2 sentences>"}}}}"""
 
@@ -719,14 +756,30 @@ Respond with ONLY a JSON object, no other text:
 
 def check_and_advance_act(state: dict):
     """At a pacing checkpoint, ask the director whether the current act has narratively
-    resolved and, if so, generate the next one. No-op once the story is ending."""
+    resolved and, if so, generate the next one. No-op once the story is ending.
+
+    Gated on "a subplot completed this act" OR "it's been act_check_frequency turns since
+    the last check" - not just the former. A subplot completing is still the fast path (the
+    same turn it happens, this fires right away), but requiring it unconditionally used to
+    mean no act could ever advance without one - which meant every subplot was structurally
+    pressured to wrap up within a single act just to keep the story moving, since a
+    deliberately longer-running ("multi_act", see insert_subplot) subplot would otherwise
+    stall the act forever. The turn-count fallback lets the director re-evaluate on its own
+    cadence even when nothing has completed, the same way generate_pacing_nudge already
+    does on pacing_nudge_frequency - it's what makes a multi_act subplot's non-completion
+    stop being the only thing standing between the story and its next act."""
     plot = state["plot"]
     if plot["endgame"]["requested"]:
         return None
 
     pacing = plot["pacing"]
-    if pacing["subplots_completed_this_act"] < 1:
+    completed_recently = pacing["subplots_completed_this_act"] >= 1
+    due_for_check = (
+        pacing.get("turns_since_last_act_check", 0) >= pacing.get("act_check_frequency", DEFAULT_ACT_CHECK_FREQUENCY)
+    )
+    if not completed_recently and not due_for_check:
         return None
+    pacing["turns_since_last_act_check"] = 0
 
     main_thread = plot["main_thread"]
     current_act = next(
@@ -748,6 +801,10 @@ def check_and_advance_act(state: dict):
         if sid in plot["subplots"]
     ]
     revealed_fragments = sum(1 for f in state["player"]["origin"]["memory_fragments"] if f["revealed"])
+    ongoing_multi_act = [
+        sp["title"] for sp in plot["subplots"].values()
+        if sp.get("span") == "multi_act" and sp["status"] != "completed"
+    ]
 
     prompt = f"""You are the pacing director for an ongoing interactive story. Judge whether the
 current act feels narratively resolved, based on what's actually happened - not a checklist.
@@ -755,6 +812,7 @@ current act feels narratively resolved, based on what's actually happened - not 
 CURRENT ACT: {current_act['title']} - {current_act['description']}
 SIGNALS THIS ACT WAS BUILT AROUND: {', '.join(current_act.get('completion_signals', [])) or 'none'}
 SUBPLOTS COMPLETED THIS ACT: {', '.join(completed_titles) or 'none'}
+ONGOING MULTI-ACT SUBPLOTS (deliberately still running, expected to continue beyond this act - their non-completion is not a sign the act hasn't resolved): {', '.join(ongoing_multi_act) or 'none'}
 MEMORY FRAGMENTS REVEALED: {revealed_fragments}
 ARCHITECT ENCOUNTERS: {plot['entity_interaction_count']}
 STORY SO FAR: {summary}
@@ -822,10 +880,14 @@ def generate_pacing_nudge(state: dict) -> str:
         active_subplots_sorted = sorted(active_subplots, key=lambda x: priority_map.get(x[1]["priority"], 0), reverse=True)
 
         primary_subplot = active_subplots_sorted[0][1]
-        nudge_parts.append(f"ACTIVE SUBPLOT: '{primary_subplot['title']}' - {primary_subplot['description']}")
+        primary_tag = " (ongoing, multi-act)" if primary_subplot.get("span") == "multi_act" else ""
+        nudge_parts.append(f"ACTIVE SUBPLOT: '{primary_subplot['title']}'{primary_tag} - {primary_subplot['description']}")
 
         if len(active_subplots) > 1:
-            other_titles = [sp["title"] for _, sp in active_subplots_sorted[1:3]]
+            other_titles = [
+                sp["title"] + (" (multi-act)" if sp.get("span") == "multi_act" else "")
+                for _, sp in active_subplots_sorted[1:3]
+            ]
             nudge_parts.append(f"BACKGROUND SUBPLOTS: {', '.join(other_titles)}")
 
     # Check if we need to introduce new subplots
@@ -1021,6 +1083,11 @@ def update_state_after_turn(
     # Update pacing counters
     state["plot"]["pacing"]["turn_count"] += 1
     state["plot"]["pacing"]["turns_since_last_pacing_nudge"] += 1
+    # .get(..., 0) + 1, not a plain += 1: a save cloned from a template that predates this
+    # field (see check_and_advance_act) won't have it yet.
+    state["plot"]["pacing"]["turns_since_last_act_check"] = (
+        state["plot"]["pacing"].get("turns_since_last_act_check", 0) + 1
+    )
 
     # Separate state-update pass: subplot progress, flags, memory fragments, entity contact
     update_progress_from_turn(state, player_action, ai_response)

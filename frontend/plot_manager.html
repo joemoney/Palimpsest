@@ -134,6 +134,11 @@
       </select>
       <label for="seed-{{ seed.id }}-ties">Ties to main plot</label>
       <input type="text" id="seed-{{ seed.id }}-ties" name="ties_to_main_plot" value="{{ seed.draft.ties_to_main_plot or '' }}">
+      <label for="seed-{{ seed.id }}-span">Span</label>
+      <select id="seed-{{ seed.id }}-span" name="span">
+        <option value="single_act" {% if seed.draft.span != 'multi_act' %}selected{% endif %}>single act</option>
+        <option value="multi_act" {% if seed.draft.span == 'multi_act' %}selected{% endif %}>multi-act (spans several acts)</option>
+      </select>
       {% elif seed.type == 'direction' %}
       <label for="seed-{{ seed.id }}-title">Title</label>
       <input type="text" id="seed-{{ seed.id }}-title" name="title" value="{{ seed.draft.title or '' }}">

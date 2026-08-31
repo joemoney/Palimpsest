@@ -331,7 +331,7 @@ def add_emerging_theme(state, theme):
 
 _SEED_FIELDS = {
     "character": ("name", "description", "role", "relationship_to_player", "hook"),
-    "subplot": ("title", "description", "priority", "ties_to_main_plot"),
+    "subplot": ("title", "description", "priority", "ties_to_main_plot", "span"),
     "direction": ("title", "description"),
 }
 
@@ -418,12 +418,14 @@ def apply_steering_seed(state, seed_id, **overrides):
         result_id = char_id
         print(f"Added character '{fields.get('name', '')}' ({char_id})")
     elif seed_type == "subplot":
+        span = fields.get("span") if fields.get("span") in ("single_act", "multi_act") else "single_act"
         result_id = story_engine.insert_subplot(
             state, fields.get("title", ""), fields.get("description", ""),
             priority=fields.get("priority", "medium"),
             ties_to_main_plot=fields.get("ties_to_main_plot", ""),
+            span=span,
         )
-        print(f"Added subplot '{fields.get('title', '')}' ({result_id})")
+        print(f"Added subplot '{fields.get('title', '')}' ({result_id}, span={span})")
     elif seed_type == "direction":
         directions = state["plot"]["main_thread"].setdefault("emergent_directions", [])
         directions.append({
@@ -493,6 +495,7 @@ def main():
         print("  python plot_manager.py seed-apply <seed_id> [--name/--title '<override>']")
         print("      [--description '<override>'] [--role '<override>'] [--relationship '<override>']")
         print("      [--hook '<override>'] [--priority '<override>'] [--ties '<override>']")
+        print("      [--span 'single_act|multi_act']")
         print("  python plot_manager.py seed-discard <seed_id>")
         print("\nModifying:")
         print("  python plot_manager.py modify-act <act_number> --title '<new title>' --description '<new desc>'")
@@ -614,7 +617,8 @@ def main():
         if len(argv) < 3:
             print("Usage: python plot_manager.py seed-apply <seed_id> [--name/--title '<override>'] "
                   "[--description '<override>'] [--role '<override>'] [--relationship '<override>'] "
-                  "[--hook '<override>'] [--priority '<override>'] [--ties '<override>']")
+                  "[--hook '<override>'] [--priority '<override>'] [--ties '<override>'] "
+                  "[--span 'single_act|multi_act']")
             return
         seed_id = argv[2]
         kwargs = {}
@@ -623,6 +627,7 @@ def main():
             "--name": "name", "--title": "title", "--description": "description",
             "--role": "role", "--relationship": "relationship_to_player",
             "--hook": "hook", "--priority": "priority", "--ties": "ties_to_main_plot",
+            "--span": "span",
         }
         while i < len(argv):
             if argv[i] in flag_map and i + 1 < len(argv):

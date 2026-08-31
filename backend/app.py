@@ -450,7 +450,7 @@ def plot_manager_view(story_slug):
             plot_manager.stage_steering_seed(state, request.form.get("note", ""))
         elif command == "seed-apply":
             overrides = {}
-            for field in ("name", "title", "description", "role", "relationship_to_player", "hook", "priority", "ties_to_main_plot"):
+            for field in ("name", "title", "description", "role", "relationship_to_player", "hook", "priority", "ties_to_main_plot", "span"):
                 if request.form.get(field):
                     overrides[field] = request.form[field]
             plot_manager.apply_steering_seed(state, request.form.get("seed_id", ""), **overrides)
