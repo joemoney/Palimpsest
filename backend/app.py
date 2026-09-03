@@ -456,12 +456,19 @@ def plot_manager_view(story_slug):
             plot_manager.apply_steering_seed(state, request.form.get("seed_id", ""), **overrides)
         elif command == "seed-discard":
             plot_manager.discard_steering_seed(state, request.form.get("seed_id", ""))
+        elif command == "promote-relationship":
+            overrides = {}
+            for field in ("description", "role", "relationship_to_player", "hook"):
+                if request.form.get(field):
+                    overrides[field] = request.form[field]
+            plot_manager.promote_relationship_to_npc(state, request.form.get("name", ""), **overrides)
         state_store.save_state(state, user_id, story_slug)
         return redirect(url_for("plot_manager_view", story_slug=story_slug))
 
     return render_template(
         "plot_manager.html", story_title=state["meta"]["title"], story_slug=story_slug,
         plot=state["plot"], characters=state.get("characters", {}),
+        unlinked_relationships=plot_manager.list_unlinked_relationships(state),
     )
 
 

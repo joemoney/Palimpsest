@@ -258,14 +258,82 @@ treatment as these existing ones:
   shown `CURRENT INVENTORY` in the prompt for this reason). Left unbounded,
   same as `player.traits` - a story-appropriate item list doesn't grow the
   way flags or subplots do, so no cap has been needed.
-- `player.relationships` (`{name: score}`, -100 to 100) is diffed as a
-  **delta per turn**, not an absolute value - `relationship_changes` in the
-  diff is added to the existing score and clamped. Bounded to
-  `RELATIONSHIPS_LIMIT` (20), but unlike `flags_active` (evicts oldest
-  non-pinned first) it evicts whichever relationships sit **closest to
-  neutral** first - a story's strongest bonds/rivalries are exactly the ones
-  that should never silently disappear, regardless of how long ago they
-  were set.
+- `player.relationships` is `{name: {"score": int, "npc_id": str|None}}`
+  (score -100 to 100; `npc_id` is `None` until the name is linked to a
+  `characters` entry - see "Characters, NPC creation, and relationship
+  linking" below). Score is diffed as a **delta per turn**, not an absolute
+  value - `relationship_changes` in the diff is added to the existing score
+  and clamped; only the score is shown to either LLM prompt that touches it
+  (`build_system_prompt`'s `PLAYER:` line, `update_progress_from_turn`'s
+  `CURRENT RELATIONSHIPS` line) - `npc_id` is internal bookkeeping and never
+  leaks into a prompt. Bounded to `RELATIONSHIPS_LIMIT` (20), but unlike
+  `flags_active` (evicts oldest non-pinned first) it evicts whichever
+  relationships sit **closest to neutral** first, by `abs(score)` - a
+  story's strongest bonds/rivalries are exactly the ones that should never
+  silently disappear, regardless of how long ago they were set. A save from
+  before this field existed only has bare `{name: score}` ints;
+  `state_store.load_state()`'s `_migrate_relationships()` upgrades those to
+  the `{"score", "npc_id": None}` shape in place on load - the only
+  migration step this project has, scoped narrowly to this one field, since
+  there's no general schema-version mechanism.
+
+### Characters, NPC creation, and relationship linking
+Every path that creates an NPC record goes through `story_engine.
+insert_character()` (mirroring `insert_subplot()` for subplots) - it mints
+the next `char_NNN` id, builds the full record, and tags it with an
+`origin` (`"seed" | "subplot" | "act" | "narration" | "relationship"`)
+purely so `show_plot_overview` can tell a human later how each NPC entered;
+nothing else reads `origin` back. Four ways a `characters` entry gets
+created, in increasing order of automation-vs-review:
+- **`plot_manager.py seed`/`seed-apply`** (`origin: "seed"`) - the original,
+  freeform, player-reviewed path: a note becomes a draft via
+  `generate_steering_seed`, staged in `pending_seeds`, and only committed
+  on `seed-apply`. Unchanged by the additions below.
+- **A new subplot or act can name its own required character**
+  (`origin: "subplot"`/`"act"`) - `generate_new_subplot`'s and
+  `check_and_advance_act`'s prompts each include an `EXISTING CHARACTERS`
+  list and an optional `new_character` field in their JSON schema,
+  instructed to stay `null` unless the subplot/act genuinely can't work
+  without a specific new named person (most don't need one). When present
+  and not a duplicate of an existing name, `_maybe_insert_generated_character`
+  commits it immediately via `insert_character(..., introduced=False)` -
+  auto-committed like the rest of the automatic pipeline, no staging step.
+  `introduced=False` is correct: they haven't appeared on the page yet, so
+  they correctly surface through `generate_pacing_nudge`'s existing
+  "CHARACTERS TO WEAVE IN" line with no changes needed there.
+- **Narration can introduce someone by name mid-turn** (`origin:
+  "narration"`) - `update_progress_from_turn`'s diff schema has an optional
+  `new_characters` list, deliberately gated on the model having given the
+  character an actual proper name this turn (e.g. "Marlowe"), never a
+  generic/descriptive handle (e.g. "the advocate", "a guard") - a
+  generic-label character still gets a normal `relationship_changes` entry,
+  just no automatic NPC record, to avoid spinning one up for every
+  incidental relationship. When a real name is given, `insert_character(...,
+  introduced=True)` runs immediately (they're already on the page this
+  turn) and the matching `relationships[name]["npc_id"]` is set right away.
+- **Manual promotion for an existing generic-label relationship**
+  (`origin: "relationship"`) - `plot_manager.list_unlinked_relationships()`
+  lists every relationship with no `npc_id` yet (surfaced in
+  `show_plot_overview` and the web Plot Manager page's "Unlinked
+  Relationships" section); `plot_manager.promote_relationship_to_npc()`
+  drafts a full record via `story_engine.
+  generate_character_from_relationship()` (same "never mutates state,
+  returns a draft or `None`" contract as `generate_steering_seed`, fed the
+  name/score/recent history), applies any CLI/web field overrides, commits
+  it via `insert_character(..., introduced=True)`, and links it.
+
+Separately from creation, **`relationships[name]["npc_id"]` is the only
+thing that links a relationship entry to a `characters` entry** -
+`update_progress_from_turn`'s `relationship_changes` loop only does the
+old exact-name scan over `characters` the *first* time a given name is
+unlinked (`entry["npc_id"] is None`); once linked, `npc_id` is used
+directly and the scan is skipped on every later turn. This replaced a real
+bug: a steering-seeded character named `"Salome Vence (the Advocate)"`
+never had her `introduced` flag flip, because the narration only ever
+called her "the advocate" and nothing tied that string back to her record
+- exact-name matching alone is fragile in exactly this way, which is why an
+explicit stored id (not a re-derived string match) is now the source of
+truth once a link exists.
 - Summarization of `history_log` into `compressed_summary` runs periodically
   (on `recent_turns` overflow), not every turn, to save cost.
 - **Character creation is an opt-in, N-step mechanic, per story** - not a

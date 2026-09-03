@@ -96,6 +96,27 @@
 </section>
 {% endif %}
 
+{% if unlinked_relationships %}
+<section class="card">
+  <div style="font-weight:700; margin-bottom:10px;">Unlinked Relationships</div>
+  <p style="color:var(--muted); font-size:0.85rem; margin-bottom:10px;">
+    Tracked relationship scores with no character record behind them yet - usually a generic
+    label the narration used (e.g. "the advocate") rather than a proper name. Promote one to a
+    full NPC if it deserves a real record.
+  </p>
+  {% for name, score in unlinked_relationships %}
+  <div style="padding:8px 0; {% if not loop.first %}border-top:1px solid rgba(148,163,184,0.15);{% endif %} display:flex; align-items:center; justify-content:space-between; gap:12px;">
+    <span>{{ name }} <span style="color:var(--muted); font-size:0.85rem;">({{ score }})</span></span>
+    <form method="post">
+      <input type="hidden" name="command" value="promote-relationship">
+      <input type="hidden" name="name" value="{{ name }}">
+      <button type="submit">Promote to NPC</button>
+    </form>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
 {% set pending_seeds = plot.thread_steering.pending_seeds if plot.thread_steering else [] %}
 {% if pending_seeds %}
 <section class="card">

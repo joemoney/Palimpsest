@@ -48,7 +48,7 @@ STEER_WARNING = (
     "    if the command isn't well thought out. Use plot_manager.py's commands\n"
     "    ('overview', 'add-act', 'pivot', 'add-emergent', 'promote-emergent',\n"
     "    'create-alt', 'focus', 'add-goal', 'add-theme', 'seed', 'seed-apply',\n"
-    "    'seed-discard', 'seed-list'). ***"
+    "    'seed-discard', 'seed-list', 'list-unlinked', 'promote-relationship'). ***"
 )
 
 # --- LLM provider configuration ---
@@ -392,6 +392,8 @@ def update_progress_from_turn(state: dict, player_action: str, ai_response: str)
         if not frag["revealed"]
     }
     relationships = state["player"].setdefault("relationships", {})
+    relationship_scores = {name: entry["score"] for name, entry in relationships.items()}
+    existing_characters = [c["name"] for c in state.get("characters", {}).values() if c.get("name")]
     stats = state["player"].get("stats", {})
     stats_block = f'\nCURRENT STATS ({", ".join(stats)}): {json.dumps(stats)}' if stats else ""
 
@@ -408,6 +410,10 @@ def update_progress_from_turn(state: dict, player_action: str, ai_response: str)
         '  "relationship_changes": {"<character name>": <integer delta this turn, typically '
         "-10 to +10, positive for trust/warmth built, negative for damage done - only named "
         'characters the player actually interacted with or was meaningfully affected by this turn>}',
+        '  "new_characters": [{"name": "<full name>", "description": "<who they are, appearance, '
+        'personality>", "role": "<their narrative role>", "relationship_to_player": "<their '
+        'initial stance toward the player>", "hook": "<a concrete way they could naturally '
+        'reappear or matter going forward>"}]',
     ]
     if stats:
         schema_fields.append(
@@ -423,7 +429,8 @@ ACTIVE SUBPLOTS: {json.dumps(active_subplots)}
 UNREVEALED MEMORY FRAGMENT TRIGGERS: {json.dumps(unrevealed_fragments)}
 CURRENT FLAGS: {json.dumps(state["player"]["flags_active"])}
 CURRENT INVENTORY: {json.dumps(state["player"]["inventory"])}
-CURRENT RELATIONSHIPS (name: score from -100 hostile to +100 devoted, 0 neutral/unknown): {json.dumps(relationships)}{stats_block}
+CURRENT RELATIONSHIPS (name: score from -100 hostile to +100 devoted, 0 neutral/unknown): {json.dumps(relationship_scores)}
+EXISTING CHARACTERS (do not repeat in new_characters): {', '.join(existing_characters) or 'none'}{stats_block}
 
 PLAYER ACTION: {player_action}
 NARRATION: {ai_response}
@@ -433,7 +440,13 @@ Respond with ONLY a JSON object, no other text, in this exact shape:
 {schema_str}
 }}
 Only include subplot ids, flags, fragment ids, items, character names, and stats that actually
-changed this turn. Use {{}}/[] for nothing changed."""
+changed this turn. Use {{}}/[] for nothing changed.
+Only add an entry to new_characters when a character is given an actual proper name for the
+first time this turn (e.g. "Marlowe", "Salome Vence") AND isn't already in EXISTING CHARACTERS -
+never for a generic/descriptive handle (e.g. "the guard", "the advocate", "the woman at the
+terminal"). A generic-label character should still get a relationship_changes entry as usual,
+just not a new_characters one - promoting them to a full character later is a separate, manual
+step."""
 
     try:
         diff = _timed("state_update", lambda: call_llm_json(prompt), model=STATE_UPDATE_MODEL)
@@ -473,24 +486,54 @@ changed this turn. Use {{}}/[] for nothing changed."""
         if item in inventory:
             inventory.remove(item)
 
-    characters = state.get("characters", {})
+    characters = state.setdefault("characters", {})
+
+    # New, properly-named characters the narration introduced this turn (see the
+    # new_characters prompt instruction above) get a real NPC record immediately and are
+    # linked to their relationship entry right away - this is the direct fix for a character
+    # that only ever existed as a bare relationship name with no NPC record behind it.
+    # Deliberately gated on the model having actually named them (see the prompt) rather than
+    # every incidental relationship, to avoid spinning up NPCs for generic background figures.
+    known_names = {c.get("name") for c in characters.values() if c.get("name")}
+    for draft in diff.get("new_characters", []):
+        name = draft.get("name")
+        if not name or name in known_names:
+            continue
+        new_id = insert_character(
+            state, name,
+            description=draft.get("description", ""),
+            role=draft.get("role", ""),
+            relationship_to_player=draft.get("relationship_to_player", ""),
+            hook=draft.get("hook", ""),
+            introduced=True,
+            origin="narration",
+        )
+        relationships.setdefault(name, {"score": 0, "npc_id": None})
+        relationships[name]["npc_id"] = new_id
+        known_names.add(name)
+
     for char_name, delta in diff.get("relationship_changes", {}).items():
         if not char_name:
             continue
-        relationships[char_name] = max(-100, min(100, relationships.get(char_name, 0) + int(delta)))
-        # A seeded NPC (see generate_steering_seed/apply_steering_seed) stays off
+        entry = relationships.setdefault(char_name, {"score": 0, "npc_id": None})
+        entry["score"] = max(-100, min(100, entry["score"] + int(delta)))
+        # A seeded/auto-created NPC (see insert_character's callers) stays off
         # generate_pacing_nudge's "CHARACTERS TO WEAVE IN" line once the player has actually
         # interacted with them - this is the only signal that already exists for "the model
         # brought this character into a scene", so no separate LLM call is needed just to
-        # detect it.
-        for char in characters.values():
-            if char.get("type") == "npc" and char.get("name") == char_name:
-                char["introduced"] = True
+        # detect it. Only scanned the first time a name gets linked - once npc_id is set it's
+        # used directly instead of re-matching on name every turn.
+        if entry["npc_id"] is None:
+            for cid, char in characters.items():
+                if char.get("type") == "npc" and char.get("name") == char_name:
+                    char["introduced"] = True
+                    entry["npc_id"] = cid
+                    break
     # Bounded like flags_active: if a story accumulates more named relationships than this,
     # drop the least narratively significant ones first (closest to neutral), not the oldest -
     # a strongly-loved or strongly-hated character should never be the one that gets evicted.
     if len(relationships) > RELATIONSHIPS_LIMIT:
-        for name in sorted(relationships, key=lambda n: abs(relationships[n]))[:len(relationships) - RELATIONSHIPS_LIMIT]:
+        for name in sorted(relationships, key=lambda n: abs(relationships[n]["score"]))[:len(relationships) - RELATIONSHIPS_LIMIT]:
             del relationships[name]
 
     # Only ever adjusts a stat that's already in player.stats (seeded once, at character
@@ -577,6 +620,67 @@ def insert_subplot(state: dict, title: str, description: str, priority: str = "m
     return new_id
 
 
+def _next_character_id(characters: dict) -> str:
+    existing_numbers = [
+        int(cid.rsplit("_", 1)[-1])
+        for cid in characters
+        if cid.rsplit("_", 1)[-1].isdigit()
+    ]
+    next_number = (max(existing_numbers) + 1) if existing_numbers else 1
+    return f"char_{next_number:03d}"
+
+
+def insert_character(state: dict, name: str, description: str = "", role: str = "",
+                       relationship_to_player: str = "", hook: str = "", introduced: bool = False,
+                       origin: str = "seed", seed_note: str = None) -> str:
+    """Shared by every path that creates an NPC record - plot_manager.apply_steering_seed,
+    generate_new_subplot/check_and_advance_act's proposed characters, update_progress_from_turn's
+    newly-named characters, and the relationship->NPC promotion flow
+    (plot_manager.promote_relationship_to_npc) - one canonical place for what a freshly-created
+    NPC record looks like, the same role insert_subplot plays for subplots. `origin` records
+    which of those paths created it (seed/subplot/act/narration/relationship) purely for later
+    human review via show_plot_overview - nothing else reads it back."""
+    characters = state.setdefault("characters", {})
+    char_id = _next_character_id(characters)
+    entry = {
+        "type": "npc",
+        "name": name,
+        "description": description,
+        "role": role,
+        "relationship_to_player": relationship_to_player,
+        "hook": hook,
+        "introduced": introduced,
+        "origin": origin,
+    }
+    if seed_note is not None:
+        entry["seed_note"] = seed_note
+    characters[char_id] = entry
+    return char_id
+
+
+def _maybe_insert_generated_character(state: dict, generated: dict, origin: str):
+    """Shared by generate_new_subplot and check_and_advance_act: if the same LLM call that
+    generated new subplot/act content also proposed a specific new named character to go with
+    it, commit them as a real NPC record right away - not yet `introduced` (they haven't
+    appeared on the page yet), so they surface via generate_pacing_nudge's "CHARACTERS TO
+    WEAVE IN" line the same way a steering-seeded character already does."""
+    draft = generated.get("new_character")
+    if not isinstance(draft, dict) or not draft.get("name"):
+        return
+    existing_names = {c.get("name") for c in state.get("characters", {}).values() if c.get("name")}
+    if draft["name"] in existing_names:
+        return
+    insert_character(
+        state, draft["name"],
+        description=draft.get("description", ""),
+        role=draft.get("role", ""),
+        relationship_to_player=draft.get("relationship_to_player", ""),
+        hook=draft.get("hook", ""),
+        introduced=False,
+        origin=origin,
+    )
+
+
 def generate_new_subplot(state: dict):
     """Invent and insert a new subplot to keep the pool topped up. No-op once the story
     is in its ending sequence, or if the pool is already full."""
@@ -596,6 +700,7 @@ def generate_new_subplot(state: dict):
     recent_completed_ids = plot["completed_subplots"][-SUBPLOT_TITLE_HISTORY_LIMIT:]
     recent_completed_titles = [subplots[sid]["title"] for sid in recent_completed_ids if sid in subplots]
     existing_titles = live_titles + recent_completed_titles
+    existing_characters = [c["name"] for c in state.get("characters", {}).values() if c.get("name")]
     summary = state["history_log"]["compressed_summary"] or "The story has just begun."
     main_thread = plot["main_thread"]
     current_act = main_thread["acts"][main_thread["current_act"] - 1]
@@ -609,6 +714,7 @@ MAIN THREAD: {main_thread['title']} - {main_thread['description']}
 CURRENT ACT: {current_act['title']} - {current_act['description']}
 STORY SO FAR: {summary}
 EXISTING SUBPLOT TITLES (do not repeat): {', '.join(existing_titles) or 'none'}
+EXISTING CHARACTERS (do not repeat): {', '.join(existing_characters) or 'none'}
 EMERGING THEMES: {', '.join(plot.get('thread_steering', {}).get('emerging_themes', [])) or 'none noted'}
 
 Respond with ONLY a JSON object, no other text:
@@ -617,12 +723,14 @@ Respond with ONLY a JSON object, no other text:
   "description": "<1-2 sentence description>",
   "priority": "<high|medium|low>",
   "ties_to_main_plot": "<how this connects to the main thread>",
-  "span": "<single_act|multi_act>"
+  "span": "<single_act|multi_act>",
+  "new_character": <null, or {{"name": "<full name>", "description": "...", "role": "...", "relationship_to_player": "...", "hook": "..."}} if and only if this subplot genuinely requires a specific new named person to exist who isn't already listed above>
 }}
 Most subplots should be "single_act" - resolved within roughly the current act. Only mark
 "multi_act" if the idea is substantial enough to reasonably develop over several acts -
 these should feel like a throughline, not a quick errand, and should be the exception, not
-the rule."""
+the rule. Leave new_character null unless the subplot really can't work without a specific
+new person - most subplots don't need one."""
 
     try:
         generated = _timed("subplot_generation", lambda: call_llm_json(prompt), model=STATE_UPDATE_MODEL)
@@ -631,12 +739,14 @@ the rule."""
     except (json.JSONDecodeError, KeyError, ValueError):
         return None
 
-    return insert_subplot(
+    new_id = insert_subplot(
         state, title, description,
         priority=generated.get("priority", "medium"),
         ties_to_main_plot=generated.get("ties_to_main_plot", ""),
         span=generated.get("span") if generated.get("span") in ("single_act", "multi_act") else "single_act",
     )
+    _maybe_insert_generated_character(state, generated, origin="subplot")
+    return new_id
 
 
 def generate_steering_seed(state: dict, note: str):
@@ -693,6 +803,54 @@ Respond with ONLY a JSON object, no other text, in exactly one of these three sh
         return None
 
     return {"type": seed_type, "draft": draft}
+
+
+def generate_character_from_relationship(state: dict, name: str):
+    """Manual promotion path (plot_manager.promote_relationship_to_npc): drafts a full NPC
+    record for a name that's only ever existed as a bare player.relationships entry (see
+    plot_manager.list_unlinked_relationships) - the tracked-but-never-formalized case
+    update_progress_from_turn deliberately leaves alone for generic/descriptive handles.
+    Same "never mutates state, returns a draft or None on bad output" contract as
+    generate_steering_seed - the caller (promote_relationship_to_npc) decides what to do with
+    the result."""
+    relationships = state["player"].get("relationships", {})
+    entry = relationships.get(name)
+    if entry is None:
+        return None
+    score = entry["score"] if isinstance(entry, dict) else entry
+    summary = state["history_log"]["compressed_summary"] or "The story has just begun."
+    recent = "\n".join(state["history_log"]["recent_turns"][-RECENT_TURN_LIMIT:])
+
+    prompt = f"""An interactive story has been tracking a relationship score for a character who
+was never given a full character record. Draft one now, based on what's actually happened with
+them so far.
+
+WORLD RULES:
+{chr(10).join(f"- {r}" for r in state["world"]["rules"])}
+
+STORY SO FAR: {summary}
+RECENT EXCHANGES:
+{recent}
+
+CHARACTER NAME/LABEL: {name}
+CURRENT RELATIONSHIP SCORE (-100 hostile to +100 devoted, 0 neutral): {score}
+
+Respond with ONLY a JSON object, no other text:
+{{
+  "description": "<who they are, appearance, personality - inferred from how they've actually appeared so far>",
+  "role": "<their narrative role>",
+  "relationship_to_player": "<their stance toward the player, consistent with the score above and what's happened>",
+  "hook": "<a concrete way they could naturally reappear or matter going forward>"
+}}"""
+
+    try:
+        draft = _timed("relationship_promotion", lambda: call_llm_json(prompt), model=STATE_UPDATE_MODEL)
+        if not isinstance(draft, dict):
+            raise ValueError(draft)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+    return draft
 
 
 def is_end_story_command(action: str) -> bool:
@@ -805,6 +963,7 @@ def check_and_advance_act(state: dict):
         sp["title"] for sp in plot["subplots"].values()
         if sp.get("span") == "multi_act" and sp["status"] != "completed"
     ]
+    existing_characters = [c["name"] for c in state.get("characters", {}).values() if c.get("name")]
 
     prompt = f"""You are the pacing director for an ongoing interactive story. Judge whether the
 current act feels narratively resolved, based on what's actually happened - not a checklist.
@@ -815,6 +974,7 @@ SUBPLOTS COMPLETED THIS ACT: {', '.join(completed_titles) or 'none'}
 ONGOING MULTI-ACT SUBPLOTS (deliberately still running, expected to continue beyond this act - their non-completion is not a sign the act hasn't resolved): {', '.join(ongoing_multi_act) or 'none'}
 MEMORY FRAGMENTS REVEALED: {revealed_fragments}
 ARCHITECT ENCOUNTERS: {plot['entity_interaction_count']}
+EXISTING CHARACTERS (do not repeat): {', '.join(existing_characters) or 'none'}
 STORY SO FAR: {summary}
 RECENT EXCHANGES:
 {recent}
@@ -824,8 +984,11 @@ Respond with ONLY a JSON object, no other text:
   "ready": <true|false>,
   "reason": "<one sentence>",
   "next_act_title": "<title, only if ready>",
-  "next_act_description": "<1-2 sentences, only if ready>"
-}}"""
+  "next_act_description": "<1-2 sentences, only if ready>",
+  "new_character": <null, or {{"name": "<full name>", "description": "...", "role": "...", "relationship_to_player": "...", "hook": "..."}} if and only if ready is true and the next act genuinely requires a specific new named person who isn't already listed above>
+}}
+Leave new_character null unless the next act really can't work without a specific new person -
+most acts don't need one."""
 
     try:
         verdict = _timed("act_advancement_check", lambda: call_llm_json(prompt), model=STATE_UPDATE_MODEL)
@@ -853,6 +1016,7 @@ Respond with ONLY a JSON object, no other text:
     })
     main_thread["current_act"] = new_act_number
     pacing["subplots_completed_this_act"] = 0
+    _maybe_insert_generated_character(state, verdict, origin="act")
 
     return new_act_number
 
@@ -957,6 +1121,10 @@ def build_system_prompt(state: dict) -> str:
     # instead of stating a value. Conditional on the story actually using stats at all, so
     # a story without them gets no irrelevant instruction clutter.
     stats_str = f" | Stats (opaque to the player): {player['stats']}" if player.get("stats") else ""
+    # Show the narrator only name->score - npc_id is internal bookkeeping (see insert_character/
+    # update_progress_from_turn) that should never leak into a prompt or get echoed back as a
+    # relationship_changes key.
+    relationships_str = {name: entry["score"] for name, entry in player.get("relationships", {}).items()}
     stats_instruction = (
         "\nThe PLAYER line's Stats are for your own internal reasoning only - never state a "
         "stat's raw numeric value to the player. Reflect what it means narratively instead "
@@ -1012,7 +1180,7 @@ RECENT EXCHANGES:
 {recent}
 {pacing_instruction}
 CURRENT SCENE ({scene['location']}): {scene['summary']}
-PLAYER: {player['name']}{creation_str} | Traits: {', '.join(player['traits'])}{stats_str} | Inventory: {', '.join(player['inventory']) or 'nothing'} | Relationships: {player.get('relationships', {})} | Flags: {player['flags_active']}
+PLAYER: {player['name']}{creation_str} | Traits: {', '.join(player['traits'])}{stats_str} | Inventory: {', '.join(player['inventory']) or 'nothing'} | Relationships: {relationships_str} | Flags: {player['flags_active']}
 
 Stay strictly within the established world, tone, and rules above.
 Pace scenes like fast-moving genre fiction, not literary atmosphere-writing:

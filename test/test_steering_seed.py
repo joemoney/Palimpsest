@@ -44,6 +44,7 @@ char = state["characters"][char_id]
 assert char["name"] == "Vesper Kade"
 assert char["role"] == "close confidant"  # override wins over the generated draft
 assert char["introduced"] is False
+assert char["origin"] == "seed"  # via the shared insert_character helper now
 print("OK: apply_steering_seed commits the character with an override; pending seed cleared")
 
 nudge = se.generate_pacing_nudge(state)

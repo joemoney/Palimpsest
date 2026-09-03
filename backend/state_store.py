@@ -84,6 +84,22 @@ def _lock(user_id: str, story_slug: str) -> filelock.FileLock:
     return filelock.FileLock(path)
 
 
+def _migrate_relationships(state: dict):
+    """player.relationships used to be {name: score}; it's now {name: {"score": int,
+    "npc_id": str|None}} so a relationship can be explicitly linked to a characters entry
+    (see story_engine.insert_character/update_progress_from_turn) instead of the two only
+    ever being tied together by an exact, fragile match on name. There's no general
+    schema-version/migration mechanism in this project - this is a narrow, one-off upgrade
+    for this one field, applied in place so every caller downstream of load_state can assume
+    the new shape unconditionally."""
+    relationships = state.get("player", {}).get("relationships")
+    if not relationships:
+        return
+    for name, value in relationships.items():
+        if not isinstance(value, dict):
+            relationships[name] = {"score": value, "npc_id": None}
+
+
 def load_state(user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_SLUG) -> dict:
     """Loads a user's save for a story, cloning it fresh from the template on
     first play. Locked so a concurrent request for the same save can't race
@@ -92,7 +108,9 @@ def load_state(user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_S
     with _lock(user_id, story_slug):
         if os.path.isfile(path):
             with open(path, "r") as f:
-                return json.load(f)
+                state = json.load(f)
+            _migrate_relationships(state)
+            return state
         state = load_template(story_slug)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as f:

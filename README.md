@@ -110,10 +110,29 @@ python backend/plot_manager.py focus thread_faction                             
 python backend/plot_manager.py focus                                                 # switch back to main
 python backend/plot_manager.py add-goal 'Player wants to rescue trapped AI'
 python backend/plot_manager.py add-theme 'Identity and memory'
+python backend/plot_manager.py seed 'Add a legal advocate who could become an ally'  # LLM drafts a character/subplot/direction from a note
+python backend/plot_manager.py seed-list                                             # review drafts staged by `seed` before committing
+python backend/plot_manager.py seed-apply seed_001 --role 'close confidant'          # commit a draft, optionally editing a field first
+python backend/plot_manager.py seed-discard seed_001                                 # drop a draft instead
+python backend/plot_manager.py list-unlinked                                         # relationship names not yet backed by a full character
+python backend/plot_manager.py promote-relationship 'the advocate'                   # draft and commit a full character for one, and link it
 ```
 
 Add `--user <id> --story <slug>` to any command to target a specific save
 instead of the local default.
+
+**Characters and relationships**: a `characters` entry (name, description,
+role, hook, etc.) can come from four places — a `seed` you write by hand
+(above), a subplot or act that decides it genuinely needs a specific new
+person to exist, the narrator giving someone an actual proper name mid-scene
+(a generic label like "the advocate" deliberately does *not* auto-create
+one, to avoid spinning up an NPC for every incidental background figure),
+or `promote-relationship` for turning one of those still-generic labels into
+a full character by hand once it's earned one. Whichever path creates it,
+`player.relationships[name]` carries an explicit `npc_id` link back to the
+`characters` entry once one exists — `overview`/the web Plot Manager page's
+"Unlinked Relationships" section show which tracked relationships don't
+have one yet.
 
 **When to reach for it**: player choices reveal a more interesting direction
 than the planned acts; subplots become more compelling than the main thread;
@@ -209,6 +228,13 @@ itself.
   narration currently follows.
 - **Record Player Goal** / **Note Emerging Theme** - leave notes about
   where the story should head, without immediately acting on them.
+- **Seed a Future Addition** - describe a character/subplot/direction in
+  your own words; the AI drafts it for you to review, edit, and apply (or
+  discard) before it's committed.
+- **Unlinked Relationships** - any tracked relationship (a name the story
+  has assigned a score to) that isn't backed by a full character yet - most
+  are generic labels the narration used instead of a proper name. Promote
+  one to a real character on demand.
 
 **Subplot Manager** (Manage → Subplot Manager):
 - **Adjust Progress** - nudge a subplot's completion percentage up or down.
@@ -279,6 +305,12 @@ here for when the story needs a deliberate push.
       dropdown on the play screen — full coverage of `plot_manager.py`'s and
       `subplot_manager.py`'s commands as forms, calling the same functions
       directly (no subprocess/CLI shell-out)
+- [x] Characters can be created automatically — from a subplot/act that
+      calls for a specific new person, or the narrator naming someone new
+      mid-scene (never for a generic label) — or promoted by hand from an
+      existing relationship-only name. `player.relationships[name]` now
+      carries an explicit `npc_id` link to its `characters` entry instead of
+      being tied together only by matching name strings
 - [ ] Revert to an earlier scene (similar to a Claude conversation fork) —
       roll the save back to a prior turn, discarding everything after it,
       so a player can back up and try a different path

@@ -101,6 +101,22 @@ def show_plot_overview(state):
                 print(f"  Hook: {char['hook']}")
             print()
 
+    # Show tracked relationships and whether each is backed by a characters entry yet -
+    # see list_unlinked_relationships/promote_relationship_to_npc for turning an unlinked
+    # one into a full NPC.
+    relationships = state["player"].get("relationships", {})
+    if relationships:
+        print("-" * 70)
+        print("RELATIONSHIPS")
+        print("-" * 70)
+        for name, entry in relationships.items():
+            linked = f"linked to {entry['npc_id']}" if entry.get("npc_id") else "not yet an NPC"
+            print(f"{name}: {entry['score']} ({linked})")
+        unlinked = list_unlinked_relationships(state)
+        if unlinked:
+            print("Run 'promote-relationship \"<name>\"' to turn an unlinked relationship into a full NPC.")
+        print()
+
     # Show pending steering seeds awaiting review (see stage_steering_seed) - nothing here
     # has been committed to the save yet.
     pending = steering.get("pending_seeds", [])
@@ -401,22 +417,17 @@ def apply_steering_seed(state, seed_id, **overrides):
             fields[key] = overrides[key]
 
     if seed_type == "character":
-        characters = state.setdefault("characters", {})
-        char_id = f"char_{len(characters) + 1:03d}"
-        while char_id in characters:
-            char_id = f"char_{int(char_id.rsplit('_', 1)[-1]) + 1:03d}"
-        characters[char_id] = {
-            "type": "npc",
-            "name": fields.get("name", ""),
-            "description": fields.get("description", ""),
-            "role": fields.get("role", ""),
-            "relationship_to_player": fields.get("relationship_to_player", ""),
-            "hook": fields.get("hook", ""),
-            "introduced": False,
-            "seed_note": seed["note"],
-        }
-        result_id = char_id
-        print(f"Added character '{fields.get('name', '')}' ({char_id})")
+        result_id = story_engine.insert_character(
+            state, fields.get("name", ""),
+            description=fields.get("description", ""),
+            role=fields.get("role", ""),
+            relationship_to_player=fields.get("relationship_to_player", ""),
+            hook=fields.get("hook", ""),
+            introduced=False,
+            origin="seed",
+            seed_note=seed["note"],
+        )
+        print(f"Added character '{fields.get('name', '')}' ({result_id})")
     elif seed_type == "subplot":
         span = fields.get("span") if fields.get("span") in ("single_act", "multi_act") else "single_act"
         result_id = story_engine.insert_subplot(
@@ -471,6 +482,65 @@ def discard_steering_seed(state, seed_id):
     print(f"Discarded seed '{seed_id}'")
 
 
+# --- Promoting a relationship-only name to a full NPC ---
+# update_progress_from_turn deliberately never auto-creates a character record for a generic/
+# descriptive handle (e.g. "the advocate", "a guard") - only for a name the model actually
+# gives someone (see story_engine.py's new_characters prompt instruction). A relationship
+# that's still unlinked (no characters entry behind it) can be promoted here instead, on
+# request - same story_engine.generate_character_from_relationship + insert_character
+# pipeline the automatic paths use, just triggered manually.
+
+_RELATIONSHIP_FIELDS = ("description", "role", "relationship_to_player", "hook")
+
+
+def list_unlinked_relationships(state):
+    """Every tracked relationship that isn't yet backed by a characters entry (see
+    player.relationships[name]["npc_id"]) - candidates for promote_relationship_to_npc."""
+    relationships = state["player"].get("relationships", {})
+    return [
+        (name, entry["score"])
+        for name, entry in relationships.items()
+        if not entry.get("npc_id")
+    ]
+
+
+def promote_relationship_to_npc(state, name, **overrides):
+    """Draft and commit a full NPC record for a relationship-only name (see
+    generate_character_from_relationship), applying any field overrides the caller supplied,
+    and link the relationship entry to the new record. Returns the new character id, or None
+    if the name isn't a tracked relationship or generation failed."""
+    relationships = state["player"].get("relationships", {})
+    entry = relationships.get(name)
+    if entry is None:
+        print(f"Error: no tracked relationship named '{name}'")
+        return None
+    if entry.get("npc_id"):
+        print(f"'{name}' is already linked to character {entry['npc_id']}")
+        return None
+
+    draft = story_engine.generate_character_from_relationship(state, name)
+    if draft is None:
+        print(f"Could not draft a character for '{name}' - try again.")
+        return None
+
+    for key in _RELATIONSHIP_FIELDS:
+        if overrides.get(key):
+            draft[key] = overrides[key]
+
+    char_id = story_engine.insert_character(
+        state, name,
+        description=draft.get("description", ""),
+        role=draft.get("role", ""),
+        relationship_to_player=draft.get("relationship_to_player", ""),
+        hook=draft.get("hook", ""),
+        introduced=True,
+        origin="relationship",
+    )
+    entry["npc_id"] = char_id
+    print(f"Promoted '{name}' to character {char_id}")
+    return char_id
+
+
 def main():
     user_id, story_slug, parsed_argv = state_store.parse_user_story_args(sys.argv[1:])
     # keep a program-name placeholder at index 0 so every sys.argv[N] below still
@@ -497,6 +567,11 @@ def main():
         print("      [--hook '<override>'] [--priority '<override>'] [--ties '<override>']")
         print("      [--span 'single_act|multi_act']")
         print("  python plot_manager.py seed-discard <seed_id>")
+        print("\nRelationships (promote a tracked but not-yet-formalized name to a real NPC -")
+        print("see 'overview' for which relationships are still unlinked):")
+        print("  python plot_manager.py list-unlinked")
+        print("  python plot_manager.py promote-relationship '<name>' [--description '<override>']")
+        print("      [--role '<override>'] [--relationship '<override>'] [--hook '<override>']")
         print("\nModifying:")
         print("  python plot_manager.py modify-act <act_number> --title '<new title>' --description '<new desc>'")
         print("  python plot_manager.py pivot '<new title>' '<new description>' '<reason>'")
@@ -644,6 +719,35 @@ def main():
             return
         seed_id = argv[2]
         discard_steering_seed(state, seed_id)
+        state_store.save_state(state, user_id, story_slug)
+
+    elif command == "list-unlinked":
+        unlinked = list_unlinked_relationships(state)
+        if not unlinked:
+            print("No unlinked relationships.")
+        for name, score in unlinked:
+            print(f"{name}: {score}")
+
+    elif command == "promote-relationship":
+        if len(argv) < 3:
+            print("Usage: python plot_manager.py promote-relationship '<name>' "
+                  "[--description '<override>'] [--role '<override>'] "
+                  "[--relationship '<override>'] [--hook '<override>']")
+            return
+        name = argv[2]
+        kwargs = {}
+        i = 3
+        flag_map = {
+            "--description": "description", "--role": "role",
+            "--relationship": "relationship_to_player", "--hook": "hook",
+        }
+        while i < len(argv):
+            if argv[i] in flag_map and i + 1 < len(argv):
+                kwargs[flag_map[argv[i]]] = argv[i + 1]
+                i += 2
+            else:
+                i += 1
+        promote_relationship_to_npc(state, name, **kwargs)
         state_store.save_state(state, user_id, story_slug)
 
     else:
