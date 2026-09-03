@@ -441,8 +441,13 @@ Respond with ONLY a JSON object, no other text, in this exact shape:
 }}
 Only include subplot ids, flags, fragment ids, items, character names, and stats that actually
 changed this turn. Use {{}}/[] for nothing changed.
+If a relationship_changes entry refers to someone already listed in EXISTING CHARACTERS, its key
+must be that exact string, copied verbatim - never a shortened, reordered, or paraphrased version
+of it (e.g. if EXISTING CHARACTERS lists "Salome Vence (the Advocate)", use that exact string, not
+"Salome Vence" or "the advocate"). This is what lets the relationship stay linked to that
+character's record instead of silently forking into an unlinked, seemingly-new name.
 Only add an entry to new_characters when a character is given an actual proper name for the
-first time this turn (e.g. "Marlowe", "Salome Vence") AND isn't already in EXISTING CHARACTERS -
+first time this turn (e.g. "Marlowe", "Elena Cho") AND isn't already in EXISTING CHARACTERS -
 never for a generic/descriptive handle (e.g. "the guard", "the advocate", "the woman at the
 terminal"). A generic-label character should still get a relationship_changes entry as usual,
 just not a new_characters one - promoting them to a full character later is a separate, manual
