@@ -27,6 +27,9 @@
     data-result-target="#scene-list" data-result-swap="beforeend"
     hx-post="{{ url_for('take_turn', story_slug=story_slug) }}" hx-swap="none">
     <label for="action-input">{{ "Or, steer your own way" if options else "What do you do?" }}</label>
+    {% if not options %}
+    <p class="muted-hint">No suggested choices this turn &mdash; type your own action below.</p>
+    {% endif %}
     <textarea id="action-input" name="action" rows="2" required></textarea>
     <button type="submit">{{ "4. Steer" if options else "Continue" }}</button>
   </form>

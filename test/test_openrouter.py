@@ -200,4 +200,41 @@ except se.LLMUnavailableError:
     print("OK: a call that hangs past OPENROUTER_TOTAL_TIMEOUT is caught by the wall-clock "
           "deadline, not left to hang indefinitely")
 
+# --- finish_reason "length" on a json_mode call is still a hard failure - truncated JSON
+# won't parse, so this must keep going through the Gemini fail-safe path like any other
+# LLMUnavailableError (this file's fail-safe is stubbed to always fail too - see the module
+# docstring - so this exercises "OpenRouter truncated AND the fail-safe also down").
+def _fake_post_truncated_json(url, headers=None, json=None, timeout=None):
+    return _FakeResponse(200, {"choices": [{
+        "message": {"content": '{"unterminat'}, "finish_reason": "length",
+    }]})
+
+
+se.requests.post = _fake_post_truncated_json
+try:
+    se.call_llm_json("some prompt")
+    raise AssertionError("expected LLMUnavailableError")
+except se.LLMUnavailableError:
+    print("OK: finish_reason=length on a json_mode call is still wrapped as LLMUnavailableError")
+
+
+# --- finish_reason "length" on a plain narration call (json_mode=False) is salvaged instead
+# of failed: a runaway completion (observed in production - the model narrated ~6x the
+# instructed scene length before hitting OPENROUTER_MAX_TOKENS) shouldn't fail the whole
+# turn just because it never reached its OPTIONS block - generate_missing_options's existing
+# follow-up call already covers a reply that's missing OPTIONS for any other reason, so this
+# only needs to hand back clean, sentence-complete text rather than raising.
+def _fake_post_truncated_narration(url, headers=None, json=None, timeout=None):
+    return _FakeResponse(200, {"choices": [{
+        "message": {"content": "The door creaks open. She steps inside and pauses. Then the"},
+        "finish_reason": "length",
+    }]})
+
+
+se.requests.post = _fake_post_truncated_narration
+result = se.call_llm("some prompt")
+assert result == "The door creaks open. She steps inside and pauses.", result
+print("OK: finish_reason=length on a narration call is trimmed to the last complete "
+      "sentence instead of raising")
+
 print("\nALL CHECKS PASSED: test_openrouter")

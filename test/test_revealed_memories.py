@@ -93,4 +93,59 @@ assert content_present(prompt, last_i), "most recently revealed must survive the
 assert not content_present(prompt, 1), "oldest revealed fragment must be dropped past the cap"
 print(f"OK: revealed-fragment block capped to {se.MEMORY_FRAGMENT_PROMPT_LIMIT}, most recent kept")
 
+# --- with unrevealed fragments present, the state-update prompt instructs evaluation ---
+se.call_llm_json = CannedResponses([
+    {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
+     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+])
+captured = {}
+original_json = se.call_llm_json
+
+
+def spy(prompt, **kw):
+    captured["prompt"] = prompt
+    return original_json(prompt, **kw)
+
+
+se.call_llm_json = spy
+se.update_progress_from_turn(ctx, "look around", "narration text")
+assert "never force a match" in captured["prompt"]
+assert "that the narration satisfies this turn" in captured["prompt"]
+print("OK: unrevealed fragments present -> state-update prompt instructs evaluation")
+
+# --- with all fragments already revealed, no evaluation instruction is emitted ---
+all_revealed_ctx = se.state_store.load_state("revealedmemtest3", se.state_store.DEFAULT_STORY_SLUG)
+all_revealed_story = se.state_store.thaw(all_revealed_ctx["story"])
+all_revealed_story["mechanics"]["revelations"] = [
+    {"id": "frag_1", "trigger": "trigger one", "content": "content one"},
+]
+all_revealed_ctx["story"] = se.state_store.freeze(all_revealed_story)
+all_revealed_ctx["state"]["plot"]["revelations_revealed"] = {"frag_1": {"turn": 1}}
+se.call_llm_json = CannedResponses([
+    {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
+     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+])
+captured = {}
+original_json = se.call_llm_json
+se.call_llm_json = spy
+se.update_progress_from_turn(all_revealed_ctx, "look around", "narration text")
+assert "never force a match" not in captured["prompt"]
+print("OK: all fragments already revealed -> no evaluation instruction emitted")
+
+# --- a story with no mechanics.revelations at all does not raise and emits no instruction ---
+no_rev_ctx = se.state_store.load_state("revealedmemtest4", se.state_store.DEFAULT_STORY_SLUG)
+no_rev_story = se.state_store.thaw(no_rev_ctx["story"])
+no_rev_story["mechanics"]["revelations"] = []
+no_rev_ctx["story"] = se.state_store.freeze(no_rev_story)
+se.call_llm_json = CannedResponses([
+    {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
+     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+])
+captured = {}
+original_json = se.call_llm_json
+se.call_llm_json = spy
+se.update_progress_from_turn(no_rev_ctx, "look around", "narration text")
+assert "never force a match" not in captured["prompt"]
+print("OK: no mechanics.revelations -> no raise, no evaluation instruction")
+
 print("\nALL CHECKS PASSED: test_revealed_memories")

@@ -73,4 +73,39 @@ assert title_present(act_prompt, 28) and title_present(act_prompt, 29) and title
 assert not title_present(act_prompt, 27)
 print("OK: check_and_advance_act prompt scoped to just this act's 3 completions, not all 30")
 
+# --- _enforce_word_cap: under-cap input is returned unchanged ---
+short_text = "one two three four five."
+assert se._enforce_word_cap(short_text, 10) == short_text
+print("OK: _enforce_word_cap leaves under-cap text unchanged")
+
+# --- _enforce_word_cap: over-cap input comes back at or under the cap ---
+over_cap = " ".join(f"word{i}." for i in range(20))
+result = se._enforce_word_cap(over_cap, 10)
+assert len(result.split()) <= 10
+print("OK: _enforce_word_cap trims over-cap text to at or under the cap")
+
+# --- _enforce_word_cap: trims back to end on sentence punctuation ---
+mid_sentence = "First sentence here. Second sentence continues without stopping and just keeps going"
+result = se._enforce_word_cap(mid_sentence, 6)
+assert result.endswith((".", "!", "?")), result
+assert result == "First sentence here."
+print("OK: _enforce_word_cap trims back to a sentence boundary")
+
+# --- _enforce_word_cap: no sentence punctuation at all still returns at or under cap ---
+no_punct = " ".join(f"word{i}" for i in range(20))
+result = se._enforce_word_cap(no_punct, 10)
+assert len(result.split()) <= 10
+print("OK: _enforce_word_cap falls back to a hard cut when there's no sentence punctuation")
+
+# --- end-to-end: rollover clamps the saved compressed_summary to the cap ---
+e2e_ctx = se.state_store.load_state("boundingtest2", se.state_store.DEFAULT_STORY_SLUG)
+e2e_ctx["state"]["history"]["compressed_summary"] = ""
+se.call_llm_json = lambda prompt, **kw: {}
+over_cap_summary = " ".join(f"word{i}." for i in range(se.SUMMARY_MAX_WORDS + 500))
+se.call_llm = lambda prompt, **kw: over_cap_summary
+for _ in range(se.RECENT_TURN_LIMIT + 1):
+    se.update_state_after_turn(e2e_ctx, "do something", "narration text")
+assert len(e2e_ctx["state"]["history"]["compressed_summary"].split()) <= se.SUMMARY_MAX_WORDS
+print("OK: end-to-end rollover keeps compressed_summary within SUMMARY_MAX_WORDS")
+
 print("\nALL CHECKS PASSED: test_context_bounding")

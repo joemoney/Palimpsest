@@ -217,11 +217,13 @@ rather than cosmetically renamed.
 "beats": {
   "crisis": {
     "definition": "Active pursuit or direct threat requiring an immediate decision this scene.",
-    "feeds": "tension"
+    "feeds": "tension",
+    "resets": ["stasis"]
   },
   "escalation": {
     "definition": "A new complication or threat is introduced; stakes rise, but no immediate life-or-death branch yet.",
-    "feeds": "tension"
+    "feeds": "tension",
+    "resets": ["stasis"]
   },
   "lull": {
     "definition": "The immediate pursuing threat has receded or resolved. Dread and cost may remain. No new pursuer introduced this scene.",
@@ -235,6 +237,10 @@ rather than cosmetically renamed.
   }
 }
 ```
+
+> Both correction directions are symmetric by construction: each pair of beats resets the
+> counter the other pair feeds. A vocabulary where one counter is never reset is monotonic
+> and will fire its rule exactly once before `just_fired` suppresses it permanently.
 
 Per-beat fields:
 

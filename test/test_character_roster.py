@@ -67,4 +67,43 @@ prompt = se.build_system_prompt(full_ctx)
 assert "Mrs. Abbott" in prompt, "the authored character must still render regardless of how many discovered ones exist"
 print("OK: an authored character still renders in the roster alongside many discovered ones")
 
+# --- an authored character's `hook` reaches generate_pacing_nudge's CHARACTERS TO WEAVE IN
+# line. That list used to read ctx["state"]["characters"] alone, so a template-authored NPC
+# (who has no state entry until they actually appear in play) was never actively woven in -
+# only LLM-invented characters were. Injected rather than taken from the default story's own
+# roster, since whether any authored character there happens to carry a hook is content that
+# can change. ---
+nudge_ctx = se.state_store.load_state("rostertest4", se.state_store.DEFAULT_STORY_SLUG)
+story_dict = se.state_store.thaw(nudge_ctx["story"])
+story_dict["world"].setdefault("characters", {})["Aurelia Vance"] = {
+    "name": "Aurelia Vance", "description": "An archivist.", "role": "archivist",
+    "relationship_to_player": "wary", "hook": "She can arrive asking after a missing ledger.",
+}
+nudge_ctx["story"] = se.state_store.freeze(story_dict)
+assert "Aurelia Vance - She can arrive asking after a missing ledger." in se.generate_pacing_nudge(nudge_ctx)
+print("OK: an authored character's hook reaches the CHARACTERS TO WEAVE IN nudge")
+
+# Meeting them in play (relationship_changes sets introduced) retires them from that line -
+# the same flag that already retired discovered characters.
+nudge_ctx["state"]["characters"]["Aurelia Vance"] = {
+    "relationship": 5, "first_seen_turn": 2, "introduced": True,
+}
+assert "Aurelia Vance" not in se.generate_pacing_nudge(nudge_ctx)
+print("OK: an authored character retires from the nudge once introduced")
+
+# A discovered character's own hook still weaves in, and still wins the recency slice.
+nudge_ctx["state"]["characters"]["Zeb"] = {
+    "relationship": 0, "first_seen_turn": 3, "introduced": False, "hook": "Zeb can turn up at the docks.",
+}
+assert "Zeb - Zeb can turn up at the docks." in se.generate_pacing_nudge(nudge_ctx)
+print("OK: a discovered character's hook still weaves in alongside authored ones")
+
+# A story with no authored characters at all still nudges without raising.
+bare_ctx = se.state_store.load_state("rostertest5", se.state_store.DEFAULT_STORY_SLUG)
+story_dict = se.state_store.thaw(bare_ctx["story"])
+story_dict["world"].pop("characters", None)
+bare_ctx["story"] = se.state_store.freeze(story_dict)
+assert isinstance(se.generate_pacing_nudge(bare_ctx), str)
+print("OK: a story with no authored characters nudges without raising")
+
 print("\nALL CHECKS PASSED: test_character_roster")

@@ -45,6 +45,14 @@ STAT_FLOOR = 0
 # minimal template must still run).
 DEFAULT_SCENE_WORD_MIN = 470
 DEFAULT_SCENE_WORD_MAX = 500
+# OpenRouter's "provider": {"sort": "throughput"} (see _call_llm_openrouter) can route a
+# request to whichever backing provider is fastest for the model, and that provider's own
+# default max_tokens isn't something this app controls or can rely on - one observed in
+# production truncated a narration reply mid-sentence, well short of the ~500-word scene
+# plus its trailing OPTIONS block (~150 more words), with no OPTIONS block at all surviving.
+# Set generously above the largest real payload (narration + options, or a state-update JSON
+# blob) so a low provider default never becomes the binding constraint.
+OPENROUTER_MAX_TOKENS = 4096
 END_STORY_PHRASES = {"end story", "end the story", "conclude the story", "wrap up the story"}
 STEER_WARNING = (
     "*** STEERING MODE: this rewrites the plot directly, bypassing narration.\n"
@@ -91,6 +99,17 @@ for _provider in (TIER_AB_PROVIDER, TIER_C_PROVIDER):
 # OPENROUTER_API_KEY plus a requests.post stub in every test file that merely imports this
 # module - see call_llm's docstring.
 TESTING_FORCE_GOOGLE = os.getenv("TESTING_FORCE_GOOGLE", "").strip().lower() in ("1", "true", "yes")
+
+# Deployment-level kill switch for call_llm's Gemini fail-safe (see its docstring). Some
+# operator environments can't reach the Gemini API at all - observed in production as every
+# fail-safe attempt raising google.api_core.exceptions.FailedPrecondition ("400 User location
+# is not supported for the API use") regardless of API key, meaning the fail-safe currently
+# only adds a guaranteed-to-fail extra round trip (and its own latency) after a primary
+# failure, before the same error surfaces anyway. Defaults to enabled - this only matters for
+# a deployment that's confirmed Gemini access is blocked for it.
+GEMINI_FAILSAFE_ENABLED = os.getenv("GEMINI_FAILSAFE_ENABLED", "true").strip().lower() not in (
+    "0", "false", "no",
+)
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -148,6 +167,21 @@ _google_executor = concurrent.futures.ThreadPoolExecutor(
 )
 
 
+_SENTENCE_END_RE = re.compile(r'[.!?][\'"”]?(?:\s|$)')
+
+
+def _trim_to_last_sentence(text: str) -> str:
+    """Cuts text back to its last complete sentence, for salvaging a reply truncated
+    mid-sentence by finish_reason "length" (see _call_llm_openrouter) rather than leaving
+    a dangling half-sentence for the player to read or for generate_missing_options to
+    react to. Falls back to the untrimmed text if no sentence boundary is found at all
+    (e.g. a reply cut off before finishing its very first sentence)."""
+    last_end = None
+    for m in _SENTENCE_END_RE.finditer(text):
+        last_end = m.end()
+    return text[:last_end].rstrip() if last_end else text
+
+
 def _call_llm_openrouter(prompt: str, model: str, reasoning: bool = False, json_mode: bool = False) -> str:
     def do_request():
         body = {
@@ -167,17 +201,24 @@ def _call_llm_openrouter(prompt: str, model: str, reasoning: bool = False, json_
             # normally (finish_reason "stop") while leaving message.content null and
             # putting the entire finished reply - including a correctly-formatted OPTIONS
             # block - in message.reasoning instead, because nothing here told it to ever
-            # close its reasoning phase. reasoning=False (Tier A, and Tier C's default)
-            # sends exclude:true, which forces the API to always land the final answer in
-            # content (reasoning still happens internally, it's just not echoed back)
-            # rather than leaving content empty and burning a real generation that the
-            # empty-content guard below then has to discard. reasoning=True (Tier B) sends
-            # exclude:false instead, deliberately accepting that risk in exchange for the
-            # model actually reasoning before it answers - judgment-heavy Tier B calls are
-            # rare and cheap to retry (the empty-content guard below still catches a bad
-            # response and hands it to call_llm's Gemini fail-safe, same as any other
-            # failure). A no-op either way for models without reasoning support.
-            "reasoning": {"exclude": not reasoning},
+            # close its reasoning phase. This used to send {"exclude": not reasoning} for
+            # reasoning=False (Tier A, Tier C's default), on the assumption that excluding
+            # reasoning from the response also forced the model to land its answer in
+            # content - a real production call disproved that: exclude:true only hides
+            # reasoning from the response, it doesn't stop the model spending its
+            # max_tokens budget generating it, and a call landed finish_reason "length"
+            # with content null and reasoning_tokens alone using the entire budget.
+            # {"enabled": false} is OpenRouter's actual "turn reasoning off" switch (a
+            # no-op for a model without reasoning support, and providers with genuinely
+            # mandatory reasoning - none observed among this project's configured models -
+            # would 400 on it, which surfaces as LLMUnavailableError same as any other
+            # failure). reasoning=True (Tier B) still sends exclude:false, deliberately
+            # accepting the truncation risk in exchange for the model actually reasoning
+            # before it answers - judgment-heavy Tier B calls are rare and cheap to retry
+            # (the empty-content and finish_reason guards below still catch a bad response
+            # and hand it to call_llm's Gemini fail-safe, same as any other failure).
+            "reasoning": {"enabled": False} if not reasoning else {"exclude": False},
+            "max_tokens": OPENROUTER_MAX_TOKENS,
         }
         if json_mode:
             # Every call_llm_json call requests this (see its docstring), regardless of
@@ -207,9 +248,25 @@ def _call_llm_openrouter(prompt: str, model: str, reasoning: bool = False, json_
         raise LLMUnavailableError(str(e)) from e
 
     try:
-        content = data["choices"][0]["message"]["content"]
+        choice = data["choices"][0]
+        content = choice["message"]["content"]
     except (KeyError, IndexError, TypeError) as e:
         raise LLMUnavailableError(f"Unexpected OpenRouter response shape: {data}") from e
+    # A reply cut off by OPENROUTER_MAX_TOKENS (finish_reason "length") is genuinely unusable
+    # for call_llm_json (json_mode=True) - truncated JSON won't parse, so that case still goes
+    # through the Gemini fail-safe/retry path like any other LLMUnavailableError. For plain
+    # narration (json_mode=False), a runaway completion (observed in production: the model
+    # narrated several scenes' worth of content, ~6x the instructed word count, before hitting
+    # the cap) doesn't need the whole turn to fail - it just never reached its OPTIONS block,
+    # which is exactly what generate_missing_options's existing follow-up call already handles
+    # for a reply that omits OPTIONS for any other reason. Trimming to the last complete
+    # sentence here (instead of raising) lets that same downstream path salvage a clean,
+    # if shorter-than-intended, scene deterministically - regardless of max_tokens - rather
+    # than gambling on a larger cap being big enough for the next runaway.
+    if choice.get("finish_reason") == "length":
+        if json_mode:
+            raise LLMUnavailableError(f"OpenRouter truncated response (finish_reason=length): {data}")
+        content = _trim_to_last_sentence(content)
     # Some models (observed with deepseek-v4-pro) can return a 200 with
     # message.content null/empty - e.g. the reply landed entirely in a
     # "reasoning" field, or the model stopped before producing output. That's
@@ -292,6 +349,8 @@ def call_llm(
     except LLMUnavailableError as primary_error:
         if provider == "google" and model == GEMINI_MODEL:
             raise  # this WAS the fail-safe call - nothing left to fall back to
+        if not GEMINI_FAILSAFE_ENABLED:
+            raise
         print(f"[FAILSAFE] primary call failed (provider={provider!r} model={model!r}): "
               f"{primary_error} - retrying via Gemini fail-safe ({GEMINI_MODEL})")
         return _call_llm_google(prompt, GEMINI_MODEL)
@@ -738,7 +797,8 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         'foundational fact that should never be forgotten, e.g. a core revelation or '
         "identity; false if it's situational and safe to eventually forget once it's no "
         'longer recent>}}',
-        '  "memory_fragments_revealed": ["<fragment_id>", "..."]',
+        '  "memory_fragments_revealed": ["<the exact id of every UNREVEALED MEMORY FRAGMENT '
+        'TRIGGER below that the narration satisfies this turn, or [] if none>"]',
     ]
     if tracked_entity:
         schema_fields.append(
@@ -802,6 +862,22 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
             " just not a new_characters one."
         )
 
+    # A trigger is authored as a description of an event ("the first time the protagonist
+    # attempts a non-trivial computational proof"), but narration never echoes that wording -
+    # it renders the event. Without this, the model treats the trigger list as context rather
+    # than as something to evaluate, and fires nothing: 0 of 2 across a 24-turn playthrough
+    # whose turns 18 and 23 both plainly satisfied one (docs/PHASE_0_GATE_REPORT.md §4).
+    fragment_instruction = ""
+    if unrevealed_fragments:
+        fragment_instruction = (
+            "For memory_fragments_revealed, check the NARRATION against each UNREVEALED MEMORY "
+            "FRAGMENT TRIGGER and list the id of every one the narration satisfies this turn. "
+            "Judge a trigger by what actually happens in the scene, not by whether the narration "
+            "reuses the trigger's wording - a trigger describing an act is satisfied by the "
+            "protagonist performing that act however it is written. Return [] if none apply; "
+            "never force a match.\n"
+        )
+
     failure_line = f"\nFAILURE CONDITIONS (id: trigger): {json.dumps(failure_triggers)}" if failure_conditions else ""
 
     prompt = f"""Given this turn of an interactive story, report what changed in the world state.
@@ -824,7 +900,7 @@ Respond with ONLY a JSON object, no other text, in this exact shape:
 Only include subplot ids, flags, fragment ids, items, character names, and stats that actually
 changed this turn. Use {{}}/[] for nothing changed. Omit scene_update entirely if the
 protagonist's location and situation are unchanged from CURRENT SCENE above.
-{exact_name_instruction}Only add an entry to new_characters when a character is given an actual proper name for the
+{fragment_instruction}{exact_name_instruction}Only add an entry to new_characters when a character is given an actual proper name for the
 first time this turn (e.g. "Marlowe", "Elena Cho") AND isn't already in EXISTING CHARACTERS -
 never for a generic/descriptive handle (e.g. "the guard", "the advocate", "the woman at the
 terminal").{generic_label_instruction} Promoting a generic-label character to a full one later
@@ -1440,9 +1516,18 @@ def generate_pacing_nudge(ctx: dict) -> str:
     # *unresolved* entries are ever pulled into the prompt - a promoted direction or an
     # introduced character stops appearing on its own via the flag that already marks it
     # resolved, no separate eviction needed.
+    # Runs over the merged roster, not just ctx["state"]["characters"] - a template's
+    # authored world.characters never get a state entry until they actually appear in play,
+    # so reading state alone meant a hand-authored NPC's `hook` (the one field whose whole
+    # job is "here's a concrete way to bring this person on stage") reached no prompt at
+    # all, and only LLM-invented characters were ever actively woven in. Ordered authored-
+    # first so the [-2:] slice still favours the most recently discovered character, and
+    # so the order is stable rather than set-iteration order.
+    authored_names = ctx["story"]["world"].get("characters", {})
+    ordered_names = list(authored_names) + [n for n in ctx["state"]["characters"] if n not in authored_names]
     pending_characters = [
-        {"name": name, **entry} for name, entry in ctx["state"]["characters"].items()
-        if not entry.get("introduced") and entry.get("hook")
+        record for record in (_character_record(ctx, name) for name in ordered_names)
+        if not record["introduced"] and record["hook"]
     ]
     if pending_characters:
         hooks = "; ".join(f"{c['name']} - {c['hook']}" for c in pending_characters[-2:])
@@ -1707,6 +1792,60 @@ def _section_style(ctx: dict) -> str | None:
     return f"PROSE STYLE:\n{lines}"
 
 
+def _options_block_instruction(option_count: int, option_pov: str) -> str:
+    """The "end with an OPTIONS: block" instruction, shared between _section_footer (the
+    normal narration prompt) and generate_missing_options (a standalone follow-up call used
+    when a narration reply skips the block entirely - see that function's docstring) so the
+    two never drift out of a format parse_narration_and_options can actually parse."""
+    numbered_examples = " / ".join(f"{i}." for i in range(1, option_count + 1))
+    return (
+        "End your narration with a blank line, then the exact heading \"OPTIONS:\" on its "
+        f"own line, followed by exactly {option_count} numbered options ({numbered_examples}), "
+        "one per line, each in the exact format <short third-person action label> || <1-2 "
+        f"sentence {option_pov} prose rendition of taking that action>. Keep the action label "
+        "under 15 words, distinct, and plausible.\n"
+        f"The {option_count} options must diverge in kind, not in degree. Give each one a "
+        "different mode: speaking or pressing someone; acting physically on the world; going "
+        "somewhere or leaving; committing to a risk. Two options that differ only in tone, "
+        "posture, or wording while leading to the same next scene count as one option, not "
+        "two - replace one of them. At least one option must change the protagonist's "
+        "physical situation rather than continue the current exchange. Asking a question is "
+        "legitimate when the answer would genuinely change what the protagonist does next, "
+        "but never more than one such option, and never all of them. No extra commentary "
+        "after the list."
+    )
+
+
+def generate_missing_options(ctx: dict, narration_text: str) -> str | None:
+    """Follow-up call for when a narration reply's own OPTIONS block came back missing or
+    malformed (parse_narration_and_options fell back to an empty list) - rather than
+    silently degrading that turn to free-text-only, or re-rolling the whole (expensive,
+    already-good) narration just to get a differently-formatted block, ask the model for
+    just the missing OPTIONS block, seeded with the narration it needs to react to.
+
+    Returns the raw "OPTIONS:\\n1. ... || ...\\n..." text to append to the original
+    narration, or None if this follow-up call itself failed or came back malformed - callers
+    should treat None the same as the original empty-options fallback (still playable via
+    free text), not as a hard failure worth failing the whole turn over."""
+    narration_cfg = ctx["story"].get("narration", {})
+    option_pov = narration_cfg.get("option_pov") or narration_cfg.get("pov", "first-person")
+    option_count = narration_cfg.get("option_count", 3)
+    prompt = (
+        f"{narration_text}\n\n"
+        "The scene above is missing its required list of player options. "
+        f"{_options_block_instruction(option_count, option_pov)} "
+        "Respond with only the OPTIONS block - no narration, no other text."
+    )
+    try:
+        response = _timed("options_generation", lambda: call_llm(prompt), model=TIER_AB_MODEL)
+    except LLMUnavailableError:
+        return None
+    _, options = parse_narration_and_options(f"\n\nOPTIONS:\n{response}", option_count=option_count)
+    if not options:
+        return None
+    return response.strip()
+
+
 def _section_footer(ctx: dict) -> str:
     story = ctx["story"]
     protagonist = ctx["state"]["protagonist"]
@@ -1723,7 +1862,6 @@ def _section_footer(ctx: dict) -> str:
     # minimum-count fallback too (see app.py's call sites).
     option_pov = narration_cfg.get("option_pov") or narration_cfg.get("pov", "first-person")
     option_count = narration_cfg.get("option_count", 3)
-    numbered_examples = " / ".join(f"{i}." for i in range(1, option_count + 1))
     stats_instruction = (
         "\nThe PLAYER line's Stats are for your own internal reasoning only - never state a "
         "stat's raw numeric value to the player. Reflect what it means narratively instead "
@@ -1739,16 +1877,8 @@ def _section_footer(ctx: dict) -> str:
     else:
         instruction_footer = (
             f"Continue the story based on the player's next action. Narrate the scene itself in "
-            f"{scene_min}-{scene_max} words. End your narration with a "
-            "blank line, then the exact heading \"OPTIONS:\" on its own line, followed by "
-            f"exactly {option_count} numbered options ({numbered_examples}), one per line, each "
-            "in the exact format <short third-person action label> || <1-2 sentence "
-            f"{option_pov} prose rendition of taking that action>. Keep the action label under "
-            "15 words, distinct, and plausible. Each option must be a meaningfully different "
-            "course of action with real consequences for the story - never an option that just "
-            "asks for more detail, investigates further before committing to anything, or "
-            "otherwise stalls for more exposition instead of moving the scene forward. No extra "
-            "commentary after the list."
+            f"{scene_min}-{scene_max} words. "
+            f"{_options_block_instruction(option_count, option_pov)}"
         )
 
     return f"""Stay strictly within the established world, tone, and rules above.{stats_instruction}
@@ -1859,6 +1989,20 @@ def export_narrative(ctx: dict, include_actions: bool = False) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _enforce_word_cap(text: str, max_words: int) -> str:
+    """SUMMARY_MAX_WORDS is an instruction the model overshoots - 2,912 words against a
+    2,000 cap after 24 turns (docs/PHASE_0_GATE_REPORT.md §1). Truncating here is what makes
+    the documented bound real rather than aspirational. The trim back to a sentence boundary
+    matters because this text is fed verbatim into every later prompt and into the next
+    rollover's CURRENT SUMMARY, where a mid-clause cut would compound."""
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    truncated = " ".join(words[:max_words])
+    cut = max(truncated.rfind(". "), truncated.rfind("! "), truncated.rfind("? "))
+    return truncated[:cut + 1] if cut > 0 else truncated
+
+
 def update_state_after_turn(
     ctx: dict,
     player_action: str,
@@ -1915,7 +2059,9 @@ Respond with ONLY the updated summary text, under {SUMMARY_MAX_WORDS} words, no 
             lambda: call_llm(summary_prompt, model=TIER_AB_MODEL, provider=TIER_AB_PROVIDER),
             model=TIER_AB_MODEL,
         )
-        history["compressed_summary"] = updated_summary.strip()
+        history["compressed_summary"] = _enforce_word_cap(
+            updated_summary.strip(), SUMMARY_MAX_WORDS
+        )
 
     state_store.save_state(ctx, user_id, story_slug)
 
@@ -2076,6 +2222,20 @@ def _generate_and_apply_turn(
     concluded."""
     prompt = build_system_prompt(ctx) + f"\n\nPlayer action: {player_action}\n\nNarrator:"
     ai_response = _timed("narration", lambda: call_llm(prompt), model=TIER_AB_MODEL)
+
+    # A non-endgame turn is required to end with an OPTIONS block (endgame turns are
+    # explicitly told not to produce one - see _section_footer). If the model skipped it,
+    # parse_narration_and_options's normal fallback would silently leave the player with
+    # free-text-only input for this turn; try one cheap, targeted follow-up call for just
+    # the missing block before accepting that degradation.
+    if not ctx["state"]["plot"]["endgame"]["requested"]:
+        option_count = ctx["story"].get("narration", {}).get("option_count", 3)
+        _, options = parse_narration_and_options(ai_response, option_count=option_count)
+        if not options:
+            missing_block = generate_missing_options(ctx, ai_response)
+            if missing_block:
+                ai_response = f"{ai_response}\n\n{missing_block}"
+
     print(ai_response)
 
     update_state_after_turn(ctx, player_action, ai_response, user_id, story_slug)

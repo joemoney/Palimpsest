@@ -75,4 +75,24 @@ narration3, options3 = se.parse_narration_and_options(three_option_text, option_
 assert options3 == [], "fewer options than option_count should fall back to no buttons at all"
 print("OK: parse_narration_and_options respects option_count as both a cap and a minimum")
 
+# --- narration prompt requires options to diverge in kind, not just degree ---
+ctx5 = se.state_store.load_state("narrationmoduletest5", se.state_store.DEFAULT_STORY_SLUG)
+prompt = se.build_system_prompt(ctx5)
+assert "must diverge in kind, not in degree" in prompt
+print("OK: narration prompt requires options to diverge in kind, not in degree")
+
+# --- generate_missing_options' follow-up prompt shares the same instruction text ---
+captured_prompt = {}
+
+
+def capture_call_llm(prompt, **kw):
+    captured_prompt["prompt"] = prompt
+    return "1. a || a\n2. b || b\n3. c || c"
+
+
+se.call_llm = capture_call_llm
+se.generate_missing_options(ctx5, "Some narration text.")
+assert "must diverge in kind, not in degree" in captured_prompt["prompt"]
+print("OK: generate_missing_options follow-up prompt shares the same divergence instruction")
+
 print("\nALL CHECKS PASSED: test_narration_module")

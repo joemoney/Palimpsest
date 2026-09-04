@@ -60,11 +60,26 @@ try:
     # take_turn/regenerate_last_turn call made below: the initial action, the
     # regenerate, then two more turns to build up enough history to exercise
     # pagination (4 total turns, one more than INITIAL_TURNS_SHOWN).
+    # Real "OPTIONS:"/"||" format (see parse_narration_and_options) - a canned narration
+    # missing this would spuriously trigger story_engine.generate_missing_options's
+    # follow-up call_llm call, consuming an extra entry from this same canned queue and
+    # desyncing every take_turn call after it.
+    # narration.option_count isn't set in new_babel's template, so parse_narration_and_options
+    # falls back to its default of 3 - each canned narration below needs exactly 3
+    # well-formed options to match, or it's treated as malformed too (see comment above).
     narrations = [
-        "You step into the corridor. The city hums beyond.\n\n1. Keep walking.\n2. Stop and listen.",
-        "A different corridor unfolds. Something else happens.\n\n1. Go left.\n2. Go right.",
-        "Second narration continues onward.\n\n1. Push forward.\n2. Retreat.",
-        "Third narration wraps the sequence.\n\n1. Rest.\n2. Move on.",
+        "You step into the corridor. The city hums beyond.\n\n"
+        "OPTIONS:\n1. Keep walking. || I keep walking.\n2. Stop and listen. || I stop and listen."
+        "\n3. Turn back. || I turn back.",
+        "A different corridor unfolds. Something else happens.\n\n"
+        "OPTIONS:\n1. Go left. || I go left.\n2. Go right. || I go right."
+        "\n3. Stay put. || I stay put.",
+        "Second narration continues onward.\n\n"
+        "OPTIONS:\n1. Push forward. || I push forward.\n2. Retreat. || I retreat."
+        "\n3. Wait. || I wait.",
+        "Third narration wraps the sequence.\n\n"
+        "OPTIONS:\n1. Rest. || I rest.\n2. Move on. || I move on."
+        "\n3. Look around. || I look around.",
     ]
     state_update = {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [], "entity_interaction": False}
     call_queue = CannedResponses(narrations)
@@ -290,7 +305,11 @@ try:
 
     def _narration_checks_status(prompt):
         seen_labels.append(ss.read_turn_status(carol_id, "new_babel")["label_key"])
-        return "Carol's narration.\n\n1. Wait.\n2. Go."
+        # Well-formed OPTIONS block (see the comment on `narrations` above) - malformed
+        # options here would spuriously trigger generate_missing_options's follow-up
+        # call_llm call, adding an extra "options_generation" entry to seen_labels below.
+        return ("Carol's narration.\n\nOPTIONS:\n1. Wait. || I wait.\n2. Go. || I go."
+                "\n3. Look. || I look.")
 
     def _state_update_checks_status(prompt):
         seen_labels.append(ss.read_turn_status(carol_id, "new_babel")["label_key"])

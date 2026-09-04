@@ -299,6 +299,27 @@
     if (fill) { fill.style.width = "0%"; }
     var elt = evt.detail && evt.detail.elt;
     if (elt && elt.hasAttribute && elt.hasAttribute("data-status-poll")) {
+      // #controls is disabled here rather than in an earlier "click"/"submit" capture-phase
+      // listener (a prior approach, since removed) - htmx has already read this element's
+      // (or its form's) field values into the outgoing request by the time htmx:beforeRequest
+      // fires, so disabling now can't affect what gets sent. Disabling earlier broke the
+      // free-text form specifically: a type="submit" button's own default action (dispatching
+      // its form's "submit" event, which htmx listens for) only runs while the button is
+      // still enabled, so a capture-phase "click" disable cancelled that dispatch outright -
+      // no request ever sent. A capture-phase "submit" disable was equally broken the other
+      // way: disabling the fieldset (cascading to the textarea) before htmx's own bubble-phase
+      // listener serialized the form excluded the now-disabled textarea's value entirely,
+      // silently sending an empty action - which the server's "nothing to submit" guard
+      // (app.py's take_turn) then no-ops on without ever starting a turn, leaving this exact
+      // busy indicator stuck on "Working…" forever with nothing left to poll for. Disabling
+      // here, after htmx has already built the request, has none of these problems while
+      // still closing the original double-submission race just as well: this handler runs
+      // synchronously within the same click/submit event's processing, so #controls is
+      // already disabled before the browser can dispatch a near-simultaneous second event
+      // (e.g. a double-tap's synthesized click) - the server-side in-flight check (app.py's
+      // _turn_in_progress_response) remains the real backstop regardless.
+      var controls = document.getElementById("controls");
+      if (controls) { controls.disabled = true; }
       resultTarget = elt.getAttribute("data-result-target");
       resultSwap = elt.getAttribute("data-result-swap");
       awaitingResult = true;
@@ -309,39 +330,21 @@
     }
   });
 
-  // Defense in depth against a duplicate turn submission: hx-disabled-elt only disables
-  // #controls once htmx's own click handling reaches htmx:beforeRequest, which leaves a
-  // brief window - a fast double-tap on a touch device can fire touchend's click plus a
-  // synthesized click before that happens - where a second click still gets through.
-  // Listening in the capture phase on document.body runs
-  // this before htmx's own bubble-phase listener on the button/form ever sees the event, so
-  // #controls is already disabled by the time a near-simultaneous second event is dispatched
-  // (JS event dispatch is synchronous, so there's no in-between for a second event to land).
-  // Disabling mid-dispatch doesn't cancel the click already in flight - htmx still processes
-  // this one normally - it only blocks a subsequent one. The server-side in-flight check
-  // (app.py's _turn_in_progress_response, now also backed by _start_turn_job writing its
-  // "queued" beacon before the kickoff request even returns) is the actual backstop; this
-  // just closes the gap before it, so the earliest possible duplicate never leaves the
-  // browser. #controls is deliberately *not* re-enabled here or by htmx automatically
-  // (hx-disabled-elt was dropped from _controls.html's elements) - the turn this starts
-  // isn't done when the kickoff request settles, only once fetchTurnResult's swap or the
-  // error handlers below re-enable it.
-  function disableControlsOnClick(evt) {
-    var controls = document.getElementById("controls");
-    if (!controls || controls.disabled) { return; }
-    // Only an actual submit trigger (a button) should disable - a click anywhere else in
-    // #controls (e.g. focusing the free-text textarea) must not.
-    var btn = evt.target.closest && evt.target.closest("button");
-    if (btn && controls.contains(btn)) { controls.disabled = true; }
-  }
-  function disableControlsOnSubmit(evt) {
-    var controls = document.getElementById("controls");
-    if (controls && !controls.disabled && controls.contains(evt.target)) {
-      controls.disabled = true;
+  // Defense in depth for the empty-action no-op path (app.py's take_turn: "if not
+  // action.strip(): return ''") - a 2xx response that isn't the 202 a real kickoff always
+  // returns means no turn was actually started, so there's no beacon for pollTurnStatus to
+  // ever see go idle-after-running (sawInFlight never becomes true) - without this, that
+  // response is otherwise indistinguishable from a normal in-flight turn and the busy
+  // indicator would poll forever. Should be rare in practice (the textarea's own `required`
+  // attribute already blocks a truly empty submission client-side), but cheap insurance
+  // against ever hanging silently again the way the click/submit-timing bug above once did.
+  document.body.addEventListener("htmx:afterRequest", function (evt) {
+    var elt = evt.detail && evt.detail.elt;
+    if (elt && elt.hasAttribute && elt.hasAttribute("data-status-poll") &&
+        evt.detail.successful && evt.detail.xhr.status !== 202) {
+      recoverControlsAfterError();
     }
-  }
-  document.body.addEventListener("click", disableControlsOnClick, true);
-  document.body.addEventListener("submit", disableControlsOnSubmit, true);
+  });
 
   // Neither of #controls' automatic re-enable paths applies to an error: the OOB
   // <fieldset id="controls" hx-swap-oob="true"> swap that normally does it only ever rides
