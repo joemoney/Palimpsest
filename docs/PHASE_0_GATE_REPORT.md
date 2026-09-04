@@ -194,13 +194,20 @@ judgement call, and it is fixable without any playtest data.
 
 Zero of two revelations fired across 24 turns, and Act 1 cannot complete without one.
 
-The narration hit the triggers. `frag_0001`'s authored trigger is *"The first time the
-protagonist attempts a non-trivial computational proof."* On turns 18 and 23 the player
-presses a scarred palm to a listening dish and the narration renders an explicit "lattice
-of dark computation", a structural flex of the building, and a double-voiced utterance.
-`frag_0002`'s trigger — *"Encountering a sigil, glyph, or data pattern associated with the
-mysterious entity"* — is plausibly met by the chalk circle vision on turn 8 and the
-spiderwebbed black lines on the tarp on turn 23.
+> **CORRECTION (2026-09-04, post-fix).** This section originally asserted that the
+> narration plainly satisfied `frag_0001` and that the state-update prompt's missing
+> instruction was the cause. Replay testing after the fix (§4.2) **disproved both claims.**
+> The prompt gap was real and worth closing, but it was not why nothing fired. The analysis
+> below is retained down to §4.1; §4.2 carries the corrected root cause and supersedes it.
+
+`frag_0001`'s authored trigger is *"The first time the protagonist attempts a non-trivial
+computational proof."* On turns 18 and 23 the player presses a scarred palm to a listening
+dish and the narration renders an explicit "lattice of dark computation", a structural flex
+of the building, and a double-voiced utterance. `frag_0002`'s trigger — *"Encountering a
+sigil, glyph, or data pattern associated with the mysterious entity"* — looks plausibly met
+by the chalk circle vision on turn 8 and the spiderwebbed black lines on the tarp on turn 23.
+
+Both of those readings turned out to be wrong. See §4.2.
 
 The plumbing is correct. `story_engine.py:746-750` filters to unrevealed triggers and
 `story_engine.py:918-921` records whatever ids come back. Existing coverage in
@@ -234,13 +241,80 @@ This call runs on **Tier C**, the fastest and weakest model (`story_engine.py:89
 ### 4.1 Why this is a Phase 6 finding, not just a bug
 
 Phase 6.2 proposes extending *this same Tier C call* with `beat_type`, `intensity`, and
-`leverage_gained`. The call has just demonstrated that it will not act on an authored
-trigger presented to it verbatim, with no explicit instruction attached. Beat
-classification is a harder judgement than trigger matching, not an easier one.
+`leverage_gained`. What that call does with an authored judgement is therefore directly
+predictive of gate 0.2.
 
-This is a strong negative prior for gate 0.2's ≥70% agreement threshold. Gate 0.2 must be
-run **after** the prompt fix in the fix plan, and should be run against Tier B as well as
-Tier C so the tier decision for 6.2 rests on measurement rather than assumption.
+> **CORRECTION.** This section originally read the zero-fire result as evidence the Tier C
+> call ignores authored triggers, and concluded it was "a strong negative prior" for gate
+> 0.2's ≥70% threshold. §4.2 disproved that. The model was reading the trigger closely and
+> declining it correctly. The revised prior is **mildly positive**: on the one judgement
+> observed, Tier C parsed an authored criterion, weighed a near-miss ("maybe yes... but
+> maybe not because black lines not associated with entity"), and declined rather than
+> pattern-matching on surface vocabulary — which is the discrimination beat classification
+> needs.
+>
+> This is one observation, not a measurement; gate 0.2 still has to be run. But it should
+> be run **on Tier C alone**. The Tier B comparison the original text called for is closed
+> off — see §4.2's token-budget finding.
+
+---
+
+### 4.2 Corrected root cause: the trigger is unreachable, and nothing steers toward it
+
+Fix plan Task 1 landed (commit `86a559c`) and `scripts/replay_turn.py` re-ran turns 18 and
+23 against the fixed prompt, with `revelations_revealed` cleared and flags rewound to their
+pre-turn state. **Both still returned `[]`.**
+
+The Tier B run then exceeded its token budget mid-reasoning and surfaced the model's own
+trace, which settles the question:
+
+> *"frag_0001: first time protagonist attempts a non-trivial computational proof. **No
+> proof.**"*
+> *"The protagonist did 'let the deep fix on that signal', **not proof. No.**"*
+> *"frag_0002 maybe yes. But maybe not because black lines not associated with entity?
+> **Need not force**, but seems likely."*
+
+Three things follow, and they reverse the original diagnosis.
+
+**The instruction works.** "Need not force" is Task 1's own added text ("never force a
+match") being read and applied. The model is evaluating the triggers deliberately, not
+ignoring them. Task 1 was worth landing and should stay.
+
+**The model is right.** The protagonist never attempts a computational proof. They press a
+palm to a dish and something answers *them* — the narration's own framing is "the hand
+remembers", i.e. the act happens to the protagonist rather than being undertaken by them.
+An amnesiac who does not know they can compute cannot deliberately attempt a proof. On a
+strict reading, `frag_0001` was not satisfied on any of the 24 turns, and the correct output
+was `[]` every time.
+
+**Nothing ever steers the story toward staging one.** `unrevealed_fragments` appears only
+inside `update_progress_from_turn` (`story_engine.py:748-887`). The narration prompt never
+sees unrevealed triggers — deliberately, per CR-03's comment at `story_engine.py:1729`:
+*"neither pass sees the other half"*, so the narrator cannot telegraph a reveal it has not
+earned. The unintended consequence is that revelations are **purely passive**: they wait for
+the narration to coincidentally stage an authored event that nothing has asked it to stage.
+Across 24 turns the coincidence did not occur, and there is no mechanism by which it
+reliably would.
+
+So this is a **content and steering defect, not a classifier defect**. Two fixes, neither
+of which is a prompt reword:
+
+1. **Author triggers as observable events, not as protagonist intentions.** `frag_0001`
+   describes a deliberate act the protagonist is characterologically unable to perform in
+   Act 1. Something like *"the protagonist's hand or body performs a computation they did
+   not consciously initiate"* describes what this story actually produces — repeatedly.
+2. **Give the reveal an active path.** This is already designed: pacing spec §6.5 /
+   implementation plan §6.5, "reveal placement integration", schedules queued reveals into
+   release windows. It is the intended mechanism for exactly this gap. That makes Phase 6.5
+   load-bearing for act progression, not the optional polish the plan's risk table implies.
+
+**Tier B is not an available escape hatch.** The Tier B attempt failed with
+`finish_reason=length` and `content: None` — the reasoning phase consumed the entire
+`OPENROUTER_MAX_TOKENS` (4096) budget before emitting any JSON. This is precisely the
+failure CLAUDE.md predicts for reasoning-on tiers, and it means "escalate the state-update
+pass to Tier B" is not viable for this prompt without a token-budget change. Recorded so the
+option is not re-proposed. (The empty-content guard raised `LLMUnavailableError` correctly,
+so the narration-`None` fix is confirmed working under a real provider failure.)
 
 ---
 
