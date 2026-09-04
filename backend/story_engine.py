@@ -1243,6 +1243,46 @@ def parse_narration_and_options(text: str):
     return narration, options
 
 
+def split_turn_entry(entry: str):
+    """(player_action, narration) for one history_log entry. Entries are either
+    'Player: ...\\nNarrator: ...' (a normal turn - player_action is the action that led to
+    this scene) or 'Narrator: ...' (the synthetic opening-scene entry, which has no
+    preceding player action - player_action is None). Shared by app.py's turn rendering and
+    export_story.py's plain-text export, so the "Player: "/"Narrator: " wire format defined
+    by take_turn/apply_opening_name only needs to be parsed in one place."""
+    marker = "Narrator: "
+    idx = entry.find(marker)
+    narration = entry[idx + len(marker):] if idx != -1 else entry
+    player_action = None
+    if idx != -1 and entry.startswith("Player: "):
+        player_action = entry[len("Player: "):idx].rstrip("\n")
+    return player_action, narration
+
+
+def all_turns(state: dict) -> list:
+    """The complete chronological turn sequence for a save, oldest first - full_transcript
+    (unbounded, disk-only, only populated once turns roll out of recent_turns) followed by
+    recent_turns (the live window). See CLAUDE.md's 'Keeping LLM Context Bounded' section."""
+    return state["history_log"].get("full_transcript", []) + state["history_log"]["recent_turns"]
+
+
+def export_narrative(state: dict, include_actions: bool = False) -> str:
+    """Plain-text export of just the story the LLM generated - the Narrator half of every
+    turn, in order - not the player's typed actions (unless include_actions is set) or any
+    of the surrounding plot/character/pacing state. Used by both export_story.py's CLI and
+    app.py's /export route."""
+    title = state["meta"]["title"]
+    lines = [title, "=" * len(title)]
+    for entry in all_turns(state):
+        player_action, narration = split_turn_entry(entry)
+        lines.append("")
+        if include_actions and player_action:
+            lines.append(f"> {player_action}")
+            lines.append("")
+        lines.append(narration.strip())
+    return "\n".join(lines) + "\n"
+
+
 def update_state_after_turn(
     state: dict,
     player_action: str,

@@ -1,10 +1,11 @@
 import os
+import re
 import threading
 import time
 from functools import wraps
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, Response, redirect, render_template, request, session, url_for
 
 import plot_manager
 import state_store
@@ -45,25 +46,12 @@ def login_required(view):
 INITIAL_TURNS_SHOWN = 3
 
 
-def _split_turn_entry(entry: str):
-    """(player_action, narration) for one history_log entry. Entries are either
-    'Player: ...\\nNarrator: ...' (a normal turn - player_action is the action that led to
-    this scene) or 'Narrator: ...' (the synthetic opening-scene entry, which has no
-    preceding player action - player_action is None)."""
-    marker = "Narrator: "
-    idx = entry.find(marker)
-    narration = entry[idx + len(marker):] if idx != -1 else entry
-    player_action = None
-    if idx != -1 and entry.startswith("Player: "):
-        player_action = entry[len("Player: "):idx].rstrip("\n")
-    return player_action, narration
-
-
-def _all_turns(state: dict) -> list:
-    """The complete chronological turn sequence for a save, oldest first - full_transcript
-    (unbounded, disk-only, only populated once turns roll out of recent_turns) followed by
-    recent_turns (the live window). See CLAUDE.md's 'Keeping LLM Context Bounded' section."""
-    return state["history_log"].get("full_transcript", []) + state["history_log"]["recent_turns"]
+# Turn-text parsing (split_turn_entry) and chronological ordering (all_turns) live in
+# story_engine.py - export_story.py's CLI export needs the same logic and shouldn't have to
+# import Flask to get it. Kept as module-level aliases here so the many call sites below
+# don't need to change.
+_split_turn_entry = story_engine.split_turn_entry
+_all_turns = story_engine.all_turns
 
 
 def _render_turn(entry: str, index: int, animate: bool, reveal_from: int = 0) -> dict:
@@ -392,6 +380,22 @@ def turn_history(story_slug):
 
 def _int_or_none(value):
     return int(value) if value else None
+
+
+@app.route("/play/<story_slug>/export", methods=["GET"])
+@login_required
+def export_story_view(story_slug):
+    """Downloads the story-so-far as a plain-text file - just the generated narration (see
+    story_engine.export_narrative), not the save's plot/character/pacing state. ?actions=1
+    also includes the player's typed actions as '> ' lines above the narration they led to."""
+    user_id = session["user_id"]
+    state = state_store.load_state(user_id, story_slug)
+    text = story_engine.export_narrative(state, include_actions=request.args.get("actions") == "1")
+    filename = re.sub(r"[^A-Za-z0-9]+", "_", state["meta"]["title"]).strip("_").lower() + ".txt"
+    return Response(
+        text, mimetype="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.route("/play/<story_slug>/plot", methods=["GET", "POST"])
