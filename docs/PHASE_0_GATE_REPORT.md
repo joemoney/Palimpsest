@@ -301,8 +301,7 @@ of which is a prompt reword:
 
 1. **Author triggers as observable events, not as protagonist intentions.** `frag_0001`
    describes a deliberate act the protagonist is characterologically unable to perform in
-   Act 1. Something like *"the protagonist's hand or body performs a computation they did
-   not consciously initiate"* describes what this story actually produces — repeatedly.
+   Act 1. **Done and validated — see §4.3.**
 2. **Give the reveal an active path.** This is already designed: pacing spec §6.5 /
    implementation plan §6.5, "reveal placement integration", schedules queued reveals into
    release windows. It is the intended mechanism for exactly this gap. That makes Phase 6.5
@@ -315,6 +314,38 @@ failure CLAUDE.md predicts for reasoning-on tiers, and it means "escalate the st
 pass to Tier B" is not viable for this prompt without a token-budget change. Recorded so the
 option is not re-proposed. (The empty-content guard raised `LLMUnavailableError` correctly,
 so the narration-`None` fix is confirmed working under a real provider failure.)
+
+### 4.3 Trigger rewrite — done, and validated by replay
+
+Both `new_babel` triggers were rewritten to describe observable narration events rather than
+protagonist intentions, and to drop qualifiers the model cannot verify from the scene
+(`frag_0002`'s "associated with the mysterious entity" required an identification the
+narration never makes). `frag_0002` also had to state explicitly that a pattern **counts as
+a vision or afterimage** — its first rewrite still missed turn 8's chalk circle, because the
+narration ends that beat with "the chalk lines were never there" and the model reasonably
+ruled it out as not real.
+
+Replayed against the same 24-turn save on **Tier C**, no tier change:
+
+| Turn | Content | Fires |
+|---|---|---|
+| 1 | Checking hands and pockets in the intake ward | — |
+| 4 | Scavenging a hoodie and shoes | — |
+| 8 | Chalk circle in a half-second doubled vision | `frag_0002` |
+| 10 | Tracing the palm scar, probing what the hand remembers | `frag_0001` |
+| 18 | Palm to the listening dish | both |
+| 23 | Palm to the dish again | both |
+
+Silent on mundane turns, firing on the four that carry the imagery — the discrimination that
+was missing. In live play the first reveal now lands around turn 8 rather than never, which
+unblocks Act 1's `at least one memory fragment revealed` completion signal. Turn 10 is a
+better home for `frag_0001` than turn 18: that fragment's payoff is a memory of *hands*
+typing, and turn 10 is the protagonist deliberately interrogating their hand's muscle memory.
+
+This closes the §4 defect. Fix 2 (an active steering path, implementation plan §6.5) is
+still worth building — these triggers now fire when the story happens to produce the
+imagery, but nothing yet *causes* it to — though it is no longer load-bearing for Act 1
+progression on this story.
 
 ---
 
