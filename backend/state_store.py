@@ -1,14 +1,16 @@
 """Storage layer for multi-user, multi-story play.
 
-Two kinds of content, deliberately kept apart:
-- stories/<slug>/template.json - authored seed content, committed to git.
-  Adding a new story is a content change (drop in a new template.json), not
-  a code change.
-- data/ - runtime-only (gitignored): accounts.db (SQLite, just for account
-  credentials - the one place an atomic uniqueness check actually matters)
-  and saves/<user_id>/<story_slug>.json (one live save per user per story,
-  plain JSON files - each has exactly one owner and needs no cross-user
-  queries, so a database buys nothing here).
+Schema v2 story/state split (see docs/SCHEMA_V2_SPEC.md): two documents, loaded together,
+exposed as a plain two-key dict -
+
+    ctx = state_store.load_state(user_id, story_slug)
+    ctx["story"]   # authored content from stories/<slug>/template.json - FrozenDict, raises on write
+    ctx["state"]   # runtime deltas from data/saves/<user>/<slug>.json - plain mutable dict
+
+`stories/<slug>/template.json` is re-read fresh on every load, so a template edit reaches
+every existing save automatically - `save_state()` only ever persists `ctx["state"]`.
+`data/` is runtime-only (gitignored): accounts.db (SQLite, just for account credentials -
+the one place an atomic uniqueness check actually matters) and saves/<user_id>/<story_slug>.json.
 """
 import json
 import os
@@ -20,6 +22,9 @@ import uuid
 import filelock
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import migrate_v1
+from frozen_dict import assert_unmutated, freeze, thaw
+
 STORIES_DIR = "stories"
 DATA_DIR = "data"
 SAVES_DIR = os.path.join(DATA_DIR, "saves")
@@ -30,6 +35,8 @@ DEFAULT_USER_ID = "local-cli"
 # private-submodule stories like new_babel until `git submodule update --init` - still boots
 # straight into a runnable story with zero extra setup.
 DEFAULT_STORY_SLUG = "example"
+
+CURRENT_SCHEMA_VERSION = 2
 
 _SLUG_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -60,12 +67,136 @@ def list_stories() -> list:
     return stories
 
 
-def load_template(story_slug: str) -> dict:
-    """A fresh copy of a story's seed content."""
+def load_template_raw(story_slug: str) -> dict:
+    """A fresh, plain-dict (unfrozen) copy of a story's authored content, straight off
+    disk. Most callers want load_template() instead (frozen, ready to use as ctx["story"]);
+    this exists for the handful of callers that need a mutable copy - the migrator building
+    a new save from scratch, an admin/debug script, etc."""
     _validate_slug(story_slug, "story_slug")
     template_path = os.path.join(STORIES_DIR, story_slug, "template.json")
     with open(template_path, "r") as f:
         return json.load(f)
+
+
+def load_template(story_slug: str) -> dict:
+    """A story's authored content, frozen (see frozen_dict.freeze) - this is what
+    ctx["story"] is set to. Re-read fresh from disk on every call, deliberately never
+    cached: this is what makes a template edit reach every existing save without any
+    explicit migration step."""
+    return freeze(load_template_raw(story_slug))
+
+
+# ---------------------------------------------------------------------------
+# Fresh-save construction (first play) and reconciliation (every later load)
+# ---------------------------------------------------------------------------
+
+def new_save_state(story: dict, story_slug: str) -> dict:
+    """Builds a fresh runtime state dict for a brand-new save, seeded from story's authored
+    pools (subplots, opening scene, initial scene) - see SCHEMA_V2_SPEC.md §4. Everything
+    here is runtime-owned from the moment it's created; nothing under the returned dict is
+    ever read back out of `story` again except through the merge-view helpers in
+    story_engine.py (e.g. resolving a seeded subplot's title from the template)."""
+    subplots = {}
+    for sid, seed in story["plot"]["subplots"].items():
+        subplots[sid] = {
+            "progress": 0,
+            "status": "active" if seed.get("starts_active") else "not_started",
+            "active": bool(seed.get("starts_active")),
+        }
+
+    acts = story["plot"]["main_thread"]["acts"]
+    initial_scene = story["plot"].get("initial_scene", {})
+
+    return {
+        "schema_version": CURRENT_SCHEMA_VERSION,
+        "story_slug": story_slug,
+        "story_version": story.get("story_version"),
+
+        "protagonist": {
+            "name": "",
+            "traits": list(story["protagonist"].get("traits", [])),
+            "inventory": list(story["protagonist"].get("starting_inventory", [])),
+            "stats": {},
+            "creation_choices": {},
+            "flags": {"active": {}, "meta": {}, "archive": {}},
+        },
+
+        "characters": {},
+
+        "scene": {
+            "location": initial_scene.get("location", ""),
+            "summary": initial_scene.get("summary", ""),
+            "present": [],
+        },
+
+        "plot": {
+            "opening_played": False,
+            "current_act": acts[0]["act_number"] if acts else 1,
+            "generated_acts": [],
+            # One {"completed", "optional"} entry per template-authored act, keyed by
+            # act_number as a string (JSON object keys are always strings) - acts[].completed
+            # and .optional move to runtime (SCHEMA_V2_SPEC.md §3.8) since the template acts
+            # themselves are frozen. An act generated later carries both fields directly on
+            # its own (mutable) generated_acts entry instead of needing this overlay.
+            "act_completion": {
+                str(act["act_number"]): {"completed": False, "optional": False} for act in acts
+            },
+            "act_history": [],
+            "emergent_directions": [],
+            "subplots": subplots,
+            "completed_subplots": [],
+            "revelations_revealed": {},
+            "entity_contact_count": 0,
+            "endgame": {
+                "requested": False, "requested_turn": None,
+                "final_arc": None, "concluded": False, "cause": None,
+            },
+            "thread_steering": {
+                "last_pivot_turn": 0, "pivot_history": [], "emerging_themes": [],
+                "player_driven_goals": [], "pending_seeds": [],
+            },
+        },
+
+        "pacing": {
+            "turn_count": 0,
+            "turns_since_nudge": 0,
+            "turns_since_act_check": 0,
+            "subplots_completed_this_act": 0,
+            "last_direction": "",
+        },
+
+        "history": {
+            "recent_turns": [],
+            "compressed_summary": "",
+            "full_transcript": [],
+        },
+
+        "pending_regenerate": None,
+    }
+
+
+def _reconcile(state: dict, story: dict) -> dict:
+    """Runs on every load of an existing save, per SCHEMA_V2_SPEC.md §2.3 - a template
+    edit can invalidate a runtime reference (a removed location, a removed revelation),
+    and the rule is always to degrade gracefully, never to fail the load:
+
+    - scene.location not in story.world.locations -> left as-is, rendered raw
+      (story_engine._location_name already falls back to the raw id for an unknown one).
+    - a runtime subplot id absent from the template -> no action; it's a generated
+      subplot, expected to have no template counterpart.
+    - a seeded subplot removed from the template -> no action here; the runtime copy
+      stays in place (it's in-flight) and story_engine's merge-view falls back to a
+      placeholder title/description if the template entry is genuinely gone.
+    - a revelation id absent from the template -> drop the runtime reveal record
+      silently, since there's nothing left to have revealed.
+    - a stat name absent from character_creation -> no action; the value is kept.
+    """
+    valid_revelation_ids = {r["id"] for r in story.get("mechanics", {}).get("revelations", [])}
+    revealed = state["plot"].get("revelations_revealed", {})
+    for rev_id in list(revealed):
+        if rev_id not in valid_revelation_ids:
+            del revealed[rev_id]
+    return state
 
 
 # ---------------------------------------------------------------------------
@@ -84,46 +215,44 @@ def _lock(user_id: str, story_slug: str) -> filelock.FileLock:
     return filelock.FileLock(path)
 
 
-def _migrate_relationships(state: dict):
-    """player.relationships used to be {name: score}; it's now {name: {"score": int,
-    "npc_id": str|None}} so a relationship can be explicitly linked to a characters entry
-    (see story_engine.insert_character/update_progress_from_turn) instead of the two only
-    ever being tied together by an exact, fragile match on name. There's no general
-    schema-version/migration mechanism in this project - this is a narrow, one-off upgrade
-    for this one field, applied in place so every caller downstream of load_state can assume
-    the new shape unconditionally."""
-    relationships = state.get("player", {}).get("relationships")
-    if not relationships:
-        return
-    for name, value in relationships.items():
-        if not isinstance(value, dict):
-            relationships[name] = {"score": value, "npc_id": None}
-
-
 def load_state(user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_SLUG) -> dict:
-    """Loads a user's save for a story, cloning it fresh from the template on
-    first play. Locked so a concurrent request for the same save can't race
-    the clone-on-first-play step, even across gunicorn worker processes."""
+    """Loads a user's save for a story, cloning a fresh runtime state from the story's
+    authored pools on first play. Returns {"story": ctx, "state": ctx} - see module
+    docstring. Locked so a concurrent request for the same save can't race the
+    clone-on-first-play step, even across gunicorn worker processes."""
+    story = load_template(story_slug)
     path = _save_path(user_id, story_slug)
     with _lock(user_id, story_slug):
         if os.path.isfile(path):
             with open(path, "r") as f:
-                state = json.load(f)
-            _migrate_relationships(state)
-            return state
-        state = load_template(story_slug)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(state, f, indent=2)
-        return state
+                raw_state = json.load(f)
+            if raw_state.get("schema_version", 1) < CURRENT_SCHEMA_VERSION:
+                raw_state = migrate_v1.migrate(raw_state, story_slug, load_template_raw(story_slug))
+                with open(path, "w") as f:
+                    json.dump(raw_state, f, indent=2)
+            state = _reconcile(raw_state, story)
+        else:
+            state = new_save_state(story, story_slug)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                json.dump(state, f, indent=2)
+        return {"story": story, "state": state}
 
 
-def save_state(state: dict, user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_SLUG):
+def save_state(ctx: dict, user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_SLUG):
+    """Persists ctx["state"] only - ctx["story"] is never written back, since it's
+    authored content re-read fresh from the template on every load. Asserts nothing under
+    ctx["story"] was mutated during the request, independent of FrozenDict already raising
+    at the point of mutation (see frozen_dict.assert_unmutated's docstring) - compares
+    against a fresh read of the template file itself (the actual source of truth) rather
+    than a snapshot stashed at load time, so ctx stays exactly the two-key shape
+    SCHEMA_V2_SPEC.md §2.2 calls for."""
+    assert_unmutated(load_template_raw(story_slug), ctx["story"], context=f"{user_id}/{story_slug}")
     path = _save_path(user_id, story_slug)
     with _lock(user_id, story_slug):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as f:
-            json.dump(state, f, indent=2)
+            json.dump(ctx["state"], f, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -204,10 +333,10 @@ def read_turn_status(user_id: str, story_slug: str) -> dict | None:
 # idle again, fetches the outcome from here via GET /api/turn/result.)
 # ---------------------------------------------------------------------------
 # Bounded to exactly one entry, overwritten every turn - same shape as the save file's own
-# history_log.pending_regenerate (see CLAUDE.md) - and consumed on read (one-shot) so a
-# stray duplicate fetch can't re-append the same scene twice. Best-effort/unlocked, same
-# tradeoff as the status beacon above: this is a handoff between one background thread and
-# the one poll that's actually waiting on it, not durable state anything else reads.
+# pending_regenerate - and consumed on read (one-shot) so a stray duplicate fetch can't
+# re-append the same scene twice. Best-effort/unlocked, same tradeoff as the status beacon
+# above: this is a handoff between one background thread and the one poll that's actually
+# waiting on it, not durable state anything else reads.
 
 def _result_path(user_id: str, story_slug: str) -> str:
     return _save_path(user_id, story_slug) + ".result"

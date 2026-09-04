@@ -1,14 +1,28 @@
 {
+  "schema_version": 2,
+  "story_version": "2026-09-04.1",
   "meta": {
     "title": "The Last Ferry to Millbrook",
     "genre": "Cozy small-town mystery with a touch of the uncanny",
     "tone": "Warm and welcoming on the surface, with a quiet, accumulating wrongness underneath",
-    "pov": "second-person",
     "synopsis": "The last ferry of the season drops you in Millbrook just as the fog rolls in — and doesn't leave. The town is friendly, the inn is warm, and everyone insists nothing is wrong. But the ferry isn't due back for a week, and you're starting to notice that no one in Millbrook quite agrees on what happened yesterday.",
     "content_rules": [
       "PG-13 (mild peril and tension, no graphic violence)",
       "no explicit sexual content",
       "keep the uncanny atmospheric and suggestive rather than graphic or gory"
+    ]
+  },
+  "narration": {
+    "pov": "second-person",
+    "scene_length": { "min": 470, "max": 500 },
+    "option_pov": "first-person",
+    "style": [
+      "Let the ordinary linger just long enough to feel safe before a small detail undercuts it - warmth and unease sit in the same paragraph.",
+      "Dialogue should feel unhurried and genuinely warm on the surface; the wrongness lives in what's almost said, a beat too long, or a detail nobody quite explains.",
+      "A little descriptive lingering is fine and often the point - let a strange detail sit in view for a sentence or two rather than rushing past it, since the accumulation of small contradictions is the horror here.",
+      "Keep interior thoughts brief but let them notice things - a half-formed doubt, a detail that doesn't add up - rather than dwelling on feelings alone.",
+      "Physical action can be gentle and everyday (pouring tea, walking a fogbound street) - let its ordinariness make the occasional wrong note land harder.",
+      "Prefer short-to-medium paragraphs that alternate between cozy scene-setting and dialogue, but don't be afraid to let one paragraph of atmosphere run a beat longer when something's about to feel off."
     ]
   },
   "world": {
@@ -42,6 +56,14 @@
         "relationship_to_player": "friendly, hospitable, and quietly evasive"
       }
     },
+    "characters": {
+      "Mrs. Abbott": {
+        "name": "Mrs. Abbott",
+        "description": "Innkeeper at the Harborlight. Warm, unhurried, and the first to slip - her account of 'yesterday' doesn't always match what she said the day before.",
+        "role": "innkeeper",
+        "relationship_to_player": "welcoming, protective of the town's routine"
+      }
+    },
     "rules": [
       "Time in Millbrook does not behave consistently - townsfolk's account of 'yesterday' can genuinely contradict itself from one telling to the next. Treat this as a fact of the world, not a narration error.",
       "The fog never fully lifts and is never fully explained - it is a real environmental constant, not a special effect to be resolved.",
@@ -49,26 +71,22 @@
       "Nothing overtly supernatural is ever confirmed outright. Strangeness accumulates through small contradictions and detail, never through direct exposition."
     ]
   },
-  "player": {
-    "name": "Placeholder Player Name",
+  "protagonist": {
+    "default_name": "Traveller",
     "traits": [],
-    "inventory": [],
-    "stats": {},
-    "flags_active": {},
-    "flags_meta": {},
-    "flags_archive": {},
-    "origin": {
-      "memory_fragments": []
+    "starting_inventory": []
+  },
+  "mechanics": {
+    "relationships": {
+      "axis": { "negative": "hostile", "positive": "devoted", "description": "trust and warmth built" },
+      "limit": 20
     }
   },
-  "characters": {},
   "plot": {
     "main_thread": {
       "title": "What Happened to Yesterday",
       "description": "Figure out why Millbrook's residents can't agree on what happened the day before, what the lighthouse has to do with it, and whether you'll actually be able to leave when the ferry returns.",
-      "is_primary_focus": true,
-      "can_pivot": true,
-      "current_act": 1,
+      "plot_notes": "Main plot can evolve based on player choices and revealed information. Acts are generated one at a time as the story develops organically - there is no fixed act count.",
       "acts": [
         {
           "act_number": 1,
@@ -77,81 +95,42 @@
           "completion_signals": [
             "player has caught at least one clear contradiction in the town's account of 'yesterday'",
             "player has been warned away from the lighthouse at least once"
-          ],
-          "completed": false,
-          "optional": false
+          ]
         }
-      ],
-      "act_history": [],
-      "emergent_directions": [],
-      "plot_notes": "Main plot can evolve based on player choices and revealed information. Acts are generated one at a time as the story develops organically - there is no fixed act count."
-    },
-    "alternate_threads": {},
-    "thread_steering": {
-      "last_pivot_turn": 0,
-      "pivot_history": [],
-      "emerging_themes": [],
-      "player_driven_goals": []
+      ]
     },
     "subplots": {
       "subplot_001": {
-        "id": "subplot_001",
         "title": "Settling In",
         "description": "Get to know the Harborlight Inn and its innkeeper - the closest thing to a reliable source in town.",
         "priority": "medium",
-        "status": "active",
-        "progress": 0,
         "completion_threshold": 100,
         "ties_to_main_plot": "The innkeeper may be the first to slip and contradict yesterday's version of events.",
-        "active": true,
-        "span": "single_act"
+        "span": "single_act",
+        "starts_active": true
       },
       "subplot_002": {
-        "id": "subplot_002",
         "title": "The Lighthouse Question",
         "description": "Work out why the lighthouse is off-limits, and to whom it actually belongs.",
         "priority": "high",
-        "status": "not_started",
-        "progress": 0,
         "completion_threshold": 100,
         "ties_to_main_plot": "Every excuse to stay away from it seems to be protecting something specific.",
-        "active": false,
-        "span": "single_act"
+        "span": "single_act",
+        "starts_active": false
       }
     },
-    "completed_subplots": [],
-    "entity_interaction_count": 0,
-    "endgame": {
-      "requested": false,
-      "requested_turn": null,
-      "final_arc": null,
-      "concluded": false
-    },
     "pacing": {
-      "turn_count": 0,
-      "turns_since_last_pacing_nudge": 0,
-      "pacing_nudge_frequency": 8,
-      "turns_since_last_act_check": 0,
+      "nudge_frequency": 8,
       "act_check_frequency": 12,
-      "max_parallel_subplots": 3,
-      "subplots_completed_this_act": 0,
-      "ready_for_main_plot_advancement": false,
-      "last_pacing_direction": ""
+      "max_parallel_subplots": 3
     },
-    "current_scene": {
+    "initial_scene": {
       "location": "loc_dock",
-      "summary": "The protagonist has just stepped off the last ferry of the season onto Millbrook's dock. The ferry is already pulling away into the fog. No one is here to meet them, though someone clearly expected them.",
-      "present_npcs": []
+      "summary": "The protagonist has just stepped off the last ferry of the season onto Millbrook's dock. The ferry is already pulling away into the fog. No one is here to meet them, though someone clearly expected them."
     },
     "opening_scene": {
-      "played": false,
       "narration_before_name": "The ferry horn sounds once, apologetic, as the boat pulls away from the dock behind you - already dissolving into the fog before it's gone thirty feet. It isn't due back for a week.\n\nMillbrook waits at the end of the pier: a scatter of warm lamplight, the smell of woodsmoke, and absolutely no one here to meet you, despite the letter in your coat pocket that said someone would be.\n\nThe fog doesn't roll in so much as it's simply already here, thick enough that the town's rooftops seem to end a few feet above the ground, swallowed. A single lamppost creaks somewhere close by, though there's no wind to move it.\n\nA voice cuts through the quiet - warm, unhurried, entirely unsurprised to see you.\n\n'You made it! We were starting to wonder.' A figure resolves out of the fog at the end of the pier: middle-aged, kind-faced, wiping their hands on an apron. 'Terrible crossing, I'd imagine. Well - come in out of the damp. And what should I put you down as, in the guest book?'",
       "narration_after_name": "'{player_name}.' They say it back to you like they're trying it on, then smile like it fits. 'Lovely. Welcome to Millbrook, {player_name}. I'm Mrs. Abbott - I keep the Harborlight, just up from here. Practically the only inn on the island, though don't let anyone tell you that's a complaint.'\n\nShe turns without quite waiting for a reply, already walking toward the warm smudge of light that must be the inn, fog closing in behind her steps like it's following orders. 'You'll want a hot meal and a dry bed, I expect, after that crossing. We can talk about your business here in the morning - everyone always wants to talk business the moment they arrive, and it never goes anywhere good on an empty stomach.'\n\nShe glances back once, and for just a moment - gone before you can be sure of it - her smile doesn't quite reach the rest of her face. Then it's back, easy and warm as ever.\n\n'Come along, now. Fog's no good for lingering in.'\n\nOPTIONS:\n1. Follow her to the inn and let the questions wait until morning. || I follow her toward the inn, deciding the questions can wait until morning.\n2. Ask her directly who sent the letter that brought you here. || \"Before we go any further,\" I say, \"who exactly sent for me?\"\n3. Look back toward the dock, to see if the ferry is really gone. || I glance back over my shoulder, half-expecting the ferry to still be there. It isn't."
     }
-  },
-  "history_log": {
-    "recent_turns": [],
-    "compressed_summary": "",
-    "full_transcript": []
   }
 }

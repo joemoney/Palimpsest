@@ -124,12 +124,13 @@ def load_story_engine():
     STORIES_DIR redirected too."""
     os.chdir(REPO_ROOT)  # engine modules resolve stories/, data/ relative to cwd
     os.environ.setdefault("GOOGLE_API_KEY", "test-key")
-    # story_engine.py defaults LLM_PROVIDER to "openrouter" in real use, but Google is the
-    # provider kept around specifically for testing/debugging (see CLAUDE.md) - it's the
-    # one with a stubbable SDK (google.generativeai, below), so the offline suite forces it
-    # here rather than needing a fake OPENROUTER_API_KEY plus a requests.post stub for every
-    # test file that merely imports story_engine.
-    os.environ.setdefault("LLM_PROVIDER", "google")
+    # story_engine.py's real tiers (TIER_AB_PROVIDER/TIER_C_PROVIDER) default to "openrouter",
+    # but Google is the provider kept around specifically for testing/debugging (see
+    # CLAUDE.md) - it's the one with a stubbable SDK (google.generativeai, below), so the
+    # offline suite forces TESTING_FORCE_GOOGLE here rather than needing a fake
+    # OPENROUTER_API_KEY plus a requests.post stub for every test file that merely imports
+    # story_engine.
+    os.environ.setdefault("TESTING_FORCE_GOOGLE", "true")
     _install_stubs()
 
     if BACKEND_DIR not in sys.path:
@@ -145,7 +146,7 @@ def load_state_store(tmp_path):
     redirected under tmp_path, so tests never touch the real stories/ or data/
     directories. tmp_path should be a fresh directory per test."""
     os.environ.setdefault("GOOGLE_API_KEY", "test-key")
-    os.environ.setdefault("LLM_PROVIDER", "google")  # see load_story_engine() above
+    os.environ.setdefault("TESTING_FORCE_GOOGLE", "true")  # see load_story_engine() above
     _install_stubs()
 
     if BACKEND_DIR not in sys.path:

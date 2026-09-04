@@ -165,8 +165,8 @@ call and appends it as a final, `is_finale`-marked act. From that point:
 ## Mid-Adventure Steering (Escape Hatch)
 Everything above is what the model arrives at on its own. `steer <command>`
 (CLI) or the web UI's Plot/Subplot Manager pages bypass narration entirely
-and edit plot state directly (add/modify/pivot an act, create an alternate
-thread, force subplot progress, etc.) - for the cases where the model won't
+and edit plot state directly (add/modify/pivot an act, force subplot
+progress, etc.) - for the cases where the model won't
 arrive at a needed structural change by itself. This is a deliberately
 blunt, warning-gated tool (see `plot_manager.py`/`subplot_manager.py`), not
 part of the model's own decision loop - reach for it as a last resort, not

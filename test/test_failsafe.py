@@ -1,14 +1,15 @@
 """Regression test for call_llm's Gemini fail-safe (story_engine.py): if the primary
 provider/model fails, call_llm retries once against the operator's free-tier Gemini model
 (GEMINI_MODEL) via a direct Google API call before giving up, so a freely-swapped
-NARRATION_MODEL/STATE_UPDATE_MODEL (e.g. an experimental OpenRouter model being tried out)
-can't take the whole app down if it turns out to be unreachable or misconfigured. See
+TIER_AB_MODEL/TIER_C_MODEL (e.g. an experimental OpenRouter model being tried out) can't
+take the whole app down if it turns out to be unreachable or misconfigured. See
 test_openrouter.py for the opposite case (fail-safe also fails, LLMUnavailableError still
 propagates) - it exhausts the fail-safe deliberately, this file is about it succeeding.
 
-Forces LLM_PROVIDER=openrouter AND STATE_UPDATE_PROVIDER=openrouter (like
-test_openrouter.py) so the primary path for both tiers is the one under test - the
-fail-safe always targets Gemini regardless of which tier's primary failed.
+Sets TESTING_FORCE_GOOGLE=false (like test_openrouter.py) so the primary path for both
+tiers is the real OpenRouter one under test (TIER_AB_PROVIDER/TIER_C_PROVIDER already
+default to "openrouter") - the fail-safe always targets Gemini regardless of which tier's
+primary failed.
 
 Run directly: python3 test/test_failsafe.py
 """
@@ -17,8 +18,7 @@ import sys
 import types
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-os.environ["LLM_PROVIDER"] = "openrouter"
-os.environ["STATE_UPDATE_PROVIDER"] = "openrouter"
+os.environ["TESTING_FORCE_GOOGLE"] = "false"
 os.environ.setdefault("OPENROUTER_API_KEY", "test-key")
 os.environ.setdefault("GOOGLE_API_KEY", "test-key")
 
@@ -77,16 +77,16 @@ assert result == {"rescued": True}, result
 print("OK: call_llm_json is rescued by the fail-safe too, and still parses as JSON")
 
 
-# --- regression guard: under the whole-process LLM_PROVIDER=google testing override, a
-# call that fails must NOT trigger a second, redundant fail-safe attempt against the exact
-# same model. Catches a real bug found during development: comparing the fail-safe's
-# "already tried this" check against the wrong variable (the raw model= argument, which is
-# usually NOT GEMINI_MODEL even when the actual call WAS to GEMINI_MODEL, since
-# LLM_PROVIDER=google silently substitutes it in) caused exactly this kind of wasted
-# duplicate retry - a call-counting stub catches it directly. google.api_core.exceptions
-# is safe to import for real now (not stub it manually like test_openrouter.py does) -
-# _llm_stubs' _install_stubs(), already run via load_story_engine() above, installed its
-# own generic stub for it, since this file never touched that module itself.
+# --- regression guard: under the whole-process TESTING_FORCE_GOOGLE override, a call that
+# fails must NOT trigger a second, redundant fail-safe attempt against the exact same model.
+# Catches a real bug found during development: comparing the fail-safe's "already tried
+# this" check against the wrong variable (the raw model= argument, which is usually NOT
+# GEMINI_MODEL even when the actual call WAS to GEMINI_MODEL, since the force-google
+# override silently substitutes it in) caused exactly this kind of wasted duplicate retry -
+# a call-counting stub catches it directly. google.api_core.exceptions is safe to import
+# for real now (not stub it manually like test_openrouter.py does) - _llm_stubs'
+# _install_stubs(), already run via load_story_engine() above, installed its own generic
+# stub for it, since this file never touched that module itself.
 from google.api_core.exceptions import GoogleAPIError  # noqa: E402
 
 _call_count = {"n": 0}
@@ -102,8 +102,8 @@ class _FailsEveryTimeGeminiModel:
 
 
 se.genai.GenerativeModel = _FailsEveryTimeGeminiModel
-_original_llm_provider = se.LLM_PROVIDER
-se.LLM_PROVIDER = "google"
+_original_force_google = se.TESTING_FORCE_GOOGLE
+se.TESTING_FORCE_GOOGLE = True
 try:
     try:
         se.call_llm("some prompt", provider="google")
@@ -112,10 +112,10 @@ try:
         assert _call_count["n"] == 1, (
             f"expected exactly 1 call (no redundant fail-safe retry), got {_call_count['n']}"
         )
-        print("OK: a failure under the LLM_PROVIDER=google testing override raises "
+        print("OK: a failure under the TESTING_FORCE_GOOGLE override raises "
               "immediately after exactly one attempt, without a wasted duplicate "
               "fail-safe retry against the same model")
 finally:
-    se.LLM_PROVIDER = _original_llm_provider
+    se.TESTING_FORCE_GOOGLE = _original_force_google
 
 print("\nALL CHECKS PASSED: test_failsafe")

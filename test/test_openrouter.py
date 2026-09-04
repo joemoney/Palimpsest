@@ -1,18 +1,18 @@
 """Regression test for story_engine's OpenRouter call path (_call_llm_openrouter, the
-default LLM_PROVIDER in real use - Google is kept only for testing/debugging, see
-CLAUDE.md): a successful response is parsed correctly, model routing defaults to the right
-tier per call, and network/HTTP/malformed-response failures are all wrapped as the same
-LLMUnavailableError the Google path uses - by way of also exhausting call_llm's Gemini
-fail-safe (see test_failsafe.py for the fail-safe actually rescuing a failed call, the
-opposite case), since a bare OpenRouter failure alone no longer directly raises.
+default provider for both TIER_AB_PROVIDER and TIER_C_PROVIDER in real use - Google is kept
+only for testing/debugging and call_llm's fail-safe, see CLAUDE.md): a successful response
+is parsed correctly, model routing defaults to the right tier per call, and network/HTTP/
+malformed-response failures are all wrapped as the same LLMUnavailableError the Google path
+uses - by way of also exhausting call_llm's Gemini fail-safe (see test_failsafe.py for the
+fail-safe actually rescuing a failed call, the opposite case), since a bare OpenRouter
+failure alone no longer directly raises.
 
-Forces LLM_PROVIDER=openrouter AND STATE_UPDATE_PROVIDER=openrouter for this file only -
-STATE_UPDATE_PROVIDER now defaults to "google" in real use (the state-update tier calls
-Gemini directly), but this file specifically exercises call_llm_json's OpenRouter path, so
-it overrides that default rather than needing a separate mock for the Google SDK too. The
-rest of the suite defaults to LLM_PROVIDER=google (and STATE_UPDATE_PROVIDER along with it)
-via _llm_stubs.py, since that's the fully-stubbed path. Each test file runs in its own
-subprocess (see run_all.py), so this doesn't affect other test files.
+Sets TESTING_FORCE_GOOGLE=false for this file only - the rest of the suite defaults it to
+"true" via _llm_stubs.py (the fully-stubbed, provider-agnostic path), but this file
+specifically exercises the real OpenRouter path (both tiers already default to
+TIER_AB_PROVIDER=TIER_C_PROVIDER="openrouter", so no provider override is needed beyond
+disabling the testing force). Each test file runs in its own subprocess (see run_all.py), so
+this doesn't affect other test files.
 
 Run directly: python3 test/test_openrouter.py
 """
@@ -21,8 +21,7 @@ import sys
 import types
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-os.environ["LLM_PROVIDER"] = "openrouter"
-os.environ["STATE_UPDATE_PROVIDER"] = "openrouter"
+os.environ["TESTING_FORCE_GOOGLE"] = "false"
 os.environ.setdefault("OPENROUTER_API_KEY", "test-key")
 os.environ.setdefault("GOOGLE_API_KEY", "test-key")
 
@@ -85,26 +84,41 @@ class _FakeResponse:
         return self._payload
 
 
-# --- a successful call parses choices[0].message.content, using the default (narration) model ---
+# --- a successful call parses choices[0].message.content, using the default (Tier A/B) model ---
 def _fake_post_ok(url, headers=None, json=None, timeout=None):
-    assert json["model"] == se.NARRATION_MODEL
+    assert json["model"] == se.TIER_AB_MODEL
     return _FakeResponse(200, {"choices": [{"message": {"content": "narration text"}}]})
 
 
 se.requests.post = _fake_post_ok
 assert se.call_llm("some prompt") == "narration text"
-print("OK: a successful OpenRouter response is parsed correctly, defaulting to NARRATION_MODEL")
+print("OK: a successful OpenRouter response is parsed correctly, defaulting to TIER_AB_MODEL")
 
 
-# --- call_llm_json defaults to the state-update tier, not narration ---
+# --- call_llm_json defaults to Tier C, not Tier A/B, and requests json_object mode ---
 def _fake_post_state_update(url, headers=None, json=None, timeout=None):
-    assert json["model"] == se.STATE_UPDATE_MODEL
+    assert json["model"] == se.TIER_C_MODEL
+    assert json["response_format"] == {"type": "json_object"}
     return _FakeResponse(200, {"choices": [{"message": {"content": "{}"}}]})
 
 
 se.requests.post = _fake_post_state_update
 assert se.call_llm_json("some prompt") == {}
-print("OK: call_llm_json defaults to STATE_UPDATE_MODEL")
+print("OK: call_llm_json defaults to TIER_C_MODEL and requests json_object mode")
+
+
+# --- call_llm_json's Tier B override (reasoning=True) sends exclude:false ---
+def _fake_post_tier_b(url, headers=None, json=None, timeout=None):
+    assert json["model"] == se.TIER_AB_MODEL
+    assert json["reasoning"] == {"exclude": False}
+    return _FakeResponse(200, {"choices": [{"message": {"content": "{}"}}]})
+
+
+se.requests.post = _fake_post_tier_b
+assert se.call_llm_json(
+    "some prompt", model=se.TIER_AB_MODEL, provider=se.TIER_AB_PROVIDER, reasoning=True
+) == {}
+print("OK: reasoning=True (Tier B) sends reasoning.exclude=false")
 
 
 # --- an explicit model= override is actually sent to OpenRouter ---

@@ -1,6 +1,6 @@
 """Regression test for the fixed opening scene / diegetic name-capture flow in
 story_engine.run_opening_scene(): the player should be prompted for a name inside
-the scene, the name should land in player.name and get substituted into the
+the scene, the name should land in protagonist.name and get substituted into the
 post-name narration, the opening should be logged into recent_turns for LLM
 continuity, and replaying it on an already-started game should be a no-op that
 never touches input() again.
@@ -21,14 +21,16 @@ se = load_story_engine()
 # in-memory copy so this test can't touch any real save file. Patched on the
 # state_store module itself (not story_engine) since story_engine now calls
 # state_store.load_state(...)/state_store.save_state(...) explicitly.
-seed_state = se.state_store.load_template(se.state_store.DEFAULT_STORY_SLUG)  # read the real template once
-state_holder = {"state": copy.deepcopy(seed_state)}
-state_holder["state"]["plot"]["opening_scene"]["played"] = False
-state_holder["state"]["player"]["name"] = "Placeholder Player Name"
-state_holder["state"]["history_log"]["recent_turns"] = []
+# ctx["story"] never changes across this test (it's frozen/authored), so it's shared by
+# reference rather than deep-copied - only ctx["state"] needs its own copy per scenario.
+seed_ctx = se.state_store.load_state("openingtest", se.state_store.DEFAULT_STORY_SLUG)
+ctx_holder = {"ctx": {"story": seed_ctx["story"], "state": copy.deepcopy(seed_ctx["state"])}}
+ctx_holder["ctx"]["state"]["plot"]["opening_played"] = False
+ctx_holder["ctx"]["state"]["protagonist"]["name"] = ""
+ctx_holder["ctx"]["state"]["history"]["recent_turns"] = []
 
-se.state_store.load_state = lambda *a, **k: state_holder["state"]
-se.state_store.save_state = lambda s, *a, **k: state_holder.update(state=s)
+se.state_store.load_state = lambda *a, **k: ctx_holder["ctx"]
+se.state_store.save_state = lambda c, *a, **k: ctx_holder.update(ctx=c)
 
 # --- first play-through: should prompt for a name and weave it in ---
 input_calls = []
@@ -42,12 +44,12 @@ def fake_input(prompt=""):
 builtins.input = fake_input
 se.run_opening_scene()
 
-state = state_holder["state"]
+ctx = ctx_holder["ctx"]
 assert len(input_calls) == 1, f"expected exactly one input() call, got {len(input_calls)}"
-assert state["player"]["name"] == "Vesper Kade", state["player"]["name"]
-assert state["plot"]["opening_scene"]["played"] is True
-assert len(state["history_log"]["recent_turns"]) == 1
-logged = state["history_log"]["recent_turns"][0]
+assert ctx["state"]["protagonist"]["name"] == "Vesper Kade", ctx["state"]["protagonist"]["name"]
+assert ctx["state"]["plot"]["opening_played"] is True
+assert len(ctx["state"]["history"]["recent_turns"]) == 1
+logged = ctx["state"]["history"]["recent_turns"][0]
 assert "Vesper Kade" in logged, "the given name should appear in the logged opening turn"
 assert "{player_name}" not in logged, "the placeholder token should have been substituted"
 print("OK: name captured diegetically, substituted into narration, and logged for continuity")
@@ -59,16 +61,17 @@ def fail_input(prompt=""):
 
 builtins.input = fail_input
 se.run_opening_scene()
-assert state["player"]["name"] == "Vesper Kade", "name should be untouched on replay"
+assert ctx_holder["ctx"]["state"]["protagonist"]["name"] == "Vesper Kade", "name should be untouched on replay"
 print("OK: run_opening_scene() no-ops on an already-started game, no repeat input() call")
 
-# --- blank name falls back to a sensible default ---
-state_holder["state"] = copy.deepcopy(seed_state)
-state_holder["state"]["plot"]["opening_scene"]["played"] = False
-state_holder["state"]["history_log"]["recent_turns"] = []
+# --- blank name falls back to protagonist.default_name ---
+default_name = seed_ctx["story"]["protagonist"]["default_name"]
+ctx_holder["ctx"] = {"story": seed_ctx["story"], "state": copy.deepcopy(seed_ctx["state"])}
+ctx_holder["ctx"]["state"]["plot"]["opening_played"] = False
+ctx_holder["ctx"]["state"]["history"]["recent_turns"] = []
 builtins.input = lambda prompt="": "   "  # blank / whitespace-only
 se.run_opening_scene()
-assert state_holder["state"]["player"]["name"] == "Subject Zero"
-print("OK: blank name input falls back to 'Subject Zero'")
+assert ctx_holder["ctx"]["state"]["protagonist"]["name"] == default_name
+print(f"OK: blank name input falls back to protagonist.default_name ({default_name!r})")
 
 print("\nALL CHECKS PASSED: test_opening_scene")

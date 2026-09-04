@@ -131,10 +131,10 @@ try:
     assert resp.status_code == 200
     assert b"choose your approach" in resp.data.lower()
     assert b"The Ghost Runner" in resp.data
-    state = ss.load_state(alice_id, "new_babel")
-    assert state["player"]["name"] == "Vesper Kade"
-    assert state["plot"]["opening_scene"]["played"] is True
-    assert state["player"]["creation_choices"] == {}
+    ctx = ss.load_state(alice_id, "new_babel")
+    assert ctx["state"]["protagonist"]["name"] == "Vesper Kade"
+    assert ctx["state"]["plot"]["opening_played"] is True
+    assert ctx["state"]["protagonist"]["creation_choices"] == {}
     print("OK: submitting a name applies it and moves the save into the first creation step")
 
     # --- an unrecognized option_id re-renders the current step with an error, doesn't
@@ -143,8 +143,8 @@ try:
     assert resp.status_code == 200
     assert b"choose your approach" in resp.data.lower()
     assert b"Please choose one" in resp.data
-    state = ss.load_state(alice_id, "new_babel")
-    assert state["player"]["creation_choices"] == {}
+    ctx = ss.load_state(alice_id, "new_babel")
+    assert ctx["state"]["protagonist"]["creation_choices"] == {}
     print("OK: an invalid option_id re-renders the current step with an error instead of proceeding")
 
     # --- picking a real class option seeds player.stats and advances to the next step
@@ -152,9 +152,9 @@ try:
     resp = client.post("/play/new_babel", data={"option_id": "ghost_runner"}, follow_redirects=True)
     assert resp.status_code == 200
     assert b"where do you go first" in resp.data.lower()
-    state = ss.load_state(alice_id, "new_babel")
-    assert state["player"]["creation_choices"] == {"class": "ghost_runner"}
-    assert state["player"]["stats"] == {"health": 90, "neural_load": 10, "attention_level": 0}
+    ctx = ss.load_state(alice_id, "new_babel")
+    assert ctx["state"]["protagonist"]["creation_choices"] == {"class": "ghost_runner"}
+    assert ctx["state"]["protagonist"]["stats"] == {"health": 90, "neural_load": 10, "attention_level": 0}
     print("OK: picking a class seeds player.stats and advances to the next creation step")
 
     # --- picking the final step's option completes character creation and flips into
@@ -162,8 +162,8 @@ try:
     resp = client.post("/play/new_babel", data={"option_id": "drowned_quarter"}, follow_redirects=True)
     assert resp.status_code == 200
     assert b'name="action"' in resp.data
-    state = ss.load_state(alice_id, "new_babel")
-    assert state["player"]["creation_choices"] == {"class": "ghost_runner", "starting_place": "drowned_quarter"}
+    ctx = ss.load_state(alice_id, "new_babel")
+    assert ctx["state"]["protagonist"]["creation_choices"] == {"class": "ghost_runner", "starting_place": "drowned_quarter"}
     print("OK: completing the last creation step moves the save into normal play")
 
     # --- GET /api/status with no turn in flight reports nothing (no stale beacon lying
@@ -184,8 +184,8 @@ try:
     assert resp.status_code == 200
     assert b'class="scene-block"' in resp.data
     assert b'id="controls"' in resp.data and b'hx-swap-oob="true"' in resp.data
-    state = ss.load_state(alice_id, "new_babel")
-    assert state["plot"]["pacing"]["turn_count"] == 1
+    ctx = ss.load_state(alice_id, "new_babel")
+    assert ctx["state"]["pacing"]["turn_count"] == 1
     print("OK: POST /api/turn (async) advances the turn count and GET /api/turn/result "
           "returns a scene+controls fragment once it's done")
 
@@ -214,15 +214,15 @@ try:
           "/api/turn/result all return 409 instead of racing/misreading a second call")
 
     # --- POST /api/regenerate replaces the last turn instead of appending ---
-    turns_before = len(state["history_log"]["recent_turns"])
+    turns_before = len(ctx["state"]["history"]["recent_turns"])
     resp = client.post("/play/new_babel/api/regenerate")
     assert resp.status_code == 202, resp.status_code
     wait_for_idle(alice_id)
     resp = client.get("/play/new_babel/api/turn/result")
     assert resp.status_code == 200
     assert b"different corridor" in resp.data
-    state = ss.load_state(alice_id, "new_babel")
-    assert len(state["history_log"]["recent_turns"]) == turns_before
+    ctx = ss.load_state(alice_id, "new_babel")
+    assert len(ctx["state"]["history"]["recent_turns"]) == turns_before
     print("OK: POST /api/regenerate re-rolls the last turn without growing recent_turns")
 
     # --- a blank action is a no-op (matches the textarea's required attribute) - still
@@ -231,8 +231,8 @@ try:
     resp = client.post("/play/new_babel/api/turn", data={"action": "   "})
     assert resp.status_code == 200
     assert resp.data == b""
-    state = ss.load_state(alice_id, "new_babel")
-    assert len(state["history_log"]["recent_turns"]) == turns_before
+    ctx = ss.load_state(alice_id, "new_babel")
+    assert len(ctx["state"]["history"]["recent_turns"]) == turns_before
     print("OK: POST /api/turn with a blank action is a synchronous no-op")
 
     # --- two more turns build up enough history to exercise pagination ---
@@ -246,8 +246,8 @@ try:
     wait_for_idle(alice_id)
     resp = client.get("/play/new_babel/api/turn/result")
     assert resp.status_code == 200
-    state = ss.load_state(alice_id, "new_babel")
-    all_turns = state["history_log"].get("full_transcript", []) + state["history_log"]["recent_turns"]
+    ctx = ss.load_state(alice_id, "new_babel")
+    all_turns = ctx["state"]["history"].get("full_transcript", []) + ctx["state"]["history"]["recent_turns"]
     total = len(all_turns)
     assert total == 4, total
     oldest_index = max(0, total - 3)  # INITIAL_TURNS_SHOWN in app.py

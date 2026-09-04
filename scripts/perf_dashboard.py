@@ -7,7 +7,7 @@ and reports latency stats for each.
 
 Each [TIMING] line carries the model name that call actually hit (e.g. "narration
 model=deepseek/deepseek-v4-pro-20260813: 12.34s"), so stats are grouped by (label,
-model) pair - NARRATION_MODEL/STATE_UPDATE_MODEL are meant to be freely swapped via
+model) pair - TIER_AB_MODEL/TIER_C_MODEL are meant to be freely swapped via
 .env for testing (see CLAUDE.md's Gemini fail-safe bullet), and a single retained log
 can span several different models across restarts. Grouping by model keeps those
 runs from being silently averaged together into a meaningless blend.

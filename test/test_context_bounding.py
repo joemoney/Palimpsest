@@ -20,24 +20,26 @@ def title_present(text, i):
     return re.search(rf"Old Subplot {i}\b", text) is not None
 
 
-state = se.state_store.load_template(se.state_store.DEFAULT_STORY_SLUG)
-plot = state["plot"]
+ctx = se.state_store.load_state("boundingtest", se.state_store.DEFAULT_STORY_SLUG)
+plot_state = ctx["state"]["plot"]
 
 # Simulate 30 completed subplots accumulated over a long game (only 3 completed
-# "this act" per the pacing counter - the rest belong to earlier acts).
-plot["subplots"] = {}
-plot["completed_subplots"] = []
+# "this act" per the pacing counter - the rest belong to earlier acts). All fully
+# self-contained (no template counterpart) since they were all invented during play.
+plot_state["subplots"] = {}
+plot_state["completed_subplots"] = []
 for i in range(1, 31):
     sid = f"subplot_{i:03d}"
-    plot["subplots"][sid] = {
-        "id": sid, "title": f"Old Subplot {i}", "description": "d", "priority": "medium",
+    plot_state["subplots"][sid] = {
+        "title": f"Old Subplot {i}", "description": "d", "priority": "medium",
         "status": "completed", "progress": 100, "completion_threshold": 100,
-        "ties_to_main_plot": "", "active": False,
+        "ties_to_main_plot": "", "active": False, "span": "single_act",
     }
-    plot["completed_subplots"].append(sid)
+    plot_state["completed_subplots"].append(sid)
 
-plot["pacing"]["subplots_completed_this_act"] = 3  # only the last 3 belong to current act
-plot["pacing"]["max_parallel_subplots"] = 5
+# live_count is 0 (everything above is completed), well under whatever max_parallel_subplots
+# the template authors - no need to override that authored/frozen value.
+ctx["state"]["pacing"]["subplots_completed_this_act"] = 3  # only the last 3 belong to current act
 
 
 def respond(prompt):
@@ -50,7 +52,7 @@ recorder = RecordingLLM(respond)
 se.call_llm_json = recorder
 
 # --- generate_new_subplot: dedup list must not include all 30 completed titles ---
-se.generate_new_subplot(state)
+se.generate_new_subplot(ctx)
 gen_prompt = recorder.prompts[-1]
 old_titles_present = sum(1 for i in range(1, 31) if title_present(gen_prompt, i))
 assert old_titles_present <= se.SUBPLOT_TITLE_HISTORY_LIMIT, \
@@ -63,7 +65,7 @@ print(f"OK: generate_new_subplot prompt bounded to {old_titles_present} recent t
 
 # --- check_and_advance_act: completed_titles must be scoped to current act only ---
 recorder.prompts.clear()
-se.check_and_advance_act(state)
+se.check_and_advance_act(ctx)
 act_prompt = recorder.prompts[-1]
 old_titles_present = sum(1 for i in range(1, 31) if title_present(act_prompt, i))
 assert old_titles_present == 3, f"expected exactly 3 (this act's), found {old_titles_present}"

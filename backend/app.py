@@ -54,7 +54,7 @@ _split_turn_entry = story_engine.split_turn_entry
 _all_turns = story_engine.all_turns
 
 
-def _render_turn(entry: str, index: int, animate: bool, reveal_from: int = 0) -> dict:
+def _render_turn(entry: str, index: int, animate: bool, reveal_from: int = 0, option_count: int = 3) -> dict:
     """Splits and options-strips one turn for display. parse_narration_and_options is run
     on every turn, not just the latest - the raw stored text is the LLM's full response
     including any trailing 'OPTIONS:' block, so an older turn left unstripped would show
@@ -63,26 +63,34 @@ def _render_turn(entry: str, index: int, animate: bool, reveal_from: int = 0) ->
 
     reveal_from is a character offset into narration: text before it renders instantly
     (already shown to the player elsewhere), only the remainder is typewriter-animated.
-    Only ever non-zero for the opening-scene turn - see play()'s comment on why."""
+    Only ever non-zero for the opening-scene turn - see play()'s comment on why.
+
+    option_count is the story's narration.option_count (default 3) - passed through to
+    parse_narration_and_options so an older turn parses against the same minimum-count
+    fallback build_system_prompt asked the model to follow."""
     player_action, raw_narration = _split_turn_entry(entry)
-    narration, options = story_engine.parse_narration_and_options(raw_narration)
+    narration, options = story_engine.parse_narration_and_options(raw_narration, option_count=option_count)
     return {
         "player_action": player_action, "narration": narration, "animate": animate,
         "index": index, "options": options, "reveal_from": reveal_from,
     }
 
 
-def _latest_rendered_turn(state: dict, animate: bool) -> dict:
-    all_turns = _all_turns(state)
-    return _render_turn(all_turns[-1], len(all_turns) - 1, animate)
+def _option_count(ctx: dict) -> int:
+    return ctx["story"].get("narration", {}).get("option_count", 3)
 
 
-def _scene_and_controls_response(state: dict, story_slug: str) -> str:
+def _latest_rendered_turn(ctx: dict, animate: bool) -> dict:
+    all_turns = _all_turns(ctx)
+    return _render_turn(all_turns[-1], len(all_turns) - 1, animate, option_count=_option_count(ctx))
+
+
+def _scene_and_controls_response(ctx: dict, story_slug: str) -> str:
     """Shared by take_turn and regenerate_turn: renders the latest turn as a _scene_block
     fragment plus an out-of-band _controls update, so a single htmx swap both shows the new
     scene and replaces the old choices with fresh ones (or removes them, at endgame)."""
-    turn = _latest_rendered_turn(state, animate=True)
-    mode = "concluded" if state["plot"]["endgame"]["concluded"] else "playing"
+    turn = _latest_rendered_turn(ctx, animate=True)
+    mode = "concluded" if ctx["state"]["plot"]["endgame"]["concluded"] else "playing"
     scene_html = render_template("_scene_block.html", turn=turn, story_slug=story_slug)
     controls_html = render_template(
         "_controls.html", turn=turn, options=turn["options"], mode=mode, story_slug=story_slug
@@ -194,15 +202,23 @@ def help_page():
 @login_required
 def play(story_slug):
     user_id = session["user_id"]
-    state = state_store.load_state(user_id, story_slug)
-    story_title = state["meta"]["title"]
+    ctx = state_store.load_state(user_id, story_slug)
+    story_title = ctx["story"]["meta"]["title"]
 
-    if not state["plot"]["opening_scene"]["played"]:
-        if request.method == "POST":
-            story_engine.apply_opening_name(state, request.form.get("name", ""))
-            state_store.save_state(state, user_id, story_slug)
+    if not ctx["state"]["plot"]["opening_played"]:
+        # 5.8: a story with a fixed/established protagonist (opening_scene authored as
+        # {"narration": "..."} rather than the before/after-name pair) skips diegetic name
+        # capture entirely - there's no form to show, just apply it and move straight on to
+        # whatever's next (character creation, or play).
+        if not story_engine.opening_needs_name_capture(ctx):
+            story_engine.apply_fixed_opening(ctx)
+            state_store.save_state(ctx, user_id, story_slug)
             return redirect(url_for("play", story_slug=story_slug, fresh=1))
-        narration = state["plot"]["opening_scene"]["narration_before_name"]
+        if request.method == "POST":
+            story_engine.apply_opening_name(ctx, request.form.get("name", ""))
+            state_store.save_state(ctx, user_id, story_slug)
+            return redirect(url_for("play", story_slug=story_slug, fresh=1))
+        narration = ctx["story"]["plot"]["opening_scene"]["narration_before_name"]
         return render_template(
             "play.html", story_title=story_title, story_slug=story_slug, narration=narration,
             options=[], player_action=None, mode="name_entry", animate=False
@@ -211,19 +227,19 @@ def play(story_slug):
     # A story opts into this entirely by authoring a top-level character_creation list (an
     # ordered sequence of steps - e.g. new_babel's "class" then "starting_place") - absent/
     # empty for a story that doesn't use the mechanic (e.g. the cozy-mystery example story),
-    # so this whole block is a no-op there. Independent of the opening_scene.played gate
-    # above (not nested inside "if not played") so it still applies correctly to a save
+    # so this whole block is a no-op there. Independent of the opening_played gate above
+    # (not nested inside "if not opening_played") so it still applies correctly to a save
     # whose opening already played but hasn't completed every step yet. One request handles
     # exactly one step; a story with multiple steps naturally chains through them one screen
     # at a time, since each redirect below re-enters play() and next_pending_creation_step
     # picks up wherever the player left off.
-    step = story_engine.next_pending_creation_step(state)
+    step = story_engine.next_pending_creation_step(ctx)
     if step:
         error = None
         if request.method == "POST":
-            chosen = story_engine.apply_creation_choice(state, step["key"], request.form.get("option_id", ""))
+            chosen = story_engine.apply_creation_choice(ctx, step["key"], request.form.get("option_id", ""))
             if chosen is not None:
-                state_store.save_state(state, user_id, story_slug)
+                state_store.save_state(ctx, user_id, story_slug)
                 return redirect(url_for("play", story_slug=story_slug, fresh=1))
             error = "Please choose one of the options below."
         prompt = step.get("prompt") or f"{step.get('label', step['key'].title())}: choose one."
@@ -236,20 +252,26 @@ def play(story_slug):
     # any other GET (resuming a save, refreshing, navigating back from the story picker)
     # renders every visible scene instantly instead of replaying the reveal animation.
     animate = request.args.get("fresh") == "1"
-    mode = "concluded" if state["plot"]["endgame"]["concluded"] else "playing"
-    all_turns = _all_turns(state)
+    mode = "concluded" if ctx["state"]["plot"]["endgame"]["concluded"] else "playing"
+    all_turns = _all_turns(ctx)
     total = len(all_turns)
     oldest_index = max(0, total - INITIAL_TURNS_SHOWN)
     # Turn 0's stored text is "narration_before_name\n\nnarration_after_name" (see
     # apply_opening_name) - the before-name half was already shown, unanimated, on the
     # name-entry form itself, so on this first fresh=1 load only the after-name half
     # should type out. Without this offset the typewriter replays the whole opening from
-    # scratch, including text the player just read.
-    before_name_len = len(state["plot"]["opening_scene"]["narration_before_name"])
+    # scratch, including text the player just read. A fixed-protagonist story (5.8, no
+    # name-entry form ever shown) has no such prefix - the whole opening types out fresh.
+    before_name_len = (
+        len(ctx["story"]["plot"]["opening_scene"]["narration_before_name"])
+        if story_engine.opening_needs_name_capture(ctx) else 0
+    )
+    option_count = _option_count(ctx)
     initial_turns = [
         _render_turn(
             entry, idx, animate=(animate and idx == total - 1),
             reveal_from=(before_name_len + 2 if idx == 0 else 0),
+            option_count=option_count,
         )
         for idx, entry in enumerate(all_turns[oldest_index:], start=oldest_index)
     ]
@@ -346,22 +368,22 @@ def turn_result(story_slug):
         # so #scene-list/#controls are left exactly as they were and the player can just
         # retry the same choice.
         return result["error"], 503
-    state = state_store.load_state(user_id, story_slug)
-    return _scene_and_controls_response(state, story_slug)
+    ctx = state_store.load_state(user_id, story_slug)
+    return _scene_and_controls_response(ctx, story_slug)
 
 
 @app.route("/play/<story_slug>/api/history", methods=["GET"])
 @login_required
 def turn_history(story_slug):
     user_id = session["user_id"]
-    state = state_store.load_state(user_id, story_slug)
-    all_turns = _all_turns(state)
+    ctx = state_store.load_state(user_id, story_slug)
+    all_turns = _all_turns(ctx)
     total = len(all_turns)
     before = max(0, min(_int_or_none(request.args.get("before")) or 0, total))
     count = _int_or_none(request.args.get("count")) or 3
     start = max(0, before - count)
     batch = [
-        _render_turn(entry, idx, animate=False)
+        _render_turn(entry, idx, animate=False, option_count=_option_count(ctx))
         for idx, entry in enumerate(all_turns[start:before], start=start)
     ]
     html = "".join(
@@ -389,26 +411,47 @@ def export_story_view(story_slug):
     story_engine.export_narrative), not the save's plot/character/pacing state. ?actions=1
     also includes the player's typed actions as '> ' lines above the narration they led to."""
     user_id = session["user_id"]
-    state = state_store.load_state(user_id, story_slug)
-    text = story_engine.export_narrative(state, include_actions=request.args.get("actions") == "1")
-    filename = re.sub(r"[^A-Za-z0-9]+", "_", state["meta"]["title"]).strip("_").lower() + ".txt"
+    ctx = state_store.load_state(user_id, story_slug)
+    text = story_engine.export_narrative(ctx, include_actions=request.args.get("actions") == "1")
+    filename = re.sub(r"[^A-Za-z0-9]+", "_", ctx["story"]["meta"]["title"]).strip("_").lower() + ".txt"
     return Response(
         text, mimetype="text/plain",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
+def _plot_view(ctx: dict) -> dict:
+    """Assembles a view of ctx["plot"] shaped like v1's state["plot"] used to be, so
+    plot_manager.html's templates barely had to change across the schema v2 split - main
+    thread/acts/emergent_directions/current_act are a merge of authored (ctx["story"]) and
+    runtime (ctx["state"]) content; endgame and thread_steering are runtime-only already."""
+    main_thread = story_engine._main_thread_view(ctx)
+    plot_state = ctx["state"]["plot"]
+    return {
+        "main_thread": {
+            "title": main_thread["title"],
+            "description": main_thread["description"],
+            "plot_notes": main_thread["plot_notes"],
+            "current_act": plot_state["current_act"],
+            "acts": story_engine._all_acts(ctx),
+            "emergent_directions": plot_state["emergent_directions"],
+        },
+        "thread_steering": plot_state["thread_steering"],
+        "endgame": plot_state["endgame"],
+    }
+
+
 @app.route("/play/<story_slug>/plot", methods=["GET", "POST"])
 @login_required
 def plot_manager_view(story_slug):
     user_id = session["user_id"]
-    state = state_store.load_state(user_id, story_slug)
+    ctx = state_store.load_state(user_id, story_slug)
 
     if request.method == "POST":
         command = request.form.get("command", "")
         if command == "add-act":
             plot_manager.add_act(
-                state, request.form.get("title", ""), request.form.get("description", ""),
+                ctx, request.form.get("title", ""), request.form.get("description", ""),
                 position=_int_or_none(request.form.get("position")),
                 optional=bool(request.form.get("optional")),
             )
@@ -418,31 +461,24 @@ def plot_manager_view(story_slug):
                 kwargs["title"] = request.form["title"]
             if request.form.get("description"):
                 kwargs["description"] = request.form["description"]
-            plot_manager.modify_act(state, int(request.form.get("act_number", 0)), **kwargs)
+            plot_manager.modify_act(ctx, int(request.form.get("act_number", 0)), **kwargs)
         elif command == "pivot":
             plot_manager.pivot_main_plot(
-                state, request.form.get("title", ""), request.form.get("description", ""),
+                ctx, request.form.get("title", ""), request.form.get("description", ""),
                 request.form.get("reason", ""),
             )
         elif command == "add-emergent":
             plot_manager.add_emergent_direction(
-                state, request.form.get("title", ""), request.form.get("description", "")
+                ctx, request.form.get("title", ""), request.form.get("description", "")
             )
         elif command == "promote-emergent":
             plot_manager.promote_emergent_to_act(
-                state, int(request.form.get("index", 0)), _int_or_none(request.form.get("position"))
+                ctx, int(request.form.get("index", 0)), _int_or_none(request.form.get("position"))
             )
-        elif command == "create-alt":
-            plot_manager.create_alternate_thread(
-                state, request.form.get("thread_id", ""), request.form.get("title", ""),
-                request.form.get("description", ""),
-            )
-        elif command == "focus":
-            plot_manager.toggle_thread_focus(state, request.form.get("thread_id") or None)
         elif command == "add-goal":
-            plot_manager.add_player_goal(state, request.form.get("goal", ""))
+            plot_manager.add_player_goal(ctx, request.form.get("goal", ""))
         elif command == "add-theme":
-            plot_manager.add_emerging_theme(state, request.form.get("theme", ""))
+            plot_manager.add_emerging_theme(ctx, request.form.get("theme", ""))
         elif command == "seed-generate":
             # A single JSON-only LLM call (story_engine.generate_steering_seed) - same
             # complexity class as the already-synchronous subplot_generation/
@@ -451,28 +487,32 @@ def plot_manager_view(story_slug):
             # like every other command on this route, unlike take_turn/regenerate_turn's
             # background-thread + poll handoff (see "Asynchronous turn-taking" in
             # CLAUDE.md), which exists specifically for the much longer full turn chain.
-            plot_manager.stage_steering_seed(state, request.form.get("note", ""))
+            plot_manager.stage_steering_seed(ctx, request.form.get("note", ""))
         elif command == "seed-apply":
             overrides = {}
             for field in ("name", "title", "description", "role", "relationship_to_player", "hook", "priority", "ties_to_main_plot", "span"):
                 if request.form.get(field):
                     overrides[field] = request.form[field]
-            plot_manager.apply_steering_seed(state, request.form.get("seed_id", ""), **overrides)
+            plot_manager.apply_steering_seed(ctx, request.form.get("seed_id", ""), **overrides)
         elif command == "seed-discard":
-            plot_manager.discard_steering_seed(state, request.form.get("seed_id", ""))
+            plot_manager.discard_steering_seed(ctx, request.form.get("seed_id", ""))
         elif command == "promote-relationship":
             overrides = {}
             for field in ("description", "role", "relationship_to_player", "hook"):
                 if request.form.get(field):
                     overrides[field] = request.form[field]
-            plot_manager.promote_relationship_to_npc(state, request.form.get("name", ""), **overrides)
-        state_store.save_state(state, user_id, story_slug)
+            plot_manager.promote_relationship_to_npc(ctx, request.form.get("name", ""), **overrides)
+        state_store.save_state(ctx, user_id, story_slug)
         return redirect(url_for("plot_manager_view", story_slug=story_slug))
 
+    characters = {
+        name: story_engine._character_record(ctx, name)
+        for name in sorted(story_engine._all_character_names(ctx))
+    }
     return render_template(
-        "plot_manager.html", story_title=state["meta"]["title"], story_slug=story_slug,
-        plot=state["plot"], characters=state.get("characters", {}),
-        unlinked_relationships=plot_manager.list_unlinked_relationships(state),
+        "plot_manager.html", story_title=ctx["story"]["meta"]["title"], story_slug=story_slug,
+        plot=_plot_view(ctx), characters=characters,
+        unlinked_relationships=plot_manager.list_unlinked_relationships(ctx),
     )
 
 
@@ -480,16 +520,16 @@ def plot_manager_view(story_slug):
 @login_required
 def subplot_manager_view(story_slug):
     user_id = session["user_id"]
-    state = state_store.load_state(user_id, story_slug)
+    ctx = state_store.load_state(user_id, story_slug)
 
     if request.method == "POST":
         command = request.form.get("command", "")
         if command == "progress":
             subplot_manager.update_subplot_progress(
-                state, request.form.get("subplot_id", ""), int(request.form.get("delta", 0))
+                ctx, request.form.get("subplot_id", ""), int(request.form.get("delta", 0))
             )
         elif command == "activate":
-            subplot_manager.activate_subplot(state, request.form.get("subplot_id", ""))
+            subplot_manager.activate_subplot(ctx, request.form.get("subplot_id", ""))
         elif command == "modify-subplot":
             kwargs = {}
             if request.form.get("title"):
@@ -500,17 +540,35 @@ def subplot_manager_view(story_slug):
                 kwargs["priority"] = request.form["priority"]
             if request.form.get("ties_to_main_plot"):
                 kwargs["ties_to_main_plot"] = request.form["ties_to_main_plot"]
-            subplot_manager.modify_subplot(state, request.form.get("subplot_id", ""), **kwargs)
+            subplot_manager.modify_subplot(ctx, request.form.get("subplot_id", ""), **kwargs)
         elif command == "advance-act":
-            subplot_manager.advance_act(state)
+            subplot_manager.advance_act(ctx)
         elif command == "reveal":
-            subplot_manager.reveal_memory_fragment(state, request.form.get("fragment_id", ""))
-        state_store.save_state(state, user_id, story_slug)
+            subplot_manager.reveal_memory_fragment(ctx, request.form.get("fragment_id", ""))
+        state_store.save_state(ctx, user_id, story_slug)
         return redirect(url_for("subplot_manager_view", story_slug=story_slug))
 
+    plot_state = ctx["state"]["plot"]
+    pacing_state = ctx["state"]["pacing"]
+    pacing_story = ctx["story"]["plot"]["pacing"]
+    revelations = ctx["story"].get("mechanics", {}).get("revelations", [])
+    revealed_map = plot_state["revelations_revealed"]
+    memory_fragments = [dict(r, revealed=(r["id"] in revealed_map)) for r in revelations]
+    pacing_view = {
+        "turn_count": pacing_state["turn_count"],
+        "turns_since_last_pacing_nudge": pacing_state["turns_since_nudge"],
+        "pacing_nudge_frequency": pacing_story["nudge_frequency"],
+        "max_parallel_subplots": pacing_story["max_parallel_subplots"],
+        "subplots_completed_this_act": pacing_state["subplots_completed_this_act"],
+        "last_pacing_direction": pacing_state["last_direction"],
+    }
+    tracked_entity = ctx["story"].get("mechanics", {}).get("tracked_entity")
     return render_template(
-        "subplot_manager.html", story_title=state["meta"]["title"], story_slug=story_slug,
-        plot=state["plot"], player=state["player"]
+        "subplot_manager.html", story_title=ctx["story"]["meta"]["title"], story_slug=story_slug,
+        current_act=story_engine._current_act(ctx), subplots=story_engine._all_subplots(ctx),
+        pacing=pacing_view, endgame=plot_state["endgame"], memory_fragments=memory_fragments,
+        entity_contact_count=plot_state["entity_contact_count"],
+        tracked_entity_name=tracked_entity["name"] if tracked_entity else "Entity",
     )
 
 

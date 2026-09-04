@@ -10,22 +10,20 @@ import state_store
 import story_engine
 
 
-def show_plot_overview(state):
+def show_plot_overview(ctx):
     """Display current main plot structure and steering options."""
-    plot = state["plot"]
-    main = plot["main_thread"]
-    
+    main = story_engine._main_thread_view(ctx)
+    plot_state = ctx["state"]["plot"]
+
     print("\n" + "=" * 70)
     print("MAIN PLOT OVERVIEW")
     print("=" * 70)
     print(f"Title: {main['title']}")
-    print(f"Primary Focus: {main['is_primary_focus']}")
-    print(f"Can Pivot: {main['can_pivot']}")
     print(f"\nDescription: {main['description']}")
     print(f"\nPlot Notes: {main.get('plot_notes', 'None')}")
     print()
-    
-    endgame = state["plot"].get("endgame", {})
+
+    endgame = plot_state.get("endgame", {})
     if endgame.get("requested"):
         print("*** ENDGAME IN PROGRESS - no more acts or subplots will be auto-generated ***")
         if endgame.get("final_arc"):
@@ -35,9 +33,9 @@ def show_plot_overview(state):
     print("-" * 70)
     print("ACTS")
     print("-" * 70)
-    for act in main["acts"]:
+    for act in story_engine._all_acts(ctx):
         status = "✓ COMPLETED" if act["completed"] else f"● ACT {act['act_number']}"
-        if act['act_number'] == main['current_act']:
+        if act['act_number'] == plot_state['current_act']:
             status += " (CURRENT)"
         optional = " [OPTIONAL]" if act.get("optional", False) else ""
         if act.get("is_finale"):
@@ -50,30 +48,19 @@ def show_plot_overview(state):
         if signals:
             print(f"  Signals: {', '.join(signals)}")
         print()
-    
-    # Show alternate threads if any
-    if plot.get("alternate_threads"):
-        print("-" * 70)
-        print("ALTERNATE PLOT THREADS")
-        print("-" * 70)
-        for thread_id, thread in plot["alternate_threads"].items():
-            active = "●" if thread.get("active", False) else "○"
-            print(f"{active} {thread['title']}")
-            print(f"  {thread['description']}")
-            print()
-    
+
     # Show emergent directions
-    if main.get("emergent_directions"):
+    if plot_state.get("emergent_directions"):
         print("-" * 70)
         print("EMERGENT STORY DIRECTIONS")
         print("-" * 70)
-        for i, direction in enumerate(main["emergent_directions"], 1):
+        for i, direction in enumerate(plot_state["emergent_directions"], 1):
             print(f"{i}. {direction['title']}")
             print(f"   Noted at turn {direction.get('turn', '?')}: {direction['description']}")
             print()
-    
+
     # Show steering history
-    steering = plot.get("thread_steering", {})
+    steering = plot_state.get("thread_steering", {})
     if steering.get("pivot_history"):
         print("-" * 70)
         print("PLOT PIVOT HISTORY")
@@ -82,40 +69,28 @@ def show_plot_overview(state):
             print(f"Turn {pivot['turn']}: {pivot['reason']}")
         print()
 
-    # Show characters (the pre-authored "Architect"-style entries as well as any seeded via
-    # 'seed'/'seed-apply' - see apply_steering_seed). Only place either kind is displayed;
-    # a seeded character would otherwise be invisible for review outside the raw save file.
-    characters = state.get("characters", {})
-    if characters:
+    # Show discovered/seeded characters (authored ones from the template are shown too, via
+    # the merged roster - see story_engine._character_record). Only place either kind is
+    # displayed; a seeded character would otherwise be invisible for review outside the raw
+    # save file.
+    names = sorted(story_engine._all_character_names(ctx))
+    if names:
         print("-" * 70)
         print("CHARACTERS")
         print("-" * 70)
-        for char_id, char in characters.items():
-            marker = ""
-            if char.get("type") == "npc":
-                marker = " (introduced)" if char.get("introduced") else " (not yet introduced)"
-            print(f"{char.get('name', char_id)} [{char_id}]{marker}")
-            if char.get("description"):
-                print(f"  {char['description']}")
-            if char.get("hook"):
-                print(f"  Hook: {char['hook']}")
+        for name in names:
+            record = story_engine._character_record(ctx, name)
+            marker = " (authored)" if record["authored"] else (
+                " (introduced)" if record["introduced"] else " (not yet introduced)"
+            )
+            print(f"{name}{marker}")
+            if record.get("description"):
+                print(f"  {record['description']}")
+            if record.get("hook"):
+                print(f"  Hook: {record['hook']}")
+            if record["relationship"] is not None:
+                print(f"  Relationship: {record['relationship']}")
             print()
-
-    # Show tracked relationships and whether each is backed by a characters entry yet -
-    # see list_unlinked_relationships/promote_relationship_to_npc for turning an unlinked
-    # one into a full NPC.
-    relationships = state["player"].get("relationships", {})
-    if relationships:
-        print("-" * 70)
-        print("RELATIONSHIPS")
-        print("-" * 70)
-        for name, entry in relationships.items():
-            linked = f"linked to {entry['npc_id']}" if entry.get("npc_id") else "not yet an NPC"
-            print(f"{name}: {entry['score']} ({linked})")
-        unlinked = list_unlinked_relationships(state)
-        if unlinked:
-            print("Run 'promote-relationship \"<name>\"' to turn an unlinked relationship into a full NPC.")
-        print()
 
     # Show pending steering seeds awaiting review (see stage_steering_seed) - nothing here
     # has been committed to the save yet.
@@ -129,209 +104,141 @@ def show_plot_overview(state):
         print("Run 'seed-list' for full details, 'seed-apply <id>' or 'seed-discard <id>'.")
         print()
 
+    unlinked = list_unlinked_relationships(ctx)
+    if unlinked:
+        print("-" * 70)
+        print("UNLINKED RELATIONSHIPS (tracked, but no full character record yet)")
+        print("-" * 70)
+        for name, score in unlinked:
+            print(f"{name}: {score}")
+        print("Run 'promote-relationship \"<name>\"' to turn one into a full character.")
+        print()
 
-def add_act(state, title, description, position=None, completion_signals=None, optional=False):
-    """Add a new act to the main plot."""
-    main = state["plot"]["main_thread"]
-    acts = main["acts"]
 
-    # Determine act number
+def add_act(ctx, title, description, position=None, completion_signals=None, optional=False):
+    """Add a new act to the main plot. Always lands in ctx["state"]["plot"]["generated_acts"]
+    - a runtime-added act can never be authored content, so there's nowhere else for it to
+    go. Renumbering on an explicit `position` only ever shifts *other* generated acts; a
+    template-authored act's number can't change (it's frozen), so a position that collides
+    with one just inserts alongside it rather than displacing it - acceptable in practice
+    since both current stories only ever author Act 1, and a steering insertion realistically
+    always targets somewhere beyond it."""
+    existing_numbers = [a["act_number"] for a in story_engine._all_acts(ctx)]
+    generated = ctx["state"]["plot"]["generated_acts"]
+
     if position is None:
-        # Add to end
-        act_number = len(acts) + 1
+        act_number = (max(existing_numbers) + 1) if existing_numbers else 1
     else:
-        # Insert at position, renumber subsequent acts
         act_number = position
-        for act in acts:
+        for act in generated:
             if act["act_number"] >= position:
                 act["act_number"] += 1
-
-    if completion_signals is None:
-        completion_signals = []
 
     new_act = {
         "act_number": act_number,
         "title": title,
         "description": description,
-        "completion_signals": completion_signals,
+        "completion_signals": completion_signals or [],
         "completed": False,
-        "optional": optional
+        "optional": optional,
     }
-    
-    if position is None:
-        acts.append(new_act)
-    else:
-        acts.insert(position - 1, new_act)
-        acts.sort(key=lambda x: x["act_number"])
-    
+    generated.append(new_act)
+    generated.sort(key=lambda a: a["act_number"])
+
     print(f"Added Act {act_number}: {title}")
     if optional:
         print("  (Marked as optional)")
 
 
-def modify_act(state, act_number, **kwargs):
-    """Modify an existing act's properties."""
-    main = state["plot"]["main_thread"]
-    
-    act = None
-    for a in main["acts"]:
-        if a["act_number"] == act_number:
-            act = a
-            break
-    
+def modify_act(ctx, act_number, **kwargs):
+    """Modify an existing act's properties. Only a *generated* act can be modified - a
+    template-authored one (in practice just Act 1) is frozen content; use 'pivot' to
+    redirect the main thread instead, or edit the template file directly."""
+    authored_numbers = {a["act_number"] for a in ctx["story"]["plot"]["main_thread"]["acts"]}
+    if act_number in authored_numbers:
+        print(f"Error: Act {act_number} is authored content (from the story template) and "
+              "can't be modified at runtime. Use 'pivot' to redirect the main thread, or "
+              "edit the template file directly.")
+        return
+
+    act = next((a for a in ctx["state"]["plot"]["generated_acts"] if a["act_number"] == act_number), None)
     if not act:
         print(f"Error: Act {act_number} not found")
         return
-    
+
     modified = []
     for key, value in kwargs.items():
         if key in act:
             act[key] = value
             modified.append(key)
-    
+
     if modified:
         print(f"Modified Act {act_number}: {', '.join(modified)}")
     else:
         print(f"No changes made to Act {act_number}")
 
 
-def pivot_main_plot(state, new_title, new_description, reason):
-    """Pivot the main plot to a new direction."""
-    main = state["plot"]["main_thread"]
-    steering = state["plot"].setdefault("thread_steering", {})
-    turn_count = state["plot"]["pacing"]["turn_count"]
-    
-    # Record the pivot
+def pivot_main_plot(ctx, new_title, new_description, reason):
+    """Pivot the main plot to a new direction. main_thread.title/description are authored,
+    frozen content, so this writes a runtime override (see story_engine._main_thread_view)
+    that every prompt-building/display path already resolves through, rather than mutating
+    the template in place."""
+    plot_state = ctx["state"]["plot"]
+    steering = plot_state["thread_steering"]
+    turn_count = ctx["state"]["pacing"]["turn_count"]
+    old_title = story_engine._main_thread_view(ctx)["title"]
+
     pivot_record = {
         "turn": turn_count,
-        "from_title": main["title"],
+        "from_title": old_title,
         "to_title": new_title,
         "reason": reason,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
     }
-    
-    if "pivot_history" not in steering:
-        steering["pivot_history"] = []
     steering["pivot_history"].append(pivot_record)
     steering["last_pivot_turn"] = turn_count
-    
-    # Update main thread
-    old_title = main["title"]
-    main["title"] = new_title
-    main["description"] = new_description
-    
+
+    plot_state["main_thread_override"] = {"title": new_title, "description": new_description}
+
     print(f"\nPlot pivoted from '{old_title}' to '{new_title}'")
     print(f"Reason: {reason}")
     print(f"Turn: {turn_count}")
 
 
-def add_emergent_direction(state, title, description):
+def add_emergent_direction(ctx, title, description):
     """Note an emergent story direction for potential future development."""
-    main = state["plot"]["main_thread"]
-    turn_count = state["plot"]["pacing"]["turn_count"]
-    
-    if "emergent_directions" not in main:
-        main["emergent_directions"] = []
-    
-    direction = {
-        "title": title,
-        "description": description,
-        "turn": turn_count,
-        "promoted": False
-    }
-    
-    main["emergent_directions"].append(direction)
+    turn_count = ctx["state"]["pacing"]["turn_count"]
+    direction = {"title": title, "description": description, "turn": turn_count, "promoted": False}
+    ctx["state"]["plot"]["emergent_directions"].append(direction)
     print(f"Noted emergent direction: {title}")
 
 
-def promote_emergent_to_act(state, emergent_index, position=None):
+def promote_emergent_to_act(ctx, emergent_index, position=None):
     """Promote an emergent direction into a full act."""
-    main = state["plot"]["main_thread"]
-    
-    if "emergent_directions" not in main or emergent_index >= len(main["emergent_directions"]):
+    directions = ctx["state"]["plot"]["emergent_directions"]
+    if emergent_index >= len(directions):
         print("Error: Invalid emergent direction index")
         return
-    
-    direction = main["emergent_directions"][emergent_index]
-    
-    # Create act from emergent direction
-    add_act(state, direction["title"], direction["description"], position)
-    
-    # Mark as promoted
+
+    direction = directions[emergent_index]
+    add_act(ctx, direction["title"], direction["description"], position)
     direction["promoted"] = True
-    
     print(f"Promoted emergent direction '{direction['title']}' to full act")
 
 
-def create_alternate_thread(state, thread_id, title, description):
-    """Create an alternate plot thread that can run parallel to main."""
-    plot = state["plot"]
-    
-    if "alternate_threads" not in plot:
-        plot["alternate_threads"] = {}
-    
-    thread = {
-        "id": thread_id,
-        "title": title,
-        "description": description,
-        "active": False,
-        "current_stage": 1,
-        "stages": []
-    }
-    
-    plot["alternate_threads"][thread_id] = thread
-    print(f"Created alternate thread: {title}")
-
-
-def toggle_thread_focus(state, thread_id=None):
-    """Switch primary focus between main thread and an alternate."""
-    plot = state["plot"]
-    main = plot["main_thread"]
-    
-    if thread_id is None:
-        # Switch back to main
-        main["is_primary_focus"] = True
-        for alt_id, alt in plot.get("alternate_threads", {}).items():
-            alt["active"] = False
-        print("Switched primary focus to main thread")
-    else:
-        # Switch to alternate
-        if thread_id not in plot.get("alternate_threads", {}):
-            print(f"Error: Thread '{thread_id}' not found")
-            return
-        
-        main["is_primary_focus"] = False
-        plot["alternate_threads"][thread_id]["active"] = True
-        print(f"Switched primary focus to alternate thread: {plot['alternate_threads'][thread_id]['title']}")
-
-
-def add_player_goal(state, goal_description):
+def add_player_goal(ctx, goal_description):
     """Record a player-driven goal that emerged during play."""
-    steering = state["plot"].setdefault("thread_steering", {})
-    turn_count = state["plot"]["pacing"]["turn_count"]
-    
-    if "player_driven_goals" not in steering:
-        steering["player_driven_goals"] = []
-    
-    goal = {
-        "description": goal_description,
-        "turn": turn_count,
-        "active": True
-    }
-    
-    steering["player_driven_goals"].append(goal)
+    steering = ctx["state"]["plot"]["thread_steering"]
+    turn_count = ctx["state"]["pacing"]["turn_count"]
+    steering["player_driven_goals"].append({"description": goal_description, "turn": turn_count, "active": True})
     print(f"Recorded player goal: {goal_description}")
 
 
-def add_emerging_theme(state, theme):
+def add_emerging_theme(ctx, theme):
     """Note a theme that's emerging in the story."""
-    steering = state["plot"].setdefault("thread_steering", {})
-    
-    if "emerging_themes" not in steering:
-        steering["emerging_themes"] = []
-    
-    if theme not in steering["emerging_themes"]:
-        steering["emerging_themes"].append(theme)
+    themes = ctx["state"]["plot"]["thread_steering"]["emerging_themes"]
+    if theme not in themes:
+        themes.append(theme)
         print(f"Noted emerging theme: {theme}")
     else:
         print(f"Theme already noted: {theme}")
@@ -362,24 +269,24 @@ def _next_seed_id(pending_seeds):
     return f"seed_{next_number:03d}"
 
 
-def stage_steering_seed(state, note):
+def stage_steering_seed(ctx, note):
     """Generate a draft character/subplot/direction from a freeform note (see
     story_engine.generate_steering_seed) and hold it in plot.thread_steering.pending_seeds
     for review - nothing is committed to the save until apply_steering_seed confirms it.
     Returns the new seed's id, or None if generation failed (bad/empty LLM output - same
     "costs nothing, just try again" failure mode as generate_new_subplot)."""
-    generated = story_engine.generate_steering_seed(state, note)
+    generated = story_engine.generate_steering_seed(ctx, note)
     if generated is None:
         print("Could not generate a seed from that note - try rephrasing it.")
         return None
 
-    steering = state["plot"].setdefault("thread_steering", {})
-    pending = steering.setdefault("pending_seeds", [])
+    steering = ctx["state"]["plot"]["thread_steering"]
+    pending = steering["pending_seeds"]
     seed_id = _next_seed_id(pending)
     pending.append({
         "id": seed_id,
         "note": note,
-        "turn_added": state["plot"]["pacing"]["turn_count"],
+        "turn_added": ctx["state"]["pacing"]["turn_count"],
         "type": generated["type"],
         "draft": generated["draft"],
     })
@@ -392,19 +299,19 @@ def stage_steering_seed(state, note):
     return seed_id
 
 
-def apply_steering_seed(state, seed_id, **overrides):
+def apply_steering_seed(ctx, seed_id, **overrides):
     """Commit a staged seed (see stage_steering_seed) to the save, applying any field
     overrides the player supplied to edit it first. Dispatches by the seed's type into the
     same shapes the rest of the engine already produces/expects, so a seeded addition is
     indistinguishable from one the story generated on its own:
-    - character -> new `characters` entry, introduced: false (surfaces via
+    - character -> new ctx["state"]["characters"] entry, introduced: false (surfaces via
       story_engine.generate_pacing_nudge until the player actually meets them - see
       update_progress_from_turn's auto-flip when they do).
     - subplot -> story_engine.insert_subplot, the same insertion generate_new_subplot uses.
     - direction -> an emergent_directions entry, the same shape add_emergent_direction
       already produces (and, since the pacing-nudge fix, actually read back now)."""
-    steering = state["plot"].setdefault("thread_steering", {})
-    pending = steering.setdefault("pending_seeds", [])
+    steering = ctx["state"]["plot"]["thread_steering"]
+    pending = steering["pending_seeds"]
     seed = next((s for s in pending if s["id"] == seed_id), None)
     if seed is None:
         print(f"Error: no pending seed '{seed_id}'")
@@ -417,8 +324,8 @@ def apply_steering_seed(state, seed_id, **overrides):
             fields[key] = overrides[key]
 
     if seed_type == "character":
-        result_id = story_engine.insert_character(
-            state, fields.get("name", ""),
+        result = story_engine.insert_character(
+            ctx, fields.get("name", ""),
             description=fields.get("description", ""),
             role=fields.get("role", ""),
             relationship_to_player=fields.get("relationship_to_player", ""),
@@ -427,39 +334,38 @@ def apply_steering_seed(state, seed_id, **overrides):
             origin="seed",
             seed_note=seed["note"],
         )
-        print(f"Added character '{fields.get('name', '')}' ({result_id})")
+        print(f"Added character '{fields.get('name', '')}' ({result})")
     elif seed_type == "subplot":
         span = fields.get("span") if fields.get("span") in ("single_act", "multi_act") else "single_act"
-        result_id = story_engine.insert_subplot(
-            state, fields.get("title", ""), fields.get("description", ""),
+        result = story_engine.insert_subplot(
+            ctx, fields.get("title", ""), fields.get("description", ""),
             priority=fields.get("priority", "medium"),
             ties_to_main_plot=fields.get("ties_to_main_plot", ""),
             span=span,
         )
-        print(f"Added subplot '{fields.get('title', '')}' ({result_id}, span={span})")
+        print(f"Added subplot '{fields.get('title', '')}' ({result}, span={span})")
     elif seed_type == "direction":
-        directions = state["plot"]["main_thread"].setdefault("emergent_directions", [])
-        directions.append({
+        ctx["state"]["plot"]["emergent_directions"].append({
             "title": fields.get("title", ""),
             "description": fields.get("description", ""),
-            "turn": state["plot"]["pacing"]["turn_count"],
+            "turn": ctx["state"]["pacing"]["turn_count"],
             "promoted": False,
         })
-        result_id = None
+        result = None
         print(f"Noted direction: {fields.get('title', '')}")
     else:
         print(f"Error: unknown seed type '{seed_type}'")
         return None
 
     pending.remove(seed)
-    return result_id
+    return result
 
 
-def list_pending_seeds(state):
+def list_pending_seeds(ctx):
     """Print every pending seed's full draft (unlike show_plot_overview's one-line-each
     summary) so the player has enough detail to decide whether to seed-apply as-is, with
     overrides, or seed-discard."""
-    pending = state["plot"].get("thread_steering", {}).get("pending_seeds", [])
+    pending = ctx["state"]["plot"]["thread_steering"].get("pending_seeds", [])
     if not pending:
         print("No pending seeds.")
         return
@@ -470,10 +376,9 @@ def list_pending_seeds(state):
         print()
 
 
-def discard_steering_seed(state, seed_id):
+def discard_steering_seed(ctx, seed_id):
     """Drop a pending seed without applying it."""
-    steering = state["plot"].setdefault("thread_steering", {})
-    pending = steering.setdefault("pending_seeds", [])
+    pending = ctx["state"]["plot"]["thread_steering"]["pending_seeds"]
     seed = next((s for s in pending if s["id"] == seed_id), None)
     if seed is None:
         print(f"Error: no pending seed '{seed_id}'")
@@ -482,43 +387,48 @@ def discard_steering_seed(state, seed_id):
     print(f"Discarded seed '{seed_id}'")
 
 
-# --- Promoting a relationship-only name to a full NPC ---
-# update_progress_from_turn deliberately never auto-creates a character record for a generic/
-# descriptive handle (e.g. "the advocate", "a guard") - only for a name the model actually
-# gives someone (see story_engine.py's new_characters prompt instruction). A relationship
-# that's still unlinked (no characters entry behind it) can be promoted here instead, on
-# request - same story_engine.generate_character_from_relationship + insert_character
-# pipeline the automatic paths use, just triggered manually.
+# --- Promoting a relationship-only name to a full character ---
+# update_progress_from_turn deliberately never auto-creates a full character record for a
+# generic/descriptive handle (e.g. "the advocate", "a guard") - only for a name the model
+# actually gives someone (see story_engine.py's new_characters prompt instruction). A
+# relationship that's still "unlinked" (has a score but no description/role/hook behind it,
+# and isn't an authored character) can be promoted here instead, on request - same
+# story_engine.generate_character_from_relationship + insert_character pipeline the
+# automatic paths use, just triggered manually.
 
 _RELATIONSHIP_FIELDS = ("description", "role", "relationship_to_player", "hook")
 
 
-def list_unlinked_relationships(state):
-    """Every tracked relationship that isn't yet backed by a characters entry (see
-    player.relationships[name]["npc_id"]) - candidates for promote_relationship_to_npc."""
-    relationships = state["player"].get("relationships", {})
+def list_unlinked_relationships(ctx):
+    """Every tracked relationship that isn't yet backed by a full character record -
+    candidates for promote_relationship_to_npc. An authored character (from the template)
+    is never "unlinked" even before it's been given a description override at runtime, since
+    its description already resolves from the template - only a discovered entry with no
+    description of its own qualifies."""
+    characters = ctx["state"]["characters"]
+    authored_names = set(ctx["story"]["world"].get("characters", {}).keys())
     return [
-        (name, entry["score"])
-        for name, entry in relationships.items()
-        if not entry.get("npc_id")
+        (name, entry.get("relationship", 0))
+        for name, entry in characters.items()
+        if name not in authored_names and not entry.get("description")
     ]
 
 
-def promote_relationship_to_npc(state, name, **overrides):
-    """Draft and commit a full NPC record for a relationship-only name (see
-    generate_character_from_relationship), applying any field overrides the caller supplied,
-    and link the relationship entry to the new record. Returns the new character id, or None
-    if the name isn't a tracked relationship or generation failed."""
-    relationships = state["player"].get("relationships", {})
-    entry = relationships.get(name)
+def promote_relationship_to_npc(ctx, name, **overrides):
+    """Draft and commit a full character record for a relationship-only name (see
+    generate_character_from_relationship), applying any field overrides the caller supplied.
+    Returns the name on success, or None if it isn't a tracked relationship, is already a
+    full character, or generation failed."""
+    characters = ctx["state"]["characters"]
+    entry = characters.get(name)
     if entry is None:
         print(f"Error: no tracked relationship named '{name}'")
         return None
-    if entry.get("npc_id"):
-        print(f"'{name}' is already linked to character {entry['npc_id']}")
+    if entry.get("description"):
+        print(f"'{name}' already has a full character record")
         return None
 
-    draft = story_engine.generate_character_from_relationship(state, name)
+    draft = story_engine.generate_character_from_relationship(ctx, name)
     if draft is None:
         print(f"Could not draft a character for '{name}' - try again.")
         return None
@@ -527,18 +437,15 @@ def promote_relationship_to_npc(state, name, **overrides):
         if overrides.get(key):
             draft[key] = overrides[key]
 
-    char_id = story_engine.insert_character(
-        state, name,
-        description=draft.get("description", ""),
-        role=draft.get("role", ""),
-        relationship_to_player=draft.get("relationship_to_player", ""),
-        hook=draft.get("hook", ""),
-        introduced=True,
-        origin="relationship",
-    )
-    entry["npc_id"] = char_id
-    print(f"Promoted '{name}' to character {char_id}")
-    return char_id
+    entry["description"] = draft.get("description", "")
+    entry["role"] = draft.get("role", "")
+    entry["relationship_to_player"] = draft.get("relationship_to_player", "")
+    entry["hook"] = draft.get("hook", "")
+    entry["introduced"] = True
+    entry["origin"] = "relationship"
+
+    print(f"Promoted '{name}' to a full character")
+    return name
 
 
 def main():
@@ -567,7 +474,7 @@ def main():
         print("      [--hook '<override>'] [--priority '<override>'] [--ties '<override>']")
         print("      [--span 'single_act|multi_act']")
         print("  python plot_manager.py seed-discard <seed_id>")
-        print("\nRelationships (promote a tracked but not-yet-formalized name to a real NPC -")
+        print("\nRelationships (promote a tracked but not-yet-formalized name to a real character -")
         print("see 'overview' for which relationships are still unlinked):")
         print("  python plot_manager.py list-unlinked")
         print("  python plot_manager.py promote-relationship '<name>' [--description '<override>']")
@@ -577,17 +484,14 @@ def main():
         print("  python plot_manager.py pivot '<new title>' '<new description>' '<reason>'")
         print("\nPromoting:")
         print("  python plot_manager.py promote-emergent <index> [position]")
-        print("\nAlternate Threads:")
-        print("  python plot_manager.py create-alt '<thread_id>' '<title>' '<description>'")
-        print("  python plot_manager.py focus [thread_id]")
         return
 
-    state = state_store.load_state(user_id, story_slug)
+    ctx = state_store.load_state(user_id, story_slug)
     command = argv[1]
-    
+
     if command == "overview":
-        show_plot_overview(state)
-    
+        show_plot_overview(ctx)
+
     elif command == "add-act":
         if len(argv) < 4:
             print("Usage: python plot_manager.py add-act '<title>' '<description>' [position] [--optional]")
@@ -596,9 +500,9 @@ def main():
         description = argv[3]
         position = int(argv[4]) if len(argv) > 4 and argv[4].isdigit() else None
         optional = "--optional" in argv
-        add_act(state, title, description, position, optional=optional)
-        state_store.save_state(state, user_id, story_slug)
-    
+        add_act(ctx, title, description, position, optional=optional)
+        state_store.save_state(ctx, user_id, story_slug)
+
     elif command == "modify-act":
         if len(argv) < 3:
             print("Usage: python plot_manager.py modify-act <act_number> --title '<new>' --description '<new>'")
@@ -615,9 +519,9 @@ def main():
                 i += 2
             else:
                 i += 1
-        modify_act(state, act_num, **kwargs)
-        state_store.save_state(state, user_id, story_slug)
-    
+        modify_act(ctx, act_num, **kwargs)
+        state_store.save_state(ctx, user_id, story_slug)
+
     elif command == "pivot":
         if len(argv) < 5:
             print("Usage: python plot_manager.py pivot '<new title>' '<new description>' '<reason>'")
@@ -625,68 +529,53 @@ def main():
         new_title = argv[2]
         new_desc = argv[3]
         reason = argv[4]
-        pivot_main_plot(state, new_title, new_desc, reason)
-        state_store.save_state(state, user_id, story_slug)
-    
+        pivot_main_plot(ctx, new_title, new_desc, reason)
+        state_store.save_state(ctx, user_id, story_slug)
+
     elif command == "add-emergent":
         if len(argv) < 4:
             print("Usage: python plot_manager.py add-emergent '<title>' '<description>'")
             return
         title = argv[2]
         desc = argv[3]
-        add_emergent_direction(state, title, desc)
-        state_store.save_state(state, user_id, story_slug)
-    
+        add_emergent_direction(ctx, title, desc)
+        state_store.save_state(ctx, user_id, story_slug)
+
     elif command == "promote-emergent":
         if len(argv) < 3:
             print("Usage: python plot_manager.py promote-emergent <index> [position]")
             return
         index = int(argv[2])
         position = int(argv[3]) if len(argv) > 3 else None
-        promote_emergent_to_act(state, index, position)
-        state_store.save_state(state, user_id, story_slug)
-    
-    elif command == "create-alt":
-        if len(argv) < 5:
-            print("Usage: python plot_manager.py create-alt '<thread_id>' '<title>' '<description>'")
-            return
-        thread_id = argv[2]
-        title = argv[3]
-        desc = argv[4]
-        create_alternate_thread(state, thread_id, title, desc)
-        state_store.save_state(state, user_id, story_slug)
-    
-    elif command == "focus":
-        thread_id = argv[2] if len(argv) > 2 else None
-        toggle_thread_focus(state, thread_id)
-        state_store.save_state(state, user_id, story_slug)
-    
+        promote_emergent_to_act(ctx, index, position)
+        state_store.save_state(ctx, user_id, story_slug)
+
     elif command == "add-goal":
         if len(argv) < 3:
             print("Usage: python plot_manager.py add-goal '<goal description>'")
             return
         goal = argv[2]
-        add_player_goal(state, goal)
-        state_store.save_state(state, user_id, story_slug)
-    
+        add_player_goal(ctx, goal)
+        state_store.save_state(ctx, user_id, story_slug)
+
     elif command == "add-theme":
         if len(argv) < 3:
             print("Usage: python plot_manager.py add-theme '<theme>'")
             return
         theme = argv[2]
-        add_emerging_theme(state, theme)
-        state_store.save_state(state, user_id, story_slug)
+        add_emerging_theme(ctx, theme)
+        state_store.save_state(ctx, user_id, story_slug)
 
     elif command == "seed":
         if len(argv) < 3:
             print("Usage: python plot_manager.py seed '<freeform note>'")
             return
         note = argv[2]
-        stage_steering_seed(state, note)
-        state_store.save_state(state, user_id, story_slug)
+        stage_steering_seed(ctx, note)
+        state_store.save_state(ctx, user_id, story_slug)
 
     elif command == "seed-list":
-        list_pending_seeds(state)
+        list_pending_seeds(ctx)
 
     elif command == "seed-apply":
         if len(argv) < 3:
@@ -710,19 +599,19 @@ def main():
                 i += 2
             else:
                 i += 1
-        apply_steering_seed(state, seed_id, **kwargs)
-        state_store.save_state(state, user_id, story_slug)
+        apply_steering_seed(ctx, seed_id, **kwargs)
+        state_store.save_state(ctx, user_id, story_slug)
 
     elif command == "seed-discard":
         if len(argv) < 3:
             print("Usage: python plot_manager.py seed-discard <seed_id>")
             return
         seed_id = argv[2]
-        discard_steering_seed(state, seed_id)
-        state_store.save_state(state, user_id, story_slug)
+        discard_steering_seed(ctx, seed_id)
+        state_store.save_state(ctx, user_id, story_slug)
 
     elif command == "list-unlinked":
-        unlinked = list_unlinked_relationships(state)
+        unlinked = list_unlinked_relationships(ctx)
         if not unlinked:
             print("No unlinked relationships.")
         for name, score in unlinked:
@@ -747,8 +636,8 @@ def main():
                 i += 2
             else:
                 i += 1
-        promote_relationship_to_npc(state, name, **kwargs)
-        state_store.save_state(state, user_id, story_slug)
+        promote_relationship_to_npc(ctx, name, **kwargs)
+        state_store.save_state(ctx, user_id, story_slug)
 
     else:
         print(f"Unknown command: {command}")

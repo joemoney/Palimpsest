@@ -16,7 +16,7 @@ from _llm_stubs import load_story_engine, CannedResponses  # noqa: E402
 se = load_story_engine()
 import plot_manager  # noqa: E402  (backend/ is already on sys.path via load_story_engine)
 
-state = se.state_store.load_template(se.state_store.DEFAULT_STORY_SLUG)
+ctx = se.state_store.load_state("steertest", se.state_store.DEFAULT_STORY_SLUG)
 
 # --- character-type seed: stage, apply with an override, auto-introduce, nudge surfacing ---
 responses = CannedResponses([
@@ -31,31 +31,30 @@ responses = CannedResponses([
 ])
 se.call_llm_json = responses
 
-seed_id = plot_manager.stage_steering_seed(state, "Add a new character who could become an ally.")
+seed_id = plot_manager.stage_steering_seed(ctx, "Add a new character who could become an ally.")
 assert seed_id is not None
-pending = state["plot"]["thread_steering"]["pending_seeds"]
+pending = ctx["state"]["plot"]["thread_steering"]["pending_seeds"]
 assert len(pending) == 1 and pending[0]["id"] == seed_id and pending[0]["type"] == "character"
 print("OK: stage_steering_seed stages a character draft for review, nothing else touched")
 
-char_id = plot_manager.apply_steering_seed(state, seed_id, role="close confidant")
-assert char_id is not None
-assert state["plot"]["thread_steering"]["pending_seeds"] == []
-char = state["characters"][char_id]
-assert char["name"] == "Vesper Kade"
+char_name = plot_manager.apply_steering_seed(ctx, seed_id, role="close confidant")
+assert char_name == "Vesper Kade"
+assert ctx["state"]["plot"]["thread_steering"]["pending_seeds"] == []
+char = ctx["state"]["characters"][char_name]
 assert char["role"] == "close confidant"  # override wins over the generated draft
 assert char["introduced"] is False
 assert char["origin"] == "seed"  # via the shared insert_character helper now
 print("OK: apply_steering_seed commits the character with an override; pending seed cleared")
 
-nudge = se.generate_pacing_nudge(state)
+nudge = se.generate_pacing_nudge(ctx)
 assert "Vesper Kade" in nudge and "supply drop" in nudge, nudge
 print("OK: generate_pacing_nudge surfaces an un-introduced seeded character's hook")
 
-se.update_progress_from_turn(state, "talk to Vesper", "narration mentioning Vesper Kade")
-assert state["characters"][char_id]["introduced"] is True
+se.update_progress_from_turn(ctx, "talk to Vesper", "narration mentioning Vesper Kade")
+assert ctx["state"]["characters"]["Vesper Kade"]["introduced"] is True
 print("OK: meeting the character in a turn auto-flips introduced via relationship_changes")
 
-nudge_after = se.generate_pacing_nudge(state)
+nudge_after = se.generate_pacing_nudge(ctx)
 assert "Vesper Kade" not in nudge_after, nudge_after
 print("OK: an introduced character stops being surfaced")
 
@@ -70,11 +69,11 @@ responses = CannedResponses([
 ])
 se.call_llm_json = responses
 
-seed_id = plot_manager.stage_steering_seed(state, "Add a subplot about a risky salvage job.")
-subplot_id = plot_manager.apply_steering_seed(state, seed_id)
-assert subplot_id in state["plot"]["subplots"]
-assert state["plot"]["subplots"][subplot_id]["title"] == "Salvage Run"
-assert state["plot"]["thread_steering"]["pending_seeds"] == []
+seed_id = plot_manager.stage_steering_seed(ctx, "Add a subplot about a risky salvage job.")
+subplot_id = plot_manager.apply_steering_seed(ctx, seed_id)
+assert subplot_id in ctx["state"]["plot"]["subplots"]
+assert ctx["state"]["plot"]["subplots"][subplot_id]["title"] == "Salvage Run"
+assert ctx["state"]["plot"]["thread_steering"]["pending_seeds"] == []
 print("OK: subplot-type seed applies via the shared insert_subplot path")
 assert responses.remaining() == 0
 
@@ -86,14 +85,14 @@ responses = CannedResponses([
 ])
 se.call_llm_json = responses
 
-seed_id = plot_manager.stage_steering_seed(state, "Note that an old debt might resurface.")
-result = plot_manager.apply_steering_seed(state, seed_id)
+seed_id = plot_manager.stage_steering_seed(ctx, "Note that an old debt might resurface.")
+result = plot_manager.apply_steering_seed(ctx, seed_id)
 assert result is None  # directions have no id of their own, unlike character/subplot
-directions = state["plot"]["main_thread"]["emergent_directions"]
+directions = ctx["state"]["plot"]["emergent_directions"]
 assert any(d["title"] == "A Debt Comes Due" and not d["promoted"] for d in directions)
 print("OK: direction-type seed lands in emergent_directions, unpromoted")
 
-nudge = se.generate_pacing_nudge(state)
+nudge = se.generate_pacing_nudge(ctx)
 assert "A Debt Comes Due" in nudge, nudge
 print("OK: generate_pacing_nudge surfaces the seeded direction")
 assert responses.remaining() == 0
@@ -104,31 +103,31 @@ responses = CannedResponses([
 ])
 se.call_llm_json = responses
 
-seed_id = plot_manager.stage_steering_seed(state, "some note")
-before = len(state["plot"]["main_thread"]["emergent_directions"])
-plot_manager.discard_steering_seed(state, seed_id)
-assert state["plot"]["thread_steering"]["pending_seeds"] == []
-assert len(state["plot"]["main_thread"]["emergent_directions"]) == before
+seed_id = plot_manager.stage_steering_seed(ctx, "some note")
+before = len(ctx["state"]["plot"]["emergent_directions"])
+plot_manager.discard_steering_seed(ctx, seed_id)
+assert ctx["state"]["plot"]["thread_steering"]["pending_seeds"] == []
+assert len(ctx["state"]["plot"]["emergent_directions"]) == before
 print("OK: discard_steering_seed drops a draft without committing it")
 assert responses.remaining() == 0
 
 # --- unknown seed id is a no-op, not an error ---
-assert plot_manager.apply_steering_seed(state, "not_a_real_seed") is None
-plot_manager.discard_steering_seed(state, "not_a_real_seed")  # should not raise
+assert plot_manager.apply_steering_seed(ctx, "not_a_real_seed") is None
+plot_manager.discard_steering_seed(ctx, "not_a_real_seed")  # should not raise
 print("OK: an unknown seed id is a no-op for both apply and discard")
 
 # --- malformed/unexpected LLM output yields None, same failure mode as generate_new_subplot ---
 se.call_llm_json = lambda prompt, **kwargs: {"not_type": "oops"}
-assert se.generate_steering_seed(state, "a note") is None
+assert se.generate_steering_seed(ctx, "a note") is None
 print("OK: malformed LLM output yields None instead of raising")
 
 # --- regression: hand-authored steering (not seed-generated) now also reaches the nudge ---
-state2 = se.state_store.load_template(se.state_store.DEFAULT_STORY_SLUG)
+ctx2 = se.state_store.load_state("steertest2", se.state_store.DEFAULT_STORY_SLUG)
 plot_manager.add_emergent_direction(
-    state2, "The Undercity Signal", "A recurring signal hints at something buried."
+    ctx2, "The Undercity Signal", "A recurring signal hints at something buried."
 )
-plot_manager.add_player_goal(state2, "Find out who's been intercepting the mail.")
-nudge2 = se.generate_pacing_nudge(state2)
+plot_manager.add_player_goal(ctx2, "Find out who's been intercepting the mail.")
+nudge2 = se.generate_pacing_nudge(ctx2)
 assert "The Undercity Signal" in nudge2, nudge2
 assert "Find out who's been intercepting the mail." in nudge2, nudge2
 print("OK: hand-authored add-emergent/add-goal now reach generate_pacing_nudge (write-only fix)")

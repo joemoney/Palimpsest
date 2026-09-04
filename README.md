@@ -53,21 +53,20 @@ pip install -r requirements.txt
 python backend/story_engine.py
 ```
 Needs a `.env` file (not checked in) with both `OPENROUTER_API_KEY` (an
-[OpenRouter](https://openrouter.ai/keys) key, for narration) and
-`GOOGLE_API_KEY` (a Gemini key from
-[Google AI Studio](https://aistudio.google.com/apikey), for the
-state-update tier — called directly, not through OpenRouter — **and** as a
-fail-safe: if either tier's primary call fails, it's automatically retried
-once against your free-tier `GEMINI_MODEL`, so a `GOOGLE_API_KEY` is
-required either way), plus, for the web interface, `FLASK_SECRET_KEY` (any
-random string — used to sign session cookies). The two LLM calls default to
-different providers per tier, not one global switch, and
-`NARRATION_MODEL`/`STATE_UPDATE_MODEL` are freely swappable via `.env` if
-you want to try a different OpenRouter model for either tier — the Gemini
-fail-safe means an unreachable or misconfigured experiment won't take the
-whole app down. See `CLAUDE.md`'s "Backend / Model Notes" for the full
-`LLM_PROVIDER`/`STATE_UPDATE_PROVIDER`/`NARRATION_MODEL`/`STATE_UPDATE_MODEL`
-picture.
+[OpenRouter](https://openrouter.ai/keys) key, for both LLM tiers by default)
+and `GOOGLE_API_KEY` (a Gemini key from
+[Google AI Studio](https://aistudio.google.com/apikey) — required as a
+fail-safe even if you never point a tier at Google directly: if any tier's
+primary call fails, it's automatically retried once against your free-tier
+`GEMINI_MODEL`), plus, for the web interface, `FLASK_SECRET_KEY` (any
+random string — used to sign session cookies). LLM calls are split into
+three tiers (Tier A: cheap flagship, reasoning off; Tier B: the same
+flagship model, reasoning on; Tier C: fastest available model) —
+`TIER_AB_MODEL`/`TIER_C_MODEL` are freely swappable via `.env` if you want
+to try a different OpenRouter model for either one — the Gemini fail-safe
+means an unreachable or misconfigured experiment won't take the whole app
+down. See `CLAUDE.md`'s "Backend / Model Notes" for the full
+`TIER_AB_PROVIDER`/`TIER_AB_MODEL`/`TIER_C_PROVIDER`/`TIER_C_MODEL` picture.
 Boots straight into `stories/example/`'s opening with no flags needed — the
 CLI defaults to a local single-player save against the public example story
 (`--user`/`--story` flags exist if you want to target a different one, e.g.
@@ -105,9 +104,6 @@ python backend/plot_manager.py add-act 'Side Quest' 'Optional arc' --optional
 python backend/plot_manager.py pivot 'New Main Goal' 'Updated description' 'Why we pivoted'
 python backend/plot_manager.py add-emergent 'Corporate Conspiracy' 'Player discovered...'
 python backend/plot_manager.py promote-emergent 0                                    # promote emergent -> full act
-python backend/plot_manager.py create-alt 'thread_faction' 'Faction War' 'Megacorps vs underground'
-python backend/plot_manager.py focus thread_faction                                  # switch primary focus
-python backend/plot_manager.py focus                                                 # switch back to main
 python backend/plot_manager.py add-goal 'Player wants to rescue trapped AI'
 python backend/plot_manager.py add-theme 'Identity and memory'
 python backend/plot_manager.py seed 'Add a legal advocate who could become an ally'  # LLM drafts a character/subplot/direction from a note
@@ -222,10 +218,6 @@ itself.
   to be drifting toward, without committing to it as a full act yet.
 - **Promote Emergent Direction to Act** - turn a previously noted
   direction into a real act once you're sure you want it.
-- **Create Alternate Thread** - start a separate storyline running
-  alongside the main plot.
-- **Switch Focus** - change which thread (main, or an alternate) the
-  narration currently follows.
 - **Record Player Goal** / **Note Emerging Theme** - leave notes about
   where the story should head, without immediately acting on them.
 - **Seed a Future Addition** - describe a character/subplot/direction in

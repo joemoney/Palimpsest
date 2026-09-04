@@ -8,26 +8,29 @@
 </section>
 
 <section class="card">
-  {% set current_act = plot.main_thread.acts[plot.main_thread.current_act - 1] %}
-  <div style="font-weight:700;">Act {{ plot.main_thread.current_act }}: {{ current_act.title }}</div>
+  <div style="font-weight:700;">Act {{ current_act.act_number }}: {{ current_act.title }}</div>
   <p class="story" style="font-size:0.9rem; margin-top:6px;">{{ current_act.description }}</p>
   {% if current_act.completion_signals %}
   <p style="color:var(--muted); font-size:0.8rem; margin-top:6px;">Signals: {{ current_act.completion_signals | join(', ') }}</p>
   {% endif %}
   <p style="color:var(--muted); font-size:0.8rem; margin-top:8px;">
-    Subplots completed this act: {{ plot.pacing.subplots_completed_this_act }}
-    &middot; Turn: {{ plot.pacing.turn_count }}
-    &middot; Memory fragments revealed: {{ player.origin.memory_fragments | selectattr('revealed') | list | length }}/{{ player.origin.memory_fragments | length }}
-    &middot; Architect encounters: {{ plot.entity_interaction_count }}
+    Subplots completed this act: {{ pacing.subplots_completed_this_act }}
+    &middot; Turn: {{ pacing.turn_count }}
+    {% if memory_fragments %}
+    &middot; Memory fragments revealed: {{ memory_fragments | selectattr('revealed') | list | length }}/{{ memory_fragments | length }}
+    {% endif %}
+    {% if tracked_entity_name %}
+    &middot; {{ tracked_entity_name }} encounters: {{ entity_contact_count }}
+    {% endif %}
   </p>
-  {% if plot.endgame.requested %}
+  {% if endgame.requested %}
   <p class="error" style="margin-top:8px;">Endgame in progress — acts no longer advance.</p>
   {% endif %}
 </section>
 
 <section class="card">
   <div style="font-weight:700; margin-bottom:10px;">Subplots</div>
-  {% for sid, sp in plot.subplots.items() %}
+  {% for sid, sp in subplots.items() %}
   <div style="padding:10px 0; {% if not loop.first %}border-top:1px solid rgba(148,163,184,0.15);{% endif %}">
     <div style="font-weight:600;">
       {{ "✓" if sp.status == "completed" else ("●" if sp.active else "○") }} {{ sp.title }}
@@ -44,12 +47,11 @@
 <section class="card">
   <div style="font-weight:700; margin-bottom:6px;">Pacing</div>
   <p style="color:var(--muted); font-size:0.85rem;">
-    Turns since pacing nudge: {{ plot.pacing.turns_since_last_pacing_nudge }}/{{ plot.pacing.pacing_nudge_frequency }}
-    &middot; Max parallel subplots: {{ plot.pacing.max_parallel_subplots }}
-    &middot; Ready for main plot advancement: {{ "yes" if plot.pacing.ready_for_main_plot_advancement else "no" }}
+    Turns since pacing nudge: {{ pacing.turns_since_last_pacing_nudge }}/{{ pacing.pacing_nudge_frequency }}
+    &middot; Max parallel subplots: {{ pacing.max_parallel_subplots }}
   </p>
-  {% if plot.pacing.last_pacing_direction %}
-  <p style="color:var(--muted); font-size:0.85rem; margin-top:6px;">Last direction: {{ plot.pacing.last_pacing_direction }}</p>
+  {% if pacing.last_pacing_direction %}
+  <p style="color:var(--muted); font-size:0.85rem; margin-top:6px;">Last direction: {{ pacing.last_pacing_direction }}</p>
   {% endif %}
 </section>
 
@@ -59,7 +61,7 @@
     <input type="hidden" name="command" value="progress">
     <label for="progress-subplot">Subplot</label>
     <select id="progress-subplot" name="subplot_id" required>
-      {% for sid, sp in plot.subplots.items() %}
+      {% for sid, sp in subplots.items() %}
       <option value="{{ sid }}">{{ sp.title }} ({{ sid }})</option>
       {% endfor %}
     </select>
@@ -76,7 +78,7 @@
     <input type="hidden" name="command" value="modify-subplot">
     <label for="modify-subplot-id">Subplot</label>
     <select id="modify-subplot-id" name="subplot_id" required>
-      {% for sid, sp in plot.subplots.items() %}
+      {% for sid, sp in subplots.items() %}
       <option value="{{ sid }}">{{ sp.title }} ({{ sid }})</option>
       {% endfor %}
     </select>
@@ -97,7 +99,7 @@
   </form>
 </details>
 
-{% set inactive_subplots = plot.subplots.values() | rejectattr('active') | list %}
+{% set inactive_subplots = subplots.values() | rejectattr('active') | list %}
 {% if inactive_subplots %}
 <details class="card">
   <summary>Activate Subplot</summary>
@@ -123,7 +125,7 @@
   </form>
 </details>
 
-{% set unrevealed_fragments = player.origin.memory_fragments | rejectattr('revealed') | list %}
+{% set unrevealed_fragments = memory_fragments | rejectattr('revealed') | list %}
 {% if unrevealed_fragments %}
 <details class="card">
   <summary>Reveal Memory Fragment</summary>
