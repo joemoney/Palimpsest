@@ -95,11 +95,23 @@ unboundedly is what gets stuffed into a prompt, since that's real cost and
 real drift risk on every call. Any new accumulating state needs the same
 treatment as these existing ones:
 
-- **`history_log.recent_turns`** — capped at `RECENT_TURN_LIMIT` (10) turns;
-  older ones roll into `compressed_summary`.
-- **`history_log.compressed_summary`** — capped at `SUMMARY_MAX_WORDS`. Each
-  rollover re-summarizes *the existing summary plus the new turns* back under
-  that cap and replaces it, rather than appending forever.
+- **`history_log.recent_turns`** — every prompt that reads it slices
+  `[-RECENT_TURN_LIMIT:]` (10) itself, so that, not the stored length, is what
+  bounds context. Storage deliberately runs ahead: a rollover only fires once
+  the list reaches `RECENT_TURN_LIMIT + ROLLOVER_BATCH_TURNS` (20), then rolls
+  everything past the last 10 into `compressed_summary` in one batch. Triggering
+  on "longer than 10" instead — as this did originally — means a rollover on
+  *every* turn past the tenth, since each turn appends exactly one and the trim
+  puts the list straight back on the boundary. Don't reintroduce that: it cost a
+  Tier A call (~18s measured) per turn and re-compressed the summary ~16 times by
+  turn 26 instead of ~2.
+- **`history_log.compressed_summary`** — capped at `SUMMARY_MAX_WORDS`, and the
+  cap is *enforced* (`_enforce_word_cap`), not merely requested in the prompt —
+  a real save reached 2,912 words against a 2,000-word instruction. Each rollover
+  re-summarizes *the existing summary plus the new turns* back under that cap and
+  replaces it, rather than appending forever. Since that is lossy and compounds,
+  how *often* it runs is a quality lever and not just a cost one — see the
+  batching note above.
 - **Subplot dedup context** (`generate_new_subplot`) and **act-advancement
   context** (`check_and_advance_act`) both used to pull from
   `plot.completed_subplots`, which accumulates for the whole game. Now
@@ -347,8 +359,11 @@ called her "the advocate" and nothing tied that string back to her record
 - exact-name matching alone is fragile in exactly this way, which is why an
 explicit stored id (not a re-derived string match) is now the source of
 truth once a link exists.
-- Summarization of `history_log` into `compressed_summary` runs periodically
-  (on `recent_turns` overflow), not every turn, to save cost.
+- Summarization of `history_log` into `compressed_summary` runs periodically —
+  once per `ROLLOVER_BATCH_TURNS`, not every turn — to save cost and to limit how
+  many times the summary is lossily re-compressed. See the `recent_turns` bullet
+  under "Keeping LLM Context Bounded" for why the trigger is a batch threshold
+  rather than a plain overflow check.
 - **Character creation is an opt-in, N-step mechanic, per story** - not a
   required part of every template, and not hardcoded to "class" specifically.
   A story authors a top-level `character_creation` list: an ordered sequence

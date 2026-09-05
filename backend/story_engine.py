@@ -19,6 +19,16 @@ import state_store
 from state_store import DEFAULT_STORY_SLUG, DEFAULT_USER_ID
 
 RECENT_TURN_LIMIT = 10
+# How far recent_turns is allowed to run past RECENT_TURN_LIMIT before a rollover fires.
+# Without it, rollover triggered the moment the list exceeded RECENT_TURN_LIMIT - which is
+# every single turn once a game is past its tenth, since each turn appends exactly one and
+# the trim put it straight back on the boundary. That cost a Tier A call (~18s observed) on
+# every turn, and worse, re-summarized the summary each time: by turn 26 the text had been
+# through ~16 generations of lossy re-compression instead of ~2, grinding down exactly the
+# early detail it exists to preserve. Batching makes it one rollover per BATCH turns.
+# Safe because every prompt slices [-RECENT_TURN_LIMIT:] itself, so what the LLM sees is
+# unchanged no matter how far the stored list is allowed to run ahead.
+ROLLOVER_BATCH_TURNS = 10
 SUMMARY_MAX_WORDS = 2000
 SUBPLOT_TITLE_HISTORY_LIMIT = 15
 FLAGS_ACTIVE_LIMIT = 25
@@ -2049,9 +2059,9 @@ def update_state_after_turn(
     # See if the current act has narratively resolved and needs a successor
     check_and_advance_act(ctx)
 
-    # Roll oldest turns into compressed summary once over the limit
+    # Roll oldest turns into compressed summary once a full batch has built up past the limit
     history = ctx["state"]["history"]
-    if len(history["recent_turns"]) > RECENT_TURN_LIMIT:
+    if len(history["recent_turns"]) >= RECENT_TURN_LIMIT + ROLLOVER_BATCH_TURNS:
         overflow = history["recent_turns"][:-RECENT_TURN_LIMIT]
         history["recent_turns"] = history["recent_turns"][-RECENT_TURN_LIMIT:]
 
