@@ -124,10 +124,11 @@ def _start_turn_job(fn, user_id: str, story_slug: str):
     """Shared by take_turn/regenerate_turn: runs fn (a take_turn or regenerate_last_turn
     call, already bound to its args) on a background thread instead of inline, so the HTTP
     request that started it resolves in well under a second regardless of how long the
-    turn's LLM pipeline actually takes. A turn can run 100s+ end to end (narration +
-    state-update + subplot generation + act check + summary rollover, several of which can
-    individually be slow) - holding one HTTP response open for that whole time was getting
-    silently killed by the Cloudflare tunnel in front of this app (its edge cancels the
+    turn's LLM pipeline actually takes. A turn can run 100s+ end to end (narration + an
+    options-repair follow-up if the narration skipped its OPTIONS block + state-update +
+    subplot generation + act check + summary rollover, several of which can individually be
+    slow) - holding one HTTP response open for that whole time was getting silently killed
+    by the Cloudflare tunnel in front of this app (its edge cancels the
     connection to the origin past ~100-125s - "context canceled" in the tunnel's logs - even
     though gunicorn keeps running and the turn saves fine a few seconds later). The client
     instead polls GET /api/status (already existed, for the busy-indicator) and, once that
