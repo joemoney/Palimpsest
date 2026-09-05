@@ -315,3 +315,8 @@ here for when the story needs a deliberate push.
 - [ ] If migrating an in-progress story from another app: paste the raw
       transcript and ask Claude to extract characters/locations/flags/plot
       threads into this schema
+- [ ] Locations generated automatically, mirroring how characters already
+      are — a subplot/act names a new required location only when genuinely
+      needed (not the common case), committed via a new `insert_location()`
+      into `world.locations` with `connected_to` back to the current
+      location, rather than a freestanding generator
