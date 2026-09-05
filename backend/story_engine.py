@@ -395,11 +395,23 @@ STATUS_LABELS = {
     # step that's normally over in well under a second).
     "queued": "Starting",
     "narration": "Narrating",
+    "options_generation": "Offering",
     "state_update": "Reckoning",
     "subplot_generation": "Branching",
     "act_advancement_check": "Weighing",
     "end_story_final_arc": "Concluding",
     "summary_rollover": "Remembering",
+    # The last two _timed() labels are the ones that can't run inside a turn at all -
+    # generate_steering_seed and generate_character_from_relationship are only ever reached
+    # from plot_manager.py (its CLI, or app.py's Plot Manager routes calling those functions
+    # directly on the request thread), where _status_ctx was never set, so no beacon is
+    # written and the busy popup never sees them. They're mapped anyway so that this dict
+    # stays a complete mirror of the _timed() call sites - the thing that actually goes
+    # stale - and so a future change that does run one under a status context degrades to a
+    # display word rather than a raw snake_case key leaking into the popup. Like "queued",
+    # they deliberately have no DEFAULT_STEP_ESTIMATE_SECONDS entry.
+    "steering_seed_generation": "Charting",
+    "relationship_promotion": "Naming",
 }
 
 # Seed estimate (seconds) for the busy indicator's per-step progress bar before
@@ -410,6 +422,9 @@ STATUS_LABELS = {
 # completed call is enough for the rolling median to take over from then on.
 DEFAULT_STEP_ESTIMATE_SECONDS = {
     "narration": 17,
+    # Same tier/model as narration but a much smaller ask (just the OPTIONS block, against
+    # narration it's already been handed), so a fraction of narration's estimate.
+    "options_generation": 8,
     "state_update": 23,
     "subplot_generation": 6,
     "act_advancement_check": 4,
@@ -431,9 +446,11 @@ _status_ctx = threading.local()
 
 def _timed(label: str, fn, model: str):
     """Wraps a single LLM call with wall-clock timing, printed to stdout (captured by
-    `docker logs`/gunicorn's access log, same as the existing narration print). A turn can
-    involve up to five sequential calls - narration, state-update, and conditionally
-    subplot generation, act-advancement judgment, and the summary rollover - so total
+    `docker logs`/gunicorn's access log, same as the existing narration print). A turn
+    chains several sequential calls - narration, the state-update pass, and conditionally
+    the missing-OPTIONS repair follow-up, subplot generation (once per subplot that
+    completed this turn, so possibly more than once), act-advancement judgment, the summary
+    rollover, and, on the turn an end-story command lands, the closing-arc call - so total
     request duration alone (the access log's one number) doesn't say which of those is
     actually where the time goes. Labels line up 1:1 with the call sites below.
     `model` is the actual model name that call is about to hit (TIER_AB_MODEL/

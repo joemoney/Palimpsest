@@ -430,14 +430,15 @@ one exists), then calls `app.py`'s `_start_turn_job`, which writes a
 `regenerate_last_turn` on a background `threading.Thread`, and the route
 returns `202` with an empty body almost immediately — regardless of how
 long the turn's own LLM pipeline (narration + state-update + optionally
-subplot generation/act-advancement/summary-rollover, several of which can
-individually be slow) ends up taking. This exists because a real production
-incident showed a single long-held HTTP response isn't safe end-to-end: the
-Cloudflare tunnel in front of this app (see `docker-compose.yml`) cancels
-its connection to the origin past roughly 100-125s ("context canceled" in
-`cloudflared`'s logs) even though gunicorn keeps running and the turn saves
-correctly a few seconds later — the player just sees a spurious connection-
-lost error on an otherwise-successful turn.
+an options-repair follow-up/subplot generation/act-advancement/summary-
+rollover, several of which can individually be slow) ends up taking.
+This exists because a real production incident showed a single long-held
+HTTP response isn't safe end-to-end: the Cloudflare tunnel in front of
+this app (see `docker-compose.yml`) cancels its connection to the origin
+past roughly 100-125s ("context canceled" in `cloudflared`'s logs) even
+though gunicorn keeps running and the turn saves correctly a few seconds
+later — the player just sees a spurious connection-lost error on an
+otherwise-successful turn.
 
 The client closes the loop itself, entirely through polling:
 1. `_controls.html`'s buttons/form POST with `hx-swap="none"` (no swap from
@@ -468,6 +469,22 @@ The client closes the loop itself, entirely through polling:
    it returns the same scene+controls fragment `take_turn`/`regenerate_turn`
    used to return directly; on failure it returns `(error, 503)`, same as
    the old synchronous path.
+
+The popup's step vocabulary is `story_engine.STATUS_LABELS` (raw `_timed()`
+label → the evocative word the player reads) plus
+`DEFAULT_STEP_ESTIMATE_SECONDS` (the seed a step's progress bar uses until
+`state_store.p50_duration` has real samples for that label). **Both are
+mirrors of the `_timed()` call sites, so adding an LLM call to the turn
+path means adding it to both** — for a label it doesn't know,
+`/api/status` falls back to displaying the raw `snake_case` key and to no
+progress bar at all. This drifted once already: `generate_missing_options`'
+repair call was added to the turn path without either entry, so a turn
+whose narration skipped its OPTIONS block showed the player
+"options_generation…". `test/test_status_labels.py` asserts the mirror both
+ways. The two manager-path labels (`steering_seed_generation`,
+`relationship_promotion`) are the deliberate exception — `plot_manager.py`
+reaches them off the turn path, where `_status_ctx` was never set, so no
+beacon is ever written and they carry a display word but no estimate.
 
 Because `hx-disabled-elt`/`hx-indicator` are scoped to a single request's
 lifecycle, and the *kickoff* POST/GET pair here settles almost instantly

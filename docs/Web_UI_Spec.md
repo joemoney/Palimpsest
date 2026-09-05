@@ -47,9 +47,9 @@ all the state/LLM work in `story_engine.py`.
 ## Turn Latency (as implemented)
 One turn is not one request-response round trip. A turn can take anywhere
 from a few seconds to well over a minute (narration, plus a follow-up
-state-update call, plus - conditionally - subplot generation, act-
-advancement judgment, and a summary rollover, run in sequence), and a real
-incident showed that holding a single HTTP response open for that whole
+state-update call, plus - conditionally - a repair call for a missing
+OPTIONS block, subplot generation, act-advancement judgment, and a summary
+rollover, run in sequence), and a real incident showed that holding a single HTTP response open for that whole
 span isn't safe through every network path a deployment might sit behind -
 an intermediate proxy/tunnel can cancel a connection well before the
 backend actually finishes and saves. So step 2 ("player selects a choice")
