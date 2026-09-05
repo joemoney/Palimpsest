@@ -1,12 +1,18 @@
 # Phase 0 — Pacing validation gate report
 
-**Date:** 2026-09-04
+**Date:** 2026-09-04, revised 2026-09-05 (gate 0.3, §9)
 **Sample:** 24-turn live playthrough, `new_babel`, user `9a20892e`, schema v2 working tree
 (commit `396af0f`). Exported via `backend/export_story.py --include-actions`; 15,330 words.
-**Verdict:** **PROCEED TO 6.1/6.2 ON A TWO-BEAT VOCABULARY.** Gate 0.2 fails at four beats
-(41.7%) and passes collapsed to two (75.0%) — §7. The §4 fix plan has landed and its
-revelation defect is closed (§4.3). Thresholds must be re-derived before 6.3 (§7.2), and gate
-0.3 is still unrun.
+**Verdict (revised 2026-09-05):** **DO NOT PROCEED TO 6.1/6.2 AS SPECIFIED.** Gate 0.3 fails
+on `example`, and fails *degenerately*: the classifier answered the same beat for all 30
+scenes (§9). The two-beat vocabulary that passed on `new_babel` therefore has not been shown
+to generalize, and §5's authored-per-story vocabulary design — the thing 0.3 exists to test —
+is unsupported outside the thriller. The §4 fix plan has landed and its revelation defect is
+closed (§4.3). Thresholds must still be re-derived before 6.3 (§7.2).
+
+**The earlier verdict on this line read "PROCEED TO 6.1/6.2 ON A TWO-BEAT VOCABULARY," on
+gate 0.2 alone.** It is superseded, for two independent reasons: 0.3 now fails, and §9.2's
+chance-correction shows the 0.2 pass was weaker than its 75.0% headline suggested.
 
 ---
 
@@ -16,7 +22,7 @@ revelation defect is closed (§4.3). Thresholds must be re-derived before 6.3 (�
 |---|---|---|---|
 | 0.1 | Classify every scene in `the_attention_economy.txt` by beat type | **RUN** (24 turns; regenerated corpus) | Release-beat rate 58%, one eight-turn release run (§2) |
 | 0.2 | Hand-label ~30 scenes, run classifier prompt, measure agreement ≥70% | **RUN** (24 scenes) | 41.7% on four beats (FAIL); 75.0% collapsed to two (PASS) — §7 |
-| 0.3 | Repeat 0.2 against a second genre's vocabulary | **NOT RUN** | Needs an `example` playthrough — no fixture required |
+| 0.3 | Repeat 0.2 against a second genre's vocabulary | **RUN** (30 scenes, `example`) | 43.3% on four beats, 56.7% collapsed to two — both **FAIL**; κ = 0.00 collapsed (§9) |
 
 ### On the two missing files
 
@@ -569,3 +575,131 @@ Recorded so they are not re-litigated:
   being debugged at the time. Not a pacing signal.
 - **`CLAUDE.md` is stale** with respect to schema v2, `SECTIONS`, and mechanics modules.
   Known and deliberately scheduled as Phase 7.4. Not a finding of this report.
+
+---
+
+## 9. Gate 0.3 — cross-genre check fails, and fails degenerately
+
+Run 2026-09-05. Sample: 30-turn live playthrough of `example` (*The Last Ferry to
+Millbrook*), user `9a20892e`. Human labels: `data/labels_example.md`, all 30 scenes, filled
+in via the web worksheet at `/labels/example` before any classifier run. Vocabularies:
+`data/vocab_example_4beat.json` (Appendix A verbatim) and `data/vocab_example_2beat.json`
+(§7.3's collapsed draft). Same script, same prompt construction and same boundary rule as
+§7, so the two stories' numbers are directly comparable.
+
+| Story | Vocabulary | Tier | Agreement | Gate ≥70% | **κ** |
+|---|---|---|---|---|---|
+| `example` | four beats (Appendix A) | C | 13/30 = **43.3%** | **FAIL** | 0.14 |
+| `example` | two beats (§7.3 draft) | C | 17/30 = **56.7%** | **FAIL** | **0.00** |
+| `example` | two beats (§7.3 draft) | B | 16/25 = **64.0%** | **FAIL** | 0.15 |
+| `new_babel` | two beats (§7.3 draft) | C | 18/24 = 75.0% | pass | 0.50 |
+
+### 9.1 The classifier is a constant function on this story
+
+On the two-beat Tier C run it answered **`disquiet` for all 30 of 30 scenes**. It never once
+emitted `comfort`.
+
+The 56.7% is therefore not partial skill. It is exactly the base rate of `disquiet` in the
+human labels (17 of 30), which is what a rater who always guesses the majority class scores
+by construction. Chance-corrected agreement is precisely zero.
+
+The four-beat run shows the same collapse in milder form: 24 of 30 scenes called
+`unsettling`, `reassurance` used once, `hospitality` never.
+
+**The production consequence is worse than the percentage suggests.** A constant beat
+classifier feeds one counter and never resets the other, so Millbrook's `stasis` counter
+would sit at 0 permanently and `force_complication` — the single rule Appendix A exists to
+provide — could never fire. The cozy story would receive no pacing correction at all, while
+*appearing* configured. That is a strictly worse state than shipping no module for it.
+
+### 9.2 Correction: raw agreement is the wrong gate criterion
+
+§0.2's "≥70% overall" threshold cannot distinguish skill from class imbalance. A classifier
+with *zero* discriminative power scored 56.7% here, close enough to the gate to read as a
+near-miss rather than the total failure it is.
+
+Chance-corrected agreement (Cohen's κ) is reported alongside raw agreement from now on, and
+`scripts/gate_02.py` fails a run that clears 70% while κ < 0.4. This also **retroactively
+downgrades §7's pass**: 75.0% on `new_babel` is κ = 0.50 — moderate, not strong. §7's
+conclusion that the two-beat vocabulary works for New Babel survives; the confidence attached
+to it should not. It rests on 24 scenes, one rater, one session.
+
+### 9.3 The cause is the vocabulary, not the cheap model
+
+Tier B (reasoning on) was run as a diagnostic to separate "the design doesn't generalize"
+from "Tier C is too weak." It does not rescue the gate: 64.0%, κ = 0.15. Reasoning moved the
+classifier from *constant* to *barely discriminating* — 3 `comfort` labels against the
+human's 10 — which is a difference in degree, not in kind. Both tiers collapse onto the
+tension-side beat in a cozy register.
+
+**Caveat on that row:** it scored 25 of 30 scenes. Five Tier B classifier calls failed and
+were skipped, and the failure reasons were lost to output truncation rather than recorded.
+Two things follow, neither of which changes the direction: 64.0% is computed over a subset
+that may not be representative, and a ~17% call-failure rate on Tier B is worth understanding
+before any call site is moved to it. κ would have to more than double on five scenes to reach
+the gate, so this was not re-run.
+
+### 9.4 Why the cozy beats resist classification — hypothesis, untested
+
+Offered as the next experiment's premise, not as a finding.
+
+New Babel's beats key off **pursuit**, which is punctual and visible: a pursuer is in the
+scene or is not. Millbrook's key off **whether something adds up**, which in a mystery is a
+matter of degree and is never fully true. `disquiet`'s definition — "a detail contradicts what
+was said earlier… a person evades a direct question" — describes the genre's baseline rather
+than a deviation from it, so it fires everywhere. `comfort` is then defined largely as the
+*absence* of that, and a hard negative ("nothing failed to add up") is a claim a classifier is
+poorly placed to assert about a scene it has just read one excerpt of.
+
+If that is right, the fix is to define both sides **positively and punctually**: `comfort` as
+a scene where an open question is *answered* and nobody acts strangely; `disquiet` as
+requiring a contradiction the protagonist *voices or acts on*, not merely one the reader can
+infer. This is the §4.2 lesson — define beats by what is observable on the page — applied
+one level more strictly than §7.3 applied it.
+
+### 9.5 Recommendation
+
+**Do not proceed to 6.1/6.2 on the current plan.** Take these in order; each is cheap and the
+first two may make the third unnecessary.
+
+1. **Rewrite the `example` beats per §9.4 and re-run 0.3 on Tier C.** One prompt-authoring
+   pass and 30 calls. This is the cheapest test of whether the design is salvageable
+   cross-genre, and it is a *vocabulary* change — no engine code. If κ clears ~0.4 with both
+   labels genuinely in use, 0.3 passes and Phase 6 proceeds essentially as written.
+2. **If the rewrite fails, treat "can this vocabulary be classified?" as an authoring gate,
+   not a one-time phase gate.** The module already requires per-story beats; it should also
+   require per-story *evidence* that those beats are separable, measured by `gate_02.py`
+   before a story's `pacing_loop` block is allowed to go live. That converts a design
+   refutation into a documented authoring constraint, and it is honest about what has
+   actually been demonstrated: the mechanism works for one story, tested.
+3. **Only if both fail, ship thriller-only** per §0.3's stated consequence, with Appendix A
+   withdrawn rather than shipped un-validated. Do not ship a `pacing_loop` for `example` that
+   has been measured at κ = 0.00; a rule that can never fire is worse than an absent one,
+   because it reads as configured.
+
+Two things should happen regardless of which branch is taken:
+
+- **Re-derive thresholds from a classified trace, per §7.2**, not from intuition. Unchanged
+  by this gate and still blocking 6.3.
+- **Treat single-rater, single-session labelling as the standing limitation of both 0.2 and
+  0.3.** Every number in §7 and §9 rests on one person labelling one playthrough. A second
+  rater on the same 30 `example` scenes would also establish the human-human ceiling, which
+  is the real upper bound any classifier is being measured against and is currently unknown.
+
+### 9.6 Tooling added for this gate
+
+- `scripts/make_label_sheet.py --vocab` — the worksheet interpolates a story's own beat
+  definitions instead of New Babel's hardcoded four, so the human and the classifier are
+  always shown identical wording.
+- `scripts/gate_02.py --tier {b,c}`, κ reporting with both raters' marginals, and the κ < 0.4
+  failure branch (§9.2).
+- **`gate_02.py` label-parsing fix.** `^BEAT:\s*(.*)$` let `\s*` cross the newline on an
+  unfilled row and capture the next line, so scoring a partially-filled worksheet reported
+  every blank scene as the unrecognised beat `"intensity:"`. Now `[ \t]*`, with blank rows
+  skipped. Also, `parse_labels` validated human labels against a hardcoded set of New Babel's
+  four beat names; under a collapsed vocabulary every `example` label would have been dropped
+  as unrecognised and the run would have exited with no measurement at all.
+- **Web labelling worksheet** at `/labels/<sheet>` (`backend/label_sheet.py`,
+  `frontend/label_sheet.html`) — radio-button labelling that patches the markdown file in
+  place, so the file stays the single artifact `gate_02.py` scores whether it was filled in
+  through the browser or an editor.
