@@ -3,9 +3,10 @@
 **Date:** 2026-09-04
 **Sample:** 24-turn live playthrough, `new_babel`, user `9a20892e`, schema v2 working tree
 (commit `396af0f`). Exported via `backend/export_story.py --include-actions`; 15,330 words.
-**Verdict:** **STOP.** Do not begin Phase 6.2/6.3. Two blocking defects, one spec
-inconsistency and one option-generation regression must land first
-(`docs/PHASE_0_FIX_PLAN.md`); gates 0.2 and 0.3 remain unrun.
+**Verdict:** **PROCEED TO 6.1/6.2 ON A TWO-BEAT VOCABULARY.** Gate 0.2 fails at four beats
+(41.7%) and passes collapsed to two (75.0%) — §7. The §4 fix plan has landed and its
+revelation defect is closed (§4.3). Thresholds must be re-derived before 6.3 (§7.2), and gate
+0.3 is still unrun.
 
 ---
 
@@ -14,7 +15,7 @@ inconsistency and one option-generation regression must land first
 | Gate | Specified work | Status | Result |
 |---|---|---|---|
 | 0.1 | Classify every scene in `the_attention_economy.txt` by beat type | **RUN** (24 turns; regenerated corpus) | Release-beat rate 58%, one eight-turn release run (§2) |
-| 0.2 | Hand-label ~30 scenes, run classifier prompt, measure agreement ≥70% | **NOT RUN** | Needs a second rater and the §4 fix first — no file dependency |
+| 0.2 | Hand-label ~30 scenes, run classifier prompt, measure agreement ≥70% | **RUN** (24 scenes) | 41.7% on four beats (FAIL); 75.0% collapsed to two (PASS) — §7 |
 | 0.3 | Repeat 0.2 against a second genre's vocabulary | **NOT RUN** | Needs an `example` playthrough — no fixture required |
 
 ### On the two missing files
@@ -36,9 +37,10 @@ playthrough of `example` to classify** — the same instrument §2 used, pointed
 story. A regency fixture would be a *third* genre: useful breadth later, not a prerequisite
 now. `data/saves/local-cli/example.json` currently sits at `turn_count: 0`.
 
-**Method caveat, load-bearing for 0.2:** every beat label in §2 is from a *single rater*.
-Gate 0.2's ≥70% agreement threshold is a two-rater measurement and this report does not
-satisfy it. §2 is the corpus baseline (0.1), not evidence for 0.2.
+**Method caveat:** every beat label in §2 is from a *single rater* (a model). It is the
+corpus baseline for 0.1 and is **not** used as either side of the 0.2 comparison — §7 measures
+an independently-produced human label set against the classifier, which is what the gate asks
+for. Where §2 and the human disagree, §7.3 records it.
 
 ---
 
@@ -105,8 +107,10 @@ Classified against New Babel's §5.1 vocabulary (`crisis` / `escalation` / `lull
 **Distribution:** lull 13 (54%), escalation 8 (33%), crisis 2 (8%), resolution 1 (4%).
 Releasing beats (`lull` + `resolution`) are **58%** of the sample.
 
-**Clustering — the dominant finding.** Turns **10–17 are eight consecutive releasing
-beats**, all `lull`, seven of them intensity 1. The story stops moving and becomes
+**Clustering — partially superseded, see §7.3.** On these labels turns **10–17 are eight
+consecutive releasing beats**, all `lull`, seven of them intensity 1. Under the independent
+human labels the longest release run is **4**, not 8; the 58% release rate is identical under
+both. Treat the rate as established and the run length as unresolved. The story stops moving and becomes
 ask-answer dialogue from Cipher's arrival through to Nadia. A shorter three-turn release
 run sits at 4–6. Prose quality is high and consistent throughout the sample; the failure
 is structural, not stylistic. This is precisely the "infinite wandering" the pacing loop
@@ -374,11 +378,9 @@ one `resolution`.
 stasis: 58% releasing beats and an eight-turn release run. Recorded as a characterisation
 of one 24-turn session by one player, to be widened by the 50-turn run.
 
-**Gate 0.2 — NOT YET RUNNABLE, for one reason only.** Running it now would measure a
-prompt that omits its own instruction (§4), so the number would describe the defect rather
-than the classifier. Sequence: land the §4 fix, then hand-label ~30 scenes from the 50-turn
-playthrough, then measure — against both Tier C and Tier B. No missing file is involved;
-the remaining input is human labelling.
+**Gate 0.2 — RUN. Fails at four beats, passes at two.** 41.7% / 75.0%; adopt the two-beat
+vocabulary and rewrite §5.1 and Appendix A accordingly. Full results, the intensity
+calibration problem and the threshold consequence are in §7.
 
 **Gate 0.3 — RUNNABLE, needs a playthrough not a fixture.** Play `stories/example` ~30
 turns, export it, and classify against the Appendix A vocabulary exactly as §2 did here.
@@ -386,7 +388,11 @@ Per the plan's own failure-mode table, if 0.3 ultimately fails the pacing loop s
 New-Babel-specific and `example`'s Appendix A module is dropped; nothing else in the plan
 is affected.
 
-**Phase 6.2 / 6.3 — DO NOT START.**
+**Phase 6.1 / 6.2 — CLEARED TO START,** on two beats per story, not four.
+
+**Phase 6.3 — BLOCKED on threshold derivation (§7.2).** The default threshold of 8 is
+unreachable under the observed trace; peak counters were 4 and 5. Derive thresholds from a
+classified trace of the 50-turn run, and settle the reset-vs-decay question first.
 
 **Open question deferred to the 50-turn playthrough:** whether New Babel's single v1 rule
 should watch `stasis` (`force_complication`) rather than `tension` (`force_release`). The
@@ -402,7 +408,84 @@ that is about to be fixed.
 
 ---
 
-## 7. Non-findings
+## 7. Gate 0.2 results — four beats fail, two beats pass
+
+Run 2026-09-05. Human labels: `data/labels_new_babel.md`, all 24 scenes, filled in before
+reading §2. Classifier: `scripts/gate_02.py` on Tier C, given the same four definitions
+verbatim, the same boundary rule and the same intensity scale the worksheet gave the human.
+
+| Vocabulary | Agreement | Gate ≥70% |
+|---|---|---|
+| Four beats (`crisis`/`escalation`/`lull`/`resolution`) | 10/24 = **41.7%** | **FAIL** |
+| Two beats (`TENSION` = crisis+escalation, `RELEASE` = lull+resolution) | 18/24 = **75.0%** | **PASS** |
+
+Confusion pairs on the four-beat run: `escalation`/`lull` 6, `lull`/`resolution` 4,
+`crisis`/`escalation` 4.
+
+**Both pairs the plan named as collapse candidates disagreed**, at 4 each — gate 0.2's
+instruction is explicit that when `lull`/`resolution` or `crisis`/`escalation` disagree, that
+side collapses to one beat before proceeding. Collapsing both is what produces the 75%.
+
+**Decision: adopt the two-beat vocabulary.** This is the plan's own prescribed remedy firing
+as designed, not a workaround. It costs nothing the loop needs — a counter only has to know
+which side a scene fed, and magnitude is carried by intensity — and it removes the §3.2
+asymmetry problem outright, since two beats are symmetric by construction: `TENSION` feeds
+tension and resets stasis, `RELEASE` feeds stasis and resets tension. Phase 6.1 should author
+two beats per story, not four, and §5.1/Appendix A should be rewritten accordingly.
+
+The six residual disagreements are all `escalation`/`lull` and run in **both** directions
+(turns 2 and 7 human-tension/classifier-release; turns 10, 12, 14 and 20 the reverse), so
+they are genuine boundary noise rather than a correctable classifier bias.
+
+### 7.1 Intensity is not calibrated between rater and classifier
+
+| | Mean | Distribution |
+|---|---|---|
+| Human | 1.12 | 1×21, 2×3 |
+| Classifier | 1.71 | 1×10, 2×11, 3×3 |
+
+Exact intensity agreement is 11/24 = 45.8%. The classifier scored **higher on 12 of 24
+scenes and lower on 1** — a systematic upward bias against this rater, who used `1` for 21 of
+24 scenes.
+
+This is **not** a gate failure, and it should not be treated as one. The human's intensity
+scale never runs in production; only the classifier's does. What matters is that the
+classifier is self-consistent and that thresholds are derived from *its* output distribution.
+The actionable consequence is that **thresholds cannot be authored a priori** — see §7.2.
+
+### 7.2 Threshold 8 is unreachable under the observed trace
+
+Simulating the two-beat vocabulary with symmetric resets over the human labels:
+
+- peak `tension` = **4**, peak `stasis` = **5**, over 24 turns.
+
+Neither counter comes close to §6.2's default threshold of 8, so no rule would fire in this
+entire playthrough. The cause is structural rather than a wrong constant: with beats
+alternating sides every few turns and each side resetting the other's counter, neither
+accumulates long enough to build. A threshold of 8 implicitly assumes a long unbroken run of
+same-side beats, which this trace does not contain.
+
+Two things follow for Phase 6.3/6.6. Thresholds must be **derived from a real classified
+trace**, not authored from intuition — likely in the 4–5 range for this story, not 8. And the
+reset rule deserves a second look: full reset-to-zero on every opposite beat may be too
+aggressive, with decay-by-N a better fit for a story that alternates this much. That is a
+design question for the spec, and it should be settled before 6.3 implements the arithmetic.
+
+### 7.3 Correction to §2's clustering finding
+
+Under the human labels the longest unbroken release run is **4 turns** (12–15), not the eight
+reported in §2. My labels called turns 11, 16 and 17 `lull` where the human called them
+`escalation`, which is what produced the longer run.
+
+The **release rate is unchanged at 58%** under both label sets, so §2's headline distribution
+finding stands. The *clustering* finding does not, at least not at the severity originally
+stated. This weakens — though does not eliminate — the case for New Babel needing a
+stasis-watching rule, and it reinforces §6's instruction to defer that decision until Task 4
+has been measured over the 50-turn run.
+
+---
+
+## 8. Non-findings
 
 Recorded so they are not re-litigated:
 
