@@ -40,7 +40,7 @@ now. `data/saves/local-cli/example.json` currently sits at `turn_count: 0`.
 **Method caveat:** every beat label in §2 is from a *single rater* (a model). It is the
 corpus baseline for 0.1 and is **not** used as either side of the 0.2 comparison — §7 measures
 an independently-produced human label set against the classifier, which is what the gate asks
-for. Where §2 and the human disagree, §7.3 records it.
+for. Where §2 and the human disagree, §7.4 records it.
 
 ---
 
@@ -107,14 +107,18 @@ Classified against New Babel's §5.1 vocabulary (`crisis` / `escalation` / `lull
 **Distribution:** lull 13 (54%), escalation 8 (33%), crisis 2 (8%), resolution 1 (4%).
 Releasing beats (`lull` + `resolution`) are **58%** of the sample.
 
-**Clustering — partially superseded, see §7.3.** On these labels turns **10–17 are eight
-consecutive releasing beats**, all `lull`, seven of them intensity 1. Under the independent
-human labels the longest release run is **4**, not 8; the 58% release rate is identical under
-both. Treat the rate as established and the run length as unresolved. The story stops moving and becomes
-ask-answer dialogue from Cipher's arrival through to Nadia. A shorter three-turn release
-run sits at 4–6. Prose quality is high and consistent throughout the sample; the failure
-is structural, not stylistic. This is precisely the "infinite wandering" the pacing loop
-exists to correct, and it is the strongest evidence in this report *for* building Phase 6.
+**Clustering — partially superseded, see §7.4.** On these labels turns **10–17 are eight
+consecutive releasing beats**, all `lull`, seven of them intensity 1: the story stops moving
+and becomes ask-answer dialogue from Cipher's arrival through to Nadia, with a shorter
+three-turn release run at 4–6.
+
+Under the independent human labels, however, the longest release run is **4**, not 8. The 58%
+release rate is identical under both label sets, so treat the rate as established and the run
+length as unresolved.
+
+Prose quality is high and consistent throughout the sample; whatever the run length, the
+failure is structural rather than stylistic, and it remains the strongest evidence in this
+report *for* building Phase 6.
 
 ---
 
@@ -471,7 +475,73 @@ reset rule deserves a second look: full reset-to-zero on every opposite beat may
 aggressive, with decay-by-N a better fit for a story that alternates this much. That is a
 design question for the spec, and it should be settled before 6.3 implements the arithmetic.
 
-### 7.3 Correction to §2's clustering finding
+### 7.3 Drafted two-beat vocabularies (Phase 6.1 input)
+
+Both stories, written per the §4.2 lesson: define beats by **what is observable on the page**,
+never by intention or by a quality the classifier cannot check from the scene alone. Test
+fixtures live at `data/vocab_new_babel_2beat.json` and `data/vocab_example_2beat.json`; they
+carry a `collapse` map so an existing four-beat worksheet can score a revised vocabulary
+without relabelling.
+
+The discriminating principle is identical across both stories — *did a specific, identifiable
+thing act on the page, or not?* — while the surface is genre-specific. That is what keeps the
+machinery genre-neutral while the definitions stay concrete enough to classify.
+
+**`new_babel`** — `threat` (feeds tension, resets stasis) / `respite` (feeds stasis, resets
+tension):
+
+> **threat** — The scene puts a specific danger in front of the protagonist or moves one
+> closer: someone confronts, follows, blocks, corners, demands from, marks or injures them, or
+> they are forced into a decision that costs something immediately. The danger must be concrete
+> and aimed at the protagonist. Atmosphere, dread, ominous sound or weather, strange phenomena
+> and unexplained omens do NOT count on their own.
+>
+> **respite** — Nothing concrete moves against the protagonist on the page. They travel, rest,
+> eat, plan, remember, talk, or learn something, and no one acts against them during the scene.
+> It is still respite if the mood is tense, if an earlier danger remains unresolved, or if the
+> scene closes on an omen, a strange noise, or someone arriving without yet acting.
+
+**`example`** — `disquiet` (feeds tension, resets stasis) / `comfort` (feeds stasis, resets
+tension). Note the inversion: for this story `comfort` is the pathological side, which is why
+its rule is `force_complication` watching `stasis`.
+
+> **disquiet** — Something concrete fails to add up on the page and the protagonist registers
+> it, or the protagonist presses someone and meets resistance: a detail contradicts what was
+> said earlier, a person evades a direct question, a record or object is missing or altered, or
+> someone warns the protagonist off. It must be a specific, identifiable thing in the scene, not
+> a general sense that something is wrong.
+>
+> **comfort** — The scene passes without any concrete inconsistency surfacing. The protagonist
+> is welcomed, fed, shown around, told a story, or given an explanation that holds for now. It
+> is still comfort if the reader suspects more than the protagonist does, if an earlier question
+> remains open, or if the scene closes on an odd note that nobody in the scene remarks on.
+
+**Measured result, `new_babel`, 24 scenes, Tier C:**
+
+| | Mechanical collapse of the old four | Rewritten two-beat |
+|---|---|---|
+| Beat agreement | 18/24 = 75.0% | 18/24 = **75.0%** |
+| Intensity exact | 11/24 = 45.8% | 15/24 = **62.5%** |
+
+The rewrite did **not** beat a plain collapse on beat agreement — worth stating plainly rather
+than claiming a win. Its gains are that intensity improved by 17 points from the observable
+rescale, and that the definitions no longer depend on unverifiable qualities, which is what
+makes them safe to copy into a third story.
+
+The disagreements moved rather than shrank: turns 7, 14 and 20 were fixed and turns 1, 16 and
+17 broke. All six residuals are `respite`/`threat` and run in both directions, and at least one
+(turn 17 — the protagonist walks into a room and gives their name, labelled `escalation` by the
+human) is arguably a human mislabel rather than a classifier error.
+
+**Deliberately not iterated further.** 75% clears the gate. Tuning definitions against 24
+scenes and a single rater to chase a higher number would fit noise, and the residual cases are
+genuinely ambiguous rather than systematically wrong. Re-measure on the 50-turn run instead,
+where the sample is larger and the engine is the one that will ship.
+
+`example`'s vocabulary is untested — that is gate 0.3, and it needs a ~30-turn `example`
+playthrough.
+
+### 7.4 Correction to §2's clustering finding
 
 Under the human labels the longest unbroken release run is **4 turns** (12–15), not the eight
 reported in §2. My labels called turns 11, 16 and 17 `lull` where the human called them

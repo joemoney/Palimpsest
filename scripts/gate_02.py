@@ -54,7 +54,7 @@ def parse_labels(path: str) -> dict:
             continue
         raw = beat.group(1).strip().lower()
         raw = {"crises": "crisis", "resolutions": "resolution", "lulls": "lull"}.get(raw, raw)
-        if raw not in VALID:
+        if raw not in VALID and raw not in {"crisis", "escalation", "lull", "resolution"}:
             print(f"turn {turn}: unrecognised beat {raw!r}", file=sys.stderr)
             continue
         try:
@@ -95,7 +95,20 @@ def main():
     ap.add_argument("--user", default=state_store.DEFAULT_USER_ID)
     ap.add_argument("--story", default=state_store.DEFAULT_STORY_SLUG)
     ap.add_argument("--labels", required=True)
+    ap.add_argument("--vocab", help="JSON vocabulary to test instead of the spec's four beats: "
+                    "{beats:{name:{definition}}, collapse:{old_beat:new_beat}, intensity:[[n,desc]]}. "
+                    "Human labels are mapped through `collapse` so an existing worksheet can score "
+                    "a revised vocabulary without relabelling.")
     args = ap.parse_args()
+
+    global BEATS, INTENSITY, VALID
+    collapse = None
+    if args.vocab:
+        v = json.load(open(args.vocab))
+        BEATS = [(n, b["definition"]) for n, b in v["beats"].items()]
+        INTENSITY = [tuple(x) for x in v.get("intensity", INTENSITY)]
+        VALID = {n for n, _ in BEATS}
+        collapse = v["collapse"]
 
     human = parse_labels(args.labels)
     if not human:
@@ -107,6 +120,8 @@ def main():
 
     rows, confusion = [], collections.Counter()
     for turn_no, (h_beat, h_int) in sorted(human.items()):
+        if collapse:
+            h_beat = collapse.get(h_beat, h_beat)
         action, narration = split_turn(turns[turn_no - 1])
         prompt = classifier_prompt(action, strip_options(narration))
         try:
