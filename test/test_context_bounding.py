@@ -103,9 +103,49 @@ e2e_ctx["state"]["history"]["compressed_summary"] = ""
 se.call_llm_json = lambda prompt, **kw: {}
 over_cap_summary = " ".join(f"word{i}." for i in range(se.SUMMARY_MAX_WORDS + 500))
 se.call_llm = lambda prompt, **kw: over_cap_summary
-for _ in range(se.RECENT_TURN_LIMIT + 1):
+for _ in range(se.RECENT_TURN_LIMIT + se.ROLLOVER_BATCH_TURNS):
     se.update_state_after_turn(e2e_ctx, "do something", "narration text")
+# Non-empty first: with batched rollover, too few turns means no rollover fires at all and
+# the cap assertion below would pass trivially against an empty string.
+assert e2e_ctx["state"]["history"]["compressed_summary"], "expected a rollover to have fired"
 assert len(e2e_ctx["state"]["history"]["compressed_summary"].split()) <= se.SUMMARY_MAX_WORDS
 print("OK: end-to-end rollover keeps compressed_summary within SUMMARY_MAX_WORDS")
+
+# --- rollover fires once per batch, not once per turn ---
+# The bug this guards: the trigger used to be `> RECENT_TURN_LIMIT`, and since each turn
+# appends exactly one and the trim put the list straight back on the boundary, every turn
+# past the tenth paid for a full summary call and re-compressed the summary again.
+batch_ctx = se.state_store.load_state("boundingtest3", se.state_store.DEFAULT_STORY_SLUG)
+batch_ctx["state"]["history"]["compressed_summary"] = ""
+rollovers = []
+se.call_llm_json = lambda prompt, **kw: {}
+se.call_llm = lambda prompt, **kw: (rollovers.append(1), "a summary.")[1]
+turns = 3 * se.ROLLOVER_BATCH_TURNS + 5  # deliberately off a batch boundary, so the
+# assertions below see storage genuinely running ahead of the prompt window mid-batch
+for _ in range(turns):
+    se.update_state_after_turn(batch_ctx, "do something", "narration text")
+
+expected = (turns - se.RECENT_TURN_LIMIT) // se.ROLLOVER_BATCH_TURNS
+assert len(rollovers) == expected, f"expected {expected} rollovers over {turns} turns, got {len(rollovers)}"
+assert len(rollovers) < turns, "rollover is still firing every turn"
+print(f"OK: {turns} turns triggered {len(rollovers)} rollovers, not one per turn")
+
+# --- the prompt window is unchanged by the deeper stored list ---
+stored = len(batch_ctx["state"]["history"]["recent_turns"])
+assert stored > se.RECENT_TURN_LIMIT, "expected recent_turns to run ahead of the prompt window"
+assert stored < se.RECENT_TURN_LIMIT + se.ROLLOVER_BATCH_TURNS
+prompt = se.build_system_prompt(batch_ctx)
+assert prompt.count("narration text") <= se.RECENT_TURN_LIMIT, (
+    "build_system_prompt must still only see RECENT_TURN_LIMIT turns, however deep storage runs"
+)
+print(f"OK: {stored} turns stored, but the narration prompt still sees at most "
+      f"{se.RECENT_TURN_LIMIT}")
+
+# --- nothing is lost: every rolled turn lands in full_transcript ---
+archived = len(batch_ctx["state"]["history"]["full_transcript"])
+assert archived + stored == turns, (
+    f"turn accounting: {archived} archived + {stored} recent != {turns} played"
+)
+print("OK: batching loses no turns - full_transcript plus recent_turns accounts for all of them")
 
 print("\nALL CHECKS PASSED: test_context_bounding")
