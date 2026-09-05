@@ -95,11 +95,23 @@ unboundedly is what gets stuffed into a prompt, since that's real cost and
 real drift risk on every call. Any new accumulating state needs the same
 treatment as these existing ones:
 
-- **`history_log.recent_turns`** — capped at `RECENT_TURN_LIMIT` (10) turns;
-  older ones roll into `compressed_summary`.
-- **`history_log.compressed_summary`** — capped at `SUMMARY_MAX_WORDS`. Each
-  rollover re-summarizes *the existing summary plus the new turns* back under
-  that cap and replaces it, rather than appending forever.
+- **`history_log.recent_turns`** — every prompt that reads it slices
+  `[-RECENT_TURN_LIMIT:]` (10) itself, so that, not the stored length, is what
+  bounds context. Storage deliberately runs ahead: a rollover only fires once
+  the list reaches `RECENT_TURN_LIMIT + ROLLOVER_BATCH_TURNS` (20), then rolls
+  everything past the last 10 into `compressed_summary` in one batch. Triggering
+  on "longer than 10" instead — as this did originally — means a rollover on
+  *every* turn past the tenth, since each turn appends exactly one and the trim
+  puts the list straight back on the boundary. Don't reintroduce that: it cost a
+  Tier A call (~18s measured) per turn and re-compressed the summary ~16 times by
+  turn 26 instead of ~2.
+- **`history_log.compressed_summary`** — capped at `SUMMARY_MAX_WORDS`, and the
+  cap is *enforced* (`_enforce_word_cap`), not merely requested in the prompt —
+  a real save reached 2,912 words against a 2,000-word instruction. Each rollover
+  re-summarizes *the existing summary plus the new turns* back under that cap and
+  replaces it, rather than appending forever. Since that is lossy and compounds,
+  how *often* it runs is a quality lever and not just a cost one — see the
+  batching note above.
 - **Subplot dedup context** (`generate_new_subplot`) and **act-advancement
   context** (`check_and_advance_act`) both used to pull from
   `plot.completed_subplots`, which accumulates for the whole game. Now
@@ -347,8 +359,11 @@ called her "the advocate" and nothing tied that string back to her record
 - exact-name matching alone is fragile in exactly this way, which is why an
 explicit stored id (not a re-derived string match) is now the source of
 truth once a link exists.
-- Summarization of `history_log` into `compressed_summary` runs periodically
-  (on `recent_turns` overflow), not every turn, to save cost.
+- Summarization of `history_log` into `compressed_summary` runs periodically —
+  once per `ROLLOVER_BATCH_TURNS`, not every turn — to save cost and to limit how
+  many times the summary is lossily re-compressed. See the `recent_turns` bullet
+  under "Keeping LLM Context Bounded" for why the trigger is a batch threshold
+  rather than a plain overflow check.
 - **Character creation is an opt-in, N-step mechanic, per story** - not a
   required part of every template, and not hardcoded to "class" specifically.
   A story authors a top-level `character_creation` list: an ordered sequence
@@ -430,14 +445,15 @@ one exists), then calls `app.py`'s `_start_turn_job`, which writes a
 `regenerate_last_turn` on a background `threading.Thread`, and the route
 returns `202` with an empty body almost immediately — regardless of how
 long the turn's own LLM pipeline (narration + state-update + optionally
-subplot generation/act-advancement/summary-rollover, several of which can
-individually be slow) ends up taking. This exists because a real production
-incident showed a single long-held HTTP response isn't safe end-to-end: the
-Cloudflare tunnel in front of this app (see `docker-compose.yml`) cancels
-its connection to the origin past roughly 100-125s ("context canceled" in
-`cloudflared`'s logs) even though gunicorn keeps running and the turn saves
-correctly a few seconds later — the player just sees a spurious connection-
-lost error on an otherwise-successful turn.
+an options-repair follow-up/subplot generation/act-advancement/summary-
+rollover, several of which can individually be slow) ends up taking.
+This exists because a real production incident showed a single long-held
+HTTP response isn't safe end-to-end: the Cloudflare tunnel in front of
+this app (see `docker-compose.yml`) cancels its connection to the origin
+past roughly 100-125s ("context canceled" in `cloudflared`'s logs) even
+though gunicorn keeps running and the turn saves correctly a few seconds
+later — the player just sees a spurious connection-lost error on an
+otherwise-successful turn.
 
 The client closes the loop itself, entirely through polling:
 1. `_controls.html`'s buttons/form POST with `hx-swap="none"` (no swap from
@@ -468,6 +484,22 @@ The client closes the loop itself, entirely through polling:
    it returns the same scene+controls fragment `take_turn`/`regenerate_turn`
    used to return directly; on failure it returns `(error, 503)`, same as
    the old synchronous path.
+
+The popup's step vocabulary is `story_engine.STATUS_LABELS` (raw `_timed()`
+label → the evocative word the player reads) plus
+`DEFAULT_STEP_ESTIMATE_SECONDS` (the seed a step's progress bar uses until
+`state_store.p50_duration` has real samples for that label). **Both are
+mirrors of the `_timed()` call sites, so adding an LLM call to the turn
+path means adding it to both** — for a label it doesn't know,
+`/api/status` falls back to displaying the raw `snake_case` key and to no
+progress bar at all. This drifted once already: `generate_missing_options`'
+repair call was added to the turn path without either entry, so a turn
+whose narration skipped its OPTIONS block showed the player
+"options_generation…". `test/test_status_labels.py` asserts the mirror both
+ways. The two manager-path labels (`steering_seed_generation`,
+`relationship_promotion`) are the deliberate exception — `plot_manager.py`
+reaches them off the turn path, where `_status_ctx` was never set, so no
+beacon is ever written and they carry a display word but no estimate.
 
 Because `hx-disabled-elt`/`hx-indicator` are scoped to a single request's
 lifecycle, and the *kickoff* POST/GET pair here settles almost instantly
