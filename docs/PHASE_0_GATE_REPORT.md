@@ -3,7 +3,16 @@
 **Date:** 2026-09-04, revised 2026-09-05 (gate 0.3, §9)
 **Sample:** 24-turn live playthrough, `new_babel`, user `9a20892e`, schema v2 working tree
 (commit `396af0f`). Exported via `backend/export_story.py --include-actions`; 15,330 words.
-**Verdict (revised 2026-09-05):** **DO NOT PROCEED TO 6.1/6.2 AS SPECIFIED.** Gate 0.3 fails
+**STATUS: PHASE 0 CLOSED 2026-09-06.** Gate 0.3 **failed** on `example` (best estimate
+κ ≈ 0.45, §9.13.1). `data/vocab_example_2beat_v3_1.json` ships as the story's authored
+vocabulary anyway — it is the best-validated artifact the exercise produced (4/5 on an
+independent gold set, marginals matched to a human rater, every clause traceable to an
+adjudicated scene) — and Phase 6 proceeds with the failure inherited explicitly rather than
+resolved. §9.13.1's closing paragraph is the hand-off. The remaining question is not
+measurable by agreement statistics and was never going to be: **does a corrected lull read as
+a lull?** That is answered by playing the thing, per §14, not by another gate.
+
+**Verdict (revised 2026-09-05, superseded above):** **DO NOT PROCEED TO 6.1/6.2 AS SPECIFIED.** Gate 0.3 fails
 on `example`, and fails *degenerately*: the classifier answered the same beat for all 30
 scenes (§9). The two-beat vocabulary that passed on `new_babel` therefore has not been shown
 to generalize, and §5's authored-per-story vocabulary design — the thing 0.3 exists to test —
@@ -1127,3 +1136,60 @@ Stated before running, per §9.12.2 (3 runs, mean and range):
   deliberately diverges from those labels on turns 80 and 81, so this number is expected to
   move little and could fall. Treating it as the criterion would be scoring the fix against
   the very reading it was written to correct.
+
+#### 9.13.1 v3.1 results
+
+| Criterion | Threshold | Result | |
+|---|---|---|---|
+| **Primary** — gold set, majority-of-3 | ≥ 4/5 | **4/5** (v3: 2/5) | **PASS** |
+| Secondary — turn 80 stable | all 3 runs agree | `disquiet`/`comfort`/`comfort` | **FAIL** |
+| Tertiary — self-κ ≥ 0.791 | hold or rise | **0.734**; unstable 7→10 of 51 | **FAIL** |
+| Reported, not a criterion — κ vs rater's v3 labels | — | pooled native 0.395 → **0.448** | improved |
+
+Per-slice κ against the rater's labels (3 runs, then majority-of-3):
+
+| Slice | n | v3 | v3.1 |
+|---|---|---|---|
+| all 51 | 51 | +0.32/+0.18/+0.24, maj 0.286 | +0.39/+0.27/+0.33, maj **0.352** |
+| pooled native (44-77) | 34 | +0.45/+0.28/+0.40, maj 0.395 | +0.43/+0.40/+0.52, maj **0.448** |
+| round 3 primary (61-77) | 17 | +0.39/+0.27/+0.40, maj 0.271 | +0.40/+0.41/+0.53, maj **0.406** |
+| round 2 native (44-60) | 17 | +0.55/+0.33/+0.36, maj 0.549 | +0.49/+0.40/+0.49, maj 0.493 |
+
+Classifier `disquiet` rate per run: v3 **29/37/29%**, v3.1 **39/41/47%**, against the rater's
+41%. The marginals now line up — under v1 they were 100% vs 57%.
+
+**Both edits worked on their target scenes** (48 flipped to `disquiet`, 80's majority to
+`comfort`) **and the gain generalized** rather than merely fitting the gold set: agreement with
+the rater rose on the tertiary measure that was explicitly not a criterion and could have
+fallen.
+
+**Two findings that matter more than the pass.**
+
+**1. Turn 50 is a wording-proof failure.** Its line is "so will you, as long as you don't sit
+with your back to it". v3.1's `disquiet` definition contains the near-verbatim example "you'll
+be safe as long as you don't look at it" as an explicit instance of a warning. The classifier
+answered `comfort` three times out of three. When the definition names the exact case and the
+model still goes the other way, it is not applying the clause — it is reading the scene's warm
+gestalt. **No further wording fixes this**, which puts a floor under the residual disagreement
+that is independent of vocabulary quality.
+
+**2. Precision and stability trade off.** v3.1's `disquiet` is 1,072 characters over many
+clauses; self-κ fell 0.791 → 0.734 and unstable scenes rose 13.7% → 19.6%. More conditions to
+weigh per call means more variance. Since self-κ is the ceiling on human agreement, **v3.1
+lowered its own ceiling from 0.79 to 0.73 while raising observed agreement to 0.45** — the
+headroom is closing from both ends, and further clauses should be expected to keep doing both.
+
+**Status of gate 0.3: still failed, and the ceiling argument is now the reason to stop.** Best
+estimate κ ≈ 0.45 (pooled native, majority-of-3) against ≥0.4 — which it clears, but only on
+the pooled majority-vote figure, while single runs range 0.40-0.52 and the all-51 figure is
+0.352. Calling that a pass would repeat §9.12's error of quoting the favourable draw.
+
+**Recommendation: ship v3.1 as `example`'s authored vocabulary and close Phase 0.** It is the
+best-validated artifact this exercise produced — 4/5 on an independent gold set, marginals
+matched to a human rater, and every clause in it traceable to an adjudicated scene rather than
+intuition. What it is not is a vocabulary that has cleared gate 0.3, and Phase 6.1 should
+inherit that distinction explicitly: the pacing module can be authored and will fire roughly
+when a human would, but its per-scene beat calls will disagree with a careful reader about a
+third of the time, and roughly a fifth of them are not reproducible run to run. Whether that is
+good enough is a **product** decision about how much a wrong beat costs, not a measurement
+question - and §3's counter simulation is where it should be answered.
