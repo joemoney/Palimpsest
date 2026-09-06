@@ -784,3 +784,178 @@ the same event test the classifier is given. The inline labelling row's `?` popu
 definitions, the tie-break and the boundary rule for exactly this reason: label from the
 quote test — can you point at the line where someone presses, refuses, warns, or obstructs? —
 rather than from how warm the scene felt.
+
+### 9.8 Round 2 interim (13 turns): v2 improves on v1, still fails, and clause 4 is why
+
+Turns 31-43 of `example`, labelled live during play via the inline row rather than from an
+export afterwards. All 13 landed with no gaps, which is the labelling UI's first real
+end-to-end use.
+
+| | v1 (30 turns) | v2 (13 turns) | v3 (classifier only) |
+|---|---|---|---|
+| Agreement | 56.7% | 76.9% | n/a — see below |
+| κ | 0.00 | 0.316 | n/a |
+| Classifier's own labels | disquiet 30, comfort 0 | disquiet 12, comfort 1 | **disquiet 8, comfort 5** |
+| Intensity exact | 36.7% | 0.0% | 46.2% |
+
+v2 raw agreement clears 70% but κ = 0.316 does not, and `gate_02.py`'s κ < 0.4 branch (§9.2)
+correctly refuses the pass — at a 9/4 human split, answering `disquiet` by default gets most
+of the way there on its own. All three disagreements ran one direction (human `comfort`,
+classifier `disquiet`), so the tension-side bias is reduced, not gone.
+
+**Diagnosis: v2's fourth `disquiet` clause.** "The protagonist is shown a thing that cannot
+be explained away at all" fires in nearly every Millbrook scene — the story puts a small
+impossibility in each one by design — and "at all" is a matter of degree, so both raters
+leaned on the vaguest test in the set and disagreed about where its threshold sat. Six of the
+human's nine `disquiet` notes cite an *object* doing something ("blue thread retracted",
+"the shoe jerked", "footprint in the wet shingle"), which qualifies only under that clause;
+the classifier's three over-fires (turns 35, 36, 43) are the same clause from the other side.
+It was quietly rebuilding v1's tautology through a different door.
+
+**v2 was also internally contradictory**, which likely drove the one-directional bias: its
+tie-break said to choose `comfort` unless you can quote the line where a character presses,
+refuses, or warns, while clause 4 licensed `disquiet` with no such line in the scene. Two
+instructions, opposite answers, same scene.
+
+**v3 deletes clause 4** — `disquiet` becomes purely interpersonal (press / refuse / warn or
+obstruct, quotable line required), `comfort` says explicitly that it *includes* scenes where
+something impossible happens if nobody acts over it, and the tie-break now agrees with the
+clauses. Re-running the classifier over the same 13 scenes moved 4 of its 9 `disquiet` calls
+to `comfort` (marginals in the table above) — the first time in this whole exercise that a
+wording change has visibly restored discrimination. The intensity scale was left untouched on
+purpose so the round changes exactly one variable; its 0/13 under v2 is noted for later
+(§7.1: intensity is not a gate criterion, and only the classifier's scale runs in production).
+
+**No agreement figure is quoted for v3 yet, deliberately.** Scoring v3's classifier against
+labels made under v2 compares two rubrics rather than two raters — that run printed 46.2% and
+κ = −0.182, which is an artifact of the mismatch and not a result. The 13 scenes are being
+relabelled under v3 on a fresh sheet before any number is recorded.
+
+**Caveat on that relabel:** these scenes have been read and judged once already, so it is a
+rubric change, not a blind re-rating. The fresh sheet withholds the previous labels, but
+anchoring cannot be ruled out, and the resulting κ should be read with that in mind.
+
+### 9.9 Does any of this transfer to New Babel?
+
+The *method* transfers; the vocabulary does not, by design (§5). Three things generalize:
+
+- **The κ criterion (§9.2)** — applies to every story, and New Babel's own pass should be
+  re-read under it: 75.0% is κ = 0.50, on 24 scenes from one rater, when 50 turns now exist.
+- **The authoring test v3 arrives at**: a beat's trigger must be *punctual, quotable, and not
+  already true of most scenes in that story*. New Babel's `threat` satisfies this for a
+  different reason than v3's `disquiet` does — pursuit is a visible, binary event, and it is
+  the exception in a thriller rather than the baseline. The transferable rule is therefore
+  not "make beats interpersonal" but "**check the accumulating beat's base rate**": if the
+  classifier fires it on most scenes, it cannot drive a counter, whichever rater is right.
+  That is measurable with tooling that already exists — `gate_02.py` prints both raters'
+  marginals, which is exactly what caught v1 and v2.
+- **Mutual exclusivity and a tie-break that agrees with the clauses** (§9.7, §9.8) — both
+  defects were found in the cozy vocabulary but neither is genre-specific, and §5.1's New
+  Babel definitions have never been audited for either.
+
+Implementing the module for New Babel is a content change, not a code change — the beats,
+counters and rules already live in `mechanics.pacing_loop` per story. What this exercise
+should hand Phase 6.1 is the *authoring procedure*: draft two beats, classify a played
+sample, check the marginals for base-rate collapse, check κ rather than raw agreement, and
+only then author thresholds from the resulting trace (§7.2).
+
+### 9.10 v3 relabel of turns 31-43: healthier failure, same verdict
+
+The 13 scenes were relabelled under v3 on a fresh sheet. The human moved exactly the five
+object-event scenes (37-40, 42) from `disquiet` to `comfort`, which is what deleting clause 4
+asks for.
+
+| | v2 (13) | v3 (13) |
+|---|---|---|
+| Agreement | 76.9% | 61.5% |
+| κ | 0.316 | 0.253 |
+| Human | disquiet 9, comfort 4 | disquiet 4, comfort 9 |
+| Classifier | disquiet 12, comfort 1 | **disquiet 7, comfort 6** |
+| Error direction | 3/3 one way | 4 one way, 1 the other |
+| Intensity exact | 0.0% | 38.5% |
+
+**The drop is not evidence that v3 is worse.** At n = 13 the standard error on κ is roughly
+±0.2, so 0.316 and 0.253 are indistinguishable. What did change is the shape of the failure:
+both raters now use both labels — the first time in this exercise — and the errors run in both
+directions rather than all one way. Neither rater is riding a majority class any more, which
+means κ is finally measuring genuine disagreement rather than imbalance.
+
+**Adjudicating the five disputes puts the classifier right or defensible in all five.** Turn
+42: "before the woman's voice can finish its *warning*", and the voice says "Don't let him
+look at the door" — a warning and an instruction to stop him, both quotable. Turn 43: "No one
+you should name yet," a deflection of a direct question. Turn 34: nobody presses, refuses or
+warns, so `comfort` is correct and the human's `disquiet` is one surviving object-event call.
+Turns 36 and 37 are borderline but lean classifier — the protagonist acts "before Susan can
+stop you", and later she has him by the wrist.
+
+**So the residual disagreement now sits on the human side**, in two blind spots v3's wording
+names but never illustrates: *physical* obstruction (a hand on the wrist, someone moving to
+block you) reads as scene business rather than as an act; and a warning from an unseen voice,
+or one character telling another to stop you, doesn't register the way face-to-face dialogue
+does.
+
+This is worth stating as a limit of the gate itself, not just of this vocabulary: 0.2 and 0.3
+measure human-classifier **agreement**. Once the classifier applies the vocabulary correctly,
+further rewording chases the rater rather than the definitions, and no vocabulary can pass a
+gate whose human side is misapplying it.
+
+**Decision: continue to turn 60 under v3 unchanged.** Anchor examples and clarifying wording
+for the two blind spots were offered and declined, in favour of keeping the full 30-turn round
+methodologically clean — one vocabulary, one rubric, no mid-round guidance change to caveat.
+The consequence, recorded here so the final number is read correctly: **the round's κ will be
+a lower bound**, since a known and now-documented rater misapplication is deliberately being
+left in rather than trained out. If the full-round κ lands near 0.4, the two blind spots are
+the first thing to fix before concluding anything about v3 itself.
+
+### 9.11 Round 2 complete (30 turns): fails as a whole, passes on the uncontaminated half
+
+Turns 31-60 of `example`, all 30 labelled, `disquiet` rate steady across both halves (4/13 then
+5/17) — no rubric drift mid-round.
+
+| Slice | n | Agreement | κ | Human `disquiet` | Classifier `disquiet` | Error direction |
+|---|---|---|---|---|---|---|
+| **All 30 (31-60)** | 30 | **70.0%** | **0.348** | 9 | 12 | 6 / 3 |
+| First 13 (relabelled, §9.10) | 13 | 53.8% | 0.152 | 4 | 8 | 5 / 1 |
+| **Last 17 (native v3)** | 17 | **82.4%** | **0.549** | 5 | 4 | 1 / 2 |
+
+**The round fails.** 70.0% is exactly the raw threshold, on a 21/9 human split, at κ = 0.348 —
+the case §9.2's guard exists to catch. Recorded as a fail.
+
+**The round is not homogeneous, and the split is principled rather than dredged.** Turns 31-43
+were *relabelled* after having been judged once under v2 — non-blind, and §9.10 recorded in
+advance that their contribution would be a lower bound. Turns 44-60 are the only scenes in this
+project labelled under v3 natively, first time, with nothing to anchor against. That boundary
+was fixed before these numbers existed.
+
+On the native slice the vocabulary clears the gate — 82.4%, κ = 0.549 — the best result this
+project has produced, ahead of New Babel's 75.0% / κ = 0.50. Two structural signs it is not
+merely a lucky slice: the **marginals converge** (human 5 `disquiet`, classifier 4, against v1's
+30-vs-17), and the **errors run in both directions** (1 false-`disquiet`, 2 false-`comfort`),
+where every prior round carried a one-way bias.
+
+**What is not claimed.** n = 17 puts κ's standard error near ±0.2. It is a post-hoc slice of a
+round whose pre-registered unit was 30 turns. And turns 44-60 are quieter (12 `comfort` / 5
+`disquiet`) — both raters agree readily on quiet scenes, so some of the gain may be the story
+calming rather than the rubric working. **Round 2's status is: conditional pass pending
+replication, on a failing round.**
+
+#### Round 3 — pre-registered
+
+17 more turns (61-77), labelled natively under v3 as played. No vocabulary changes, no
+relabels, no guidance changes; same sheet (`example_v3`), with the native/relabelled boundary
+recorded here rather than enforced by a second file. Stated before the data exists, so the
+result cannot be reinterpreted afterwards:
+
+- **Primary:** κ on turns 61-77 alone. **≥ 0.4 replicates**; < 0.4 does not.
+- **Secondary (the number that should be quoted):** κ on the combined 34 native scenes
+  (44-77). This is the round-2 finding and its replication pooled, and it is the largest clean
+  sample the project will have.
+- **Diagnostic, not a pass criterion:** the `disquiet` base rate in 61-77. If it stays near
+  30% while κ holds, the quiet-stretch confound (above) is ruled out. If the stretch is quiet
+  again, κ ≥ 0.4 is weaker evidence and a third round on a tense stretch would be needed.
+- **Unchanged:** the two known rater blind spots (§9.10 — physical obstruction, unseen or
+  third-party speakers) stay untrained, so this remains a lower bound.
+
+If both κs land ≥ 0.4, gate 0.3 passes on `example` and §9.5's step 1 is discharged: the
+authored-vocabulary design holds cross-genre, and Phase 6.1 proceeds with the authoring
+procedure in §9.9 rather than with a thriller-only module.
