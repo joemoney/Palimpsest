@@ -21,10 +21,61 @@ Primary sources, in priority order when they conflict:
 | §0.1 / §0.2 / §0.3 validation gates | **Closed.** 0.3 **failed**; see §2 below |
 | 1. Author New Babel's module | **Done** — private submodule commit `5f3a6cb`, *pointer not bumped* |
 | 2. Author `example`'s module | **Done** — `32f5afd` on `phase-6.1-pacing-modules` |
-| 3. Extend state-update schema (`beat_type`, `intensity`, leverage) | **NEXT** |
-| 4. Counter + ledger update logic | not started |
-| 5. Eligibility, deferral ceiling, `SECTIONS` directive builder | not started |
+| 3. Extend state-update schema (`beat_type`, `intensity`, leverage) | **Done** — see `backend/story_engine.py`'s `update_progress_from_turn` and `test/test_pacing_loop.py` |
+| 4. Counter + ledger update logic | **Done**, including leverage spend/eviction — see below |
+| 5. Eligibility, deferral ceiling, `SECTIONS` directive builder | **Done** — `_section_pacing_directive` in `backend/story_engine.py`, tests in `test/test_pacing_loop.py` |
 | 6. Playtest thresholds | not started — **see §6, this is the real acceptance test** |
+
+### The two gaps steps 4-5 left open are now closed
+
+Both were closed before step 6's playtest, on the reasoning that each changes what the
+directive actually says and so would invalidate a playtest run without them.
+
+- **Leverage spending and eviction** (spec §7). `update_progress_from_turn` now carries a
+  `leverage_spent` field alongside `leverage_gained`, matched **by exact label string**
+  against an entry that is still unspent - mirroring `items_lost` against `CURRENT
+  INVENTORY`, which is why the `CURRENT <LABEL>` prompt line now says it is the thing to
+  copy a label from. A spent entry is **marked, never removed** (§7's retention decision):
+  it stays for callbacks and for the record, but drops straight out of `{unspent_leverage}`,
+  so the release directive can no longer point the narrator at something the story already
+  cashed in. `LEVERAGE_LIMIT` (40) plus `_evict_spent_leverage` bound the ledger, evicting
+  **spent entries oldest-first and never an unspent one** - a ledger of only unspent entries
+  is allowed to overflow rather than lose a live asset.
+- **`pacing.reveal_queue` is now populated** (spec §12). Its hard prerequisite, CR-03, has
+  landed (`_section_revelations` puts revealed content into the narration prompt), so a
+  placed reveal now reaches a pipe that is actually connected. `update_progress_from_turn`
+  gained a `revelations_eligible` field - gated on the story having *both* a `pacing_loop`
+  and unrevealed fragments - that separates "trigger satisfied **and** written onto the
+  page this turn" (`memory_fragments_revealed`, unchanged) from "satisfied but **not** yet
+  written" (queued). The prompt says explicitly that an id goes in one or the other and
+  never both; without that sentence the model reads the two fields as synonyms.
+
+**One deliberate deviation from spec §12, worth knowing before you read the code.** §12 says
+the directive "consumes one entry per firing, FIFO". It doesn't - consumption is on
+*confirmed* reveal instead: an entry leaves the queue only once `memory_fragments_revealed`
+reports the fragment actually landed. A firing is an instruction to the narrator, not a
+guarantee; popping unconditionally would silently drop a reveal any time the model ignored
+the bullet, and nothing would ever re-queue it, since its trigger already fired once in a
+scene now well behind us. The worst case under the implemented behaviour is the next firing
+citing the same reveal again, which is self-correcting rather than lossy.
+
+**New Babel's directive was edited** as part of this. Its reveal bullet previously read "If
+the reveal queue is non-empty, surface exactly ONE reveal" - an instruction about a queue the
+narrator could not see, since nothing interpolated `{queued_reveal}`. It now interpolates the
+queued reveal's **content** (never its id or authored trigger) and instructs the model to
+write it only when that content isn't `"none queued"`. This is directive text, not a beat
+definition, so it does not invalidate `PHASE_0_GATE_REPORT.md` §9.13.1 or require re-running
+the gate scripts. `reduced_directive` was deliberately left alone - a constrained
+mid-action breath is not the scene to land a revelation in.
+
+**Still open, and deliberately not touched:** `example`'s directive carries the same "if the
+reveal queue is non-empty" bullet, but `example` authors no `mechanics.revelations` at all,
+so its queue can never be non-empty and the bullet is unsatisfiable text in the prompt. It is
+harmless but it is noise, and there is some risk a narrator reads it as licence to invent a
+reveal. Removing it is a one-line template edit; it was left to the repo owner since it is
+authored content, not engine behaviour.
+
+Tests for all of the above are in `test/test_pacing_loop.py` (suite: 35 files, all passing).
 
 Branch: `phase-6.1-pacing-modules`, off `master` (`508e96e`). Working tree carries one
 intentional modification: ` M stories/new_babel`, the un-bumped submodule pointer.

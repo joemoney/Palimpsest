@@ -37,6 +37,15 @@ RELATIONSHIPS_LIMIT = 20
 # SUBPLOT_TITLE_HISTORY_LIMIT - bound how many of them reach the narration prompt, keyed off
 # revealed_turn so the most recently revealed ones are the ones that survive the cap.
 MEMORY_FRAGMENT_PROMPT_LIMIT = 12
+# Spec 7's retention/bounding policy for protagonist.leverage. Spent entries are deliberately
+# RETAINED rather than pruned on spend - they're cheap, they enable callbacks, and
+# history.compressed_summary is already lossy, so a spent-but-retained entry may end up the
+# only surviving record that something was ever gained. This is the roster cap that keeps
+# that from growing forever (CLAUDE.md, "Keeping LLM Context Bounded"): over the cap, evict
+# spent entries oldest-first and NEVER an unspent one - if unspent entries alone exceed the
+# limit, allow the overflow rather than dropping a live asset. Note only unspent entries
+# ever reach a prompt, so this bounds disk growth and the eviction order, not per-entry cost.
+LEVERAGE_LIMIT = 40
 # The completion_threshold a "multi_act"-span subplot gets instead of the normal 100 (see
 # insert_subplot) - the only lever that actually makes one take longer to resolve, since
 # progress/completion tracking (update_progress_from_turn, check_subplot_status) is generic
@@ -577,6 +586,111 @@ def _next_subplot_id(subplots: dict) -> str:
     return f"subplot_{next_number:03d}"
 
 
+def _next_leverage_number(leverage: list) -> int:
+    """Mirrors _next_subplot_id's numbering scheme for protagonist.leverage entries
+    (spec §7's "lev_004" ids), which is a list rather than an id-keyed dict."""
+    existing_numbers = [
+        int(entry["id"].rsplit("_", 1)[-1])
+        for entry in leverage
+        if entry.get("id", "").rsplit("_", 1)[-1].isdigit()
+    ]
+    return (max(existing_numbers) + 1) if existing_numbers else 1
+
+
+def _evict_spent_leverage(leverage: list) -> None:
+    """Spec 7's bounding policy, in place. Only ever drops entries already marked spent, and
+    the oldest of those first (list order is acquisition order, since entries are only ever
+    appended). Deliberately gives up rather than dropping a live asset: if the list is over
+    LEVERAGE_LIMIT but every entry is unspent, the overflow is allowed to stand - an unspent
+    entry is a promise the release directive can still cash, and silently deleting one would
+    make the directive point at something the story never delivered.
+
+    Mirrors archive_stale_flags' role for flags_active, not its mechanism: flags age out by
+    turn, leverage ages out only once the story has actually used it up."""
+    if len(leverage) <= LEVERAGE_LIMIT:
+        return
+    spent_indices = [i for i, entry in enumerate(leverage) if entry.get("spent")]
+    for index in reversed(spent_indices[: len(leverage) - LEVERAGE_LIMIT]):
+        leverage.pop(index)
+
+
+def _pacing_rule(pacing_loop_cfg: dict) -> dict | None:
+    """v1 scope (spec §6.2): the schema accepts a list of rules so both correction
+    directions are expressible without code, but v1 implements and tests exactly one rule
+    per story - a template declaring more logs a warning and uses only the first.
+    Multi-rule arbitration is deferred (spec §9) since nothing exercises it yet."""
+    rules = pacing_loop_cfg.get("rules", [])
+    if not rules:
+        return None
+    if len(rules) > 1:
+        print(
+            f"WARNING: mechanics.pacing_loop declares {len(rules)} rules; v1 only supports "
+            f"one per story - using '{rules[0]['id']}', ignoring the rest.",
+            file=sys.stderr,
+        )
+    return rules[0]
+
+
+def _rule_effective_threshold(rule: dict, current_act: dict | None):
+    """Spec §13 resolution order: exact act number -> "finale" if the current act is one ->
+    the rule's base threshold. A null at any resolved level disables the rule for that act
+    (the caller must treat a None return as "not armable/not eligible this act", not as
+    "use the default")."""
+    by_act = rule.get("threshold_by_act", {})
+    if current_act:
+        act_key = str(current_act["act_number"])
+        if act_key in by_act:
+            return by_act[act_key]
+        if current_act.get("is_finale") and "finale" in by_act:
+            return by_act["finale"]
+    return rule.get("threshold")
+
+
+def _unspent_leverage_text(ctx: dict) -> str:
+    """{unspent_leverage} interpolation (spec §11) - only unspent entries are ever shown,
+    per §7's retention policy (spent entries are kept for callbacks but cost nothing here)."""
+    labels = [e["label"] for e in ctx["state"]["protagonist"].get("leverage", []) if not e.get("spent")]
+    return ", ".join(labels) if labels else "none yet"
+
+
+def _queued_reveal_text(ctx: dict) -> str:
+    """{queued_reveal} interpolation (spec §11/§12). pacing.reveal_queue is populated by
+    update_progress_from_turn's revelations_eligible field: a revelation whose authored
+    trigger is already satisfied but which the narration hasn't actually written yet waits
+    here for a corrective beat to place it, rather than firing into whatever scene happens
+    to be next. FIFO, so the oldest eligible reveal is the one offered.
+
+    Only the *content* is interpolated, never the id or the trigger - the narrator writes
+    the reveal, it doesn't get told the bookkeeping. Skips (rather than shows) an entry
+    that has since been revealed by other means, so a stale queue entry can never make the
+    directive ask for something the player has already read.
+
+    CR-03 - this section's hard prerequisite (spec §12) - has landed: _section_revelations
+    puts revealed content into the narration prompt, so a placed reveal now reaches a pipe
+    that is actually connected."""
+    queue = ctx["state"]["pacing"].get("reveal_queue", [])
+    if not queue:
+        return "none queued"
+    revealed = ctx["state"]["plot"]["revelations_revealed"]
+    revelations = {r["id"]: r for r in ctx["story"].get("mechanics", {}).get("revelations", [])}
+    for rev_id in queue:
+        if rev_id in revelations and rev_id not in revealed:
+            return revelations[rev_id]["content"]
+    return "none queued"
+
+
+def _suppress_predicate(name: str, ctx: dict, rule_id: str, fired_last_turn: str | None) -> bool:
+    """Named eligibility predicates (spec §10). Predicates are opt-in per rule - an
+    unrecognized name (or one whose source data doesn't exist for this story) is a no-op,
+    never a crash, so a story that doesn't configure e.g. threat_present isn't blocked from
+    using suppress_when: ["just_fired"] alone."""
+    if name == "threat_present":
+        return bool(ctx["state"]["scene"].get("threat_present", False))
+    if name == "just_fired":
+        return fired_last_turn == rule_id
+    return False
+
+
 def _subplot_view(ctx: dict, sid: str) -> dict:
     """Merged view of one subplot: a seeded subplot resolves title/description/priority/
     ties_to_main_plot/completion_threshold/span from the template; a generated one (no
@@ -807,6 +921,16 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
     # asked about when the story actually configures one.
     tracked_entity = ctx["story"].get("mechanics", {}).get("tracked_entity")
 
+    # Phase 6 step 3 (docs/PHASE_6_HANDOFF.md §3, spec §5/§6.1/§7): beat_type/intensity and
+    # leverage_gained ride along in this same call - "one extra field, no extra request"
+    # (spec §9). Both gated on their own mechanics block, same conditional pattern as
+    # stats/relationships_cfg above. Beat names/definitions come from the template, never a
+    # constant - New Babel and example already use different vocabularies. This step only
+    # extracts and stores the raw diff (last_beat, appended leverage entries); counter
+    # arithmetic, arming, and spending are docs/PHASE_6_HANDOFF.md §4's job, not this one's.
+    pacing_loop_cfg = ctx["story"].get("mechanics", {}).get("pacing_loop")
+    progression_cfg = ctx["story"].get("mechanics", {}).get("progression")
+
     # 5.7: mechanics.failure_conditions - a story that can end badly without the player
     # asking to. Evaluated alongside revelations (same authored-trigger shape, different
     # effect - see _apply_failure_condition). Not offered once the story is already ending,
@@ -832,11 +956,20 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
             f'  "entity_interaction": <true if {tracked_entity["name"]} appeared or acted this '
             'turn, else false>'
         )
+    # spec §8: scene.threat_present is scene state, not a pacing_loop field itself, but the
+    # only thing that ever reads it back is a suppress_when: ["threat_present"] rule (§10),
+    # so it's only worth asking for when a story actually has the module - gating it here
+    # avoids asking a story with no pursuit concept (e.g. example's cozy mystery) a question
+    # with no answer.
+    threat_present_field = (
+        ', "threat_present": <true if a pursuing or actively dangerous threat is present as '
+        'the scene ends, else false>' if pacing_loop_cfg else ""
+    )
     schema_fields.append(
         '  "scene_update": {"location": "<location id from VALID LOCATION IDS above, or the '
         'same id if the protagonist has not moved>", "summary": "<1-2 sentences: where the '
         'protagonist is now and the immediate situation, as of the end of this turn>", '
-        '"present_npcs": ["<character name>", "..."]}'
+        f'"present_npcs": ["<character name>", "..."]{threat_present_field}}}'
     )
     schema_fields += [
         '  "items_gained": ["<short item description>", "..."]',
@@ -860,6 +993,47 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
             f'  "stat_changes": {{"<stat name, must be one of: {", ".join(stats)}>": <integer '
             "delta this turn, positive or negative - only stats the turn's events actually "
             "moved, never a stat name outside that fixed list>}"
+        )
+    if pacing_loop_cfg:
+        beat_names = list(pacing_loop_cfg["beats"].keys())
+        schema_fields.append(
+            f'  "beat_type": "<exactly one of: {", ".join(beat_names)} - whichever beat type '
+            'above best matches what actually happened on the page this scene>"'
+        )
+        schema_fields.append(
+            '  "intensity": <integer 1-3 for the beat above - 1: pressure present, no '
+            "immediate physical danger; 2: direct confrontation or a forced decision in the "
+            'room; 3: physical danger, active pursuit, or body-horror escalation>'
+        )
+    if progression_cfg:
+        kinds = progression_cfg.get("kinds", [])
+        hint = progression_cfg.get("prompt_hint", "")
+        label = progression_cfg.get("label", "leverage")
+        schema_fields.append(
+            f'  "leverage_gained": [{{"kind": "<one of: {", ".join(kinds)}>", "label": "<short, '
+            f'concrete description of a durable gain the protagonist did not have before this '
+            f'turn{" - " + hint if hint else ""}>"}}]'
+        )
+        # Spec §7: the ledger is a ratchet the release directive points at, so an entry that
+        # has been used up or invalidated has to stop being pointed at. Matched by exact
+        # label string against the CURRENT <LABEL> line in the prompt, exactly like
+        # items_lost against CURRENT INVENTORY - which is why that line is shown here.
+        schema_fields.append(
+            f'  "leverage_spent": ["<the exact label, copied verbatim from CURRENT '
+            f'{label.upper()} above, of every entry this turn used up or invalidated - '
+            "spent when it has been cashed in and can't be cashed again, or when events "
+            'made it worthless. Not merely mentioned or acted on. [] if none>"]'
+        )
+    # Spec §12's placement policy. Only asked when the story has a pacing_loop, since that
+    # module's directive is the only thing that ever consumes the queue - without it there
+    # is nothing to place a reveal *into* and the queue would just be dead state.
+    if pacing_loop_cfg and unrevealed_fragments:
+        schema_fields.append(
+            '  "revelations_eligible": ["<the exact id of every UNREVEALED MEMORY FRAGMENT '
+            "TRIGGER below whose condition the story has now satisfied but which the "
+            "NARRATION did NOT actually write onto the page this turn - these wait for a "
+            'better scene to land in. Never list an id you also put in '
+            'memory_fragments_revealed. [] if none>"]'
         )
     if failure_conditions:
         schema_fields.append(
@@ -904,8 +1078,45 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
             "protagonist performing that act however it is written. Return [] if none apply; "
             "never force a match.\n"
         )
+        if pacing_loop_cfg:
+            # Spec §12: the split between "satisfied AND written" and "satisfied but not yet
+            # written" is the whole point - the first is a reveal that already happened and
+            # gets marked revealed, the second is one the pacing directive can place into a
+            # scene built to carry it. Without this sentence the model reads the two fields
+            # as near-synonyms and puts the same id in both.
+            fragment_instruction += (
+                "A trigger can be satisfied without the narration having actually delivered "
+                "the memory on the page. Put an id in memory_fragments_revealed only if the "
+                "NARRATION itself wrote the memory into the scene; if the condition is met "
+                "but the memory has not surfaced yet, put the id in revelations_eligible "
+                "instead, and never in both.\n"
+            )
 
     failure_line = f"\nFAILURE CONDITIONS (id: trigger): {json.dumps(failure_triggers)}" if failure_conditions else ""
+
+    # Beat definitions are verbatim from the template (spec §5) - never hardcoded, since
+    # New Babel and example already use different vocabularies (4 beats vs. 2 - see
+    # docs/PHASE_6_HANDOFF.md §2 on why the spec's 4-beat default didn't survive validation).
+    beat_section = ""
+    if pacing_loop_cfg:
+        beat_lines = "\n".join(
+            f"- {name}: {info['definition']}" for name, info in pacing_loop_cfg["beats"].items()
+        )
+        tie_break = pacing_loop_cfg.get("tie_break", "")
+        beat_section = f"\nBEAT TYPES (choose exactly one for beat_type, per its definition below):\n{beat_lines}"
+        if tie_break:
+            beat_section += f"\n{tie_break}"
+
+    leverage_line = ""
+    if progression_cfg:
+        label = progression_cfg.get("label", "leverage")
+        unspent_labels = [
+            e["label"] for e in ctx["state"]["protagonist"].get("leverage", []) if not e.get("spent")
+        ]
+        leverage_line = (
+            f"\nCURRENT {label.upper()} (do not repeat in leverage_gained; copy a label "
+            f"verbatim from here for leverage_spent): {json.dumps(unspent_labels)}"
+        )
 
     prompt = f"""Given this turn of an interactive story, report what changed in the world state.
 
@@ -913,9 +1124,9 @@ ACTIVE SUBPLOTS (id: title - description [progress/threshold]):
 {active_subplot_lines}
 UNREVEALED MEMORY FRAGMENT TRIGGERS: {json.dumps(unrevealed_fragments)}
 CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}
-CURRENT INVENTORY: {json.dumps(ctx["state"]["protagonist"]["inventory"])}{relationships_line}
+CURRENT INVENTORY: {json.dumps(ctx["state"]["protagonist"]["inventory"])}{relationships_line}{leverage_line}
 EXISTING CHARACTERS (do not repeat in new_characters): {', '.join(existing_characters) or 'none'}{stats_block}
-CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}{failure_line}
+CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}{failure_line}{beat_section}
 
 PLAYER ACTION: {player_action}
 NARRATION: {ai_response}
@@ -964,6 +1175,34 @@ is a separate, manual step."""
         if rev_id in valid_revelation_ids:
             ctx["state"]["plot"]["revelations_revealed"][rev_id] = {"turn": turn_count}
 
+    # Spec §12 reveal placement: a revelation whose trigger is satisfied but which the
+    # narration hasn't written yet queues up for the pacing directive to place, rather than
+    # firing into whatever scene comes next. Gated on the story having a pacing_loop, since
+    # that directive is the only consumer. Lazily created, same as every other pacing key.
+    #
+    # Consumption is on *confirmed* reveal, not on directive firing. Spec §12 words it as
+    # "the directive consumes one entry per firing", but a firing is an instruction to the
+    # narrator, not a guarantee - popping unconditionally would silently drop a reveal any
+    # time the model ignored the bullet, and nothing would ever re-queue it (its trigger
+    # already fired once, in a scene now well behind us). Leaving the entry until
+    # memory_fragments_revealed actually reports it means the worst case is the next firing
+    # citing the same reveal again, which is self-correcting rather than lossy.
+    if pacing_loop_cfg:
+        reveal_queue = ctx["state"]["pacing"].setdefault("reveal_queue", [])
+        for rev_id in diff.get("revelations_eligible", []) or []:
+            if (
+                rev_id in valid_revelation_ids
+                and rev_id not in ctx["state"]["plot"]["revelations_revealed"]
+                and rev_id not in reveal_queue
+            ):
+                reveal_queue.append(rev_id)
+        # Bounded implicitly by the template's revelation count, but a revealed entry is
+        # dead weight that would otherwise sit at the head of the FIFO forever.
+        ctx["state"]["pacing"]["reveal_queue"] = [
+            rev_id for rev_id in reveal_queue
+            if rev_id not in ctx["state"]["plot"]["revelations_revealed"]
+        ]
+
     if diff.get("entity_interaction"):
         ctx["state"]["plot"]["entity_contact_count"] += 1
 
@@ -981,6 +1220,8 @@ is a separate, manual step."""
             scene["summary"] = new_summary
         if isinstance(scene_update.get("present_npcs"), list):
             scene["present"] = scene_update["present_npcs"]
+        if pacing_loop_cfg and "threat_present" in scene_update:
+            scene["threat_present"] = bool(scene_update["threat_present"])
 
     inventory = ctx["state"]["protagonist"]["inventory"]
     for item in diff.get("items_gained", []):
@@ -1064,6 +1305,75 @@ is a separate, manual step."""
             if ceiling is not None:
                 new_value = min(ceiling, new_value)
             stats[stat_name] = new_value
+
+    # Phase 6 steps 3-4 (docs/PHASE_6_HANDOFF.md §3/§4, spec §9 steps 3-4): store the raw
+    # beat classification as pacing.last_beat, then run the counter arithmetic - the beat's
+    # feeds counter accumulates intensity, every counter in its resets goes to 0 (clearing
+    # any rule watching one of those counters back to unarmed), and any rule whose watched
+    # counter has now crossed its effective threshold (§13) gets armed. Lazy-init
+    # throughout: a save from before this module existed has none of these keys yet, and
+    # per CLAUDE.md's "Keeping LLM Context Bounded" this project never writes a migration
+    # for that - .setdefault/.get instead, same as every other lazily-added field.
+    if pacing_loop_cfg:
+        beat_type = diff.get("beat_type")
+        if beat_type in pacing_loop_cfg["beats"]:
+            try:
+                intensity = max(1, min(3, int(diff.get("intensity"))))
+            except (TypeError, ValueError):
+                intensity = 1
+            pacing_state = ctx["state"]["pacing"]
+            pacing_state["last_beat"] = {"type": beat_type, "intensity": intensity}
+
+            beat_def = pacing_loop_cfg["beats"][beat_type]
+            counters = pacing_state.setdefault("counters", dict(pacing_loop_cfg.get("counters", {})))
+            armed = pacing_state.setdefault("armed", {})
+            rule = _pacing_rule(pacing_loop_cfg)
+
+            feeds = beat_def.get("feeds")
+            if feeds:
+                counters[feeds] = counters.get(feeds, 0) + intensity
+            for reset_counter in beat_def.get("resets", []):
+                counters[reset_counter] = 0
+                if rule and rule["watch"] == reset_counter:
+                    armed.pop(rule["id"], None)
+
+            if rule:
+                threshold = _rule_effective_threshold(rule, _current_act(ctx))
+                if threshold is not None and counters.get(rule["watch"], 0) >= threshold:
+                    armed.setdefault(rule["id"], {"deferrals": 0})
+
+    if progression_cfg:
+        leverage = ctx["state"]["protagonist"].setdefault("leverage", [])
+        kinds = progression_cfg.get("kinds", [])
+        next_number = _next_leverage_number(leverage)
+        for gain in diff.get("leverage_gained", []):
+            label = gain.get("label")
+            kind = gain.get("kind")
+            if not label or (kinds and kind not in kinds):
+                continue
+            leverage.append({
+                "id": f"lev_{next_number:03d}",
+                "kind": kind,
+                "label": label,
+                "acquired_turn": turn_count,
+                "spent": False,
+            })
+            next_number += 1
+
+        # Spec §7: mark spent, don't remove - a spent entry is retained for callbacks and
+        # for the record (see LEVERAGE_LIMIT). Matched by exact label string against an
+        # entry that is still unspent, mirroring items_lost against inventory: the model is
+        # shown the unspent labels verbatim in the prompt for exactly this reason. Applied
+        # after gains, again mirroring inventory's gained-then-lost order, so a gain cashed
+        # in within the same turn resolves correctly.
+        for label in diff.get("leverage_spent", []) or []:
+            for entry in leverage:
+                if entry["label"] == label and not entry.get("spent"):
+                    entry["spent"] = True
+                    entry["spent_turn"] = turn_count
+                    break
+
+        _evict_spent_leverage(leverage)
 
     # 5.7: applied last, after every other effect of this turn has already landed - a
     # failing turn's subplot progress/flags/items/etc. still get recorded before the ending
@@ -1731,6 +2041,72 @@ def _section_pacing_or_endgame(ctx: dict) -> str | None:
     return None
 
 
+def _section_pacing_directive(ctx: dict) -> str | None:
+    """Phase 6 step 5 (docs/PHASE_6_HANDOFF.md §4; spec §9 step 5, §10, §11): fires at most
+    one pacing directive per turn, for whichever rule step 4's counter update (see
+    update_progress_from_turn) armed. A single-turn addition like _section_pacing_or_endgame
+    above - placed with the other volatile sections, never the cacheable prefix (spec §9) -
+    and nothing here persists beyond bookkeeping (deferrals, last_fired_rule) for next
+    turn's eligibility check.
+
+    v1 scope: exactly one rule per story (_pacing_rule) - no cross-rule arbitration.
+
+    last_fired_rule is consumed here (popped, not just read): it should suppress a
+    just_fired-gated rule for exactly the one turn immediately after it fired, not forever -
+    reading it destructively is what gives it that one-turn lifetime regardless of whether
+    this turn's rule is even armed to make use of it.
+    """
+    pacing_loop_cfg = ctx["story"].get("mechanics", {}).get("pacing_loop")
+    if not pacing_loop_cfg:
+        return None
+    rule = _pacing_rule(pacing_loop_cfg)
+    if not rule:
+        return None
+
+    pacing_state = ctx["state"]["pacing"]
+    fired_last_turn = pacing_state.pop("last_fired_rule", None)
+
+    entry = pacing_state.get("armed", {}).get(rule["id"])
+    if entry is None:
+        return None  # not armed - the watched counter hasn't crossed threshold
+
+    threshold = _rule_effective_threshold(rule, _current_act(ctx))
+    if threshold is None:
+        return None  # disabled for this act, e.g. "finale": null
+
+    max_deferrals = rule.get("max_deferrals", 3)
+    deferrals = entry.get("deferrals", 0)
+    suppressed = any(
+        _suppress_predicate(name, ctx, rule["id"], fired_last_turn)
+        for name in rule.get("suppress_when", [])
+    )
+
+    # The ceiling (spec §10): suppression with no escape hatch deadlocks a sustained chase
+    # forever. Once deferrals reach the cap, fire the reduced directive instead of deferring
+    # again - pressure is released *somehow* within max_deferrals + 1 turns of arming.
+    if suppressed and deferrals < max_deferrals:
+        entry["deferrals"] = deferrals + 1
+        return None
+
+    counters = pacing_state.get("counters", {})
+    template_vars = {
+        "counter_value": counters.get(rule["watch"], 0),
+        "deferrals": deferrals,
+        "unspent_leverage": _unspent_leverage_text(ctx),
+        "queued_reveal": _queued_reveal_text(ctx),
+    }
+    directive_template = rule["reduced_directive"] if deferrals >= max_deferrals else rule["directive"]
+
+    # Deliberately doesn't touch counters/armed beyond this: firing doesn't itself resolve
+    # the pressure - the release scene this produces gets classified like any other next
+    # turn, and *that* beat's own `resets` (step 4) is what naturally un-arms the rule. If
+    # the model doesn't actually deliver a resetting beat, the rule stays armed and a fresh
+    # deferral cycle begins - which is the guaranteed-floor behaviour, not a bug.
+    entry["deferrals"] = 0
+    pacing_state["last_fired_rule"] = rule["id"]
+    return directive_template.format(**template_vars)
+
+
 def _section_scene(ctx: dict) -> str:
     # CR-02/CR-04: HERE/ADJACENT changes on movement, so - unlike SETTING/FACTIONS - it's
     # placed with the volatile CURRENT SCENE line rather than in the stable prefix. Only
@@ -1929,6 +2305,7 @@ SECTIONS = [
     _section_story_so_far,
     _section_recent,
     _section_pacing_or_endgame,
+    _section_pacing_directive,
     _section_scene,
     _section_revelations,
     _section_protagonist,
