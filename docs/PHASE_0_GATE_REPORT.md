@@ -1005,3 +1005,94 @@ residual gap is genuinely two-sided.
   that isn't quiet?), and test whether the vocabulary is workable *at all* by a calibrated
   rater — which is the question Phase 6.1 actually needs answered, since a production rater
   would be trained too. A truly untrained replication would now need a **different rater**.
+
+### 9.12 Round 3, the retest, and the finalized verdict on gate 0.3
+
+**Correction to §9.11 and to round 3's first reading.** Both were quoted from a single
+classification pass. Re-scoring the identical scenes three more times gives:
+
+| Slice | n | κ across 4 runs | Mean | Majority-of-3 |
+|---|---|---|---|---|
+| Round 3 primary (61-77) | 17 | 0.514, 0.388, 0.271, 0.397 | **≈0.39** | 0.271 |
+| Round 2 native (44-60) | 17 | 0.549, 0.433, 0.331, 0.358 | **≈0.42** | 0.549 |
+| Pooled native (44-77) | 34 | 0.471, 0.454, 0.284, 0.395 | **≈0.40** | 0.395 |
+
+**Round 3 did not replicate.** The pre-registered κ ≥ 0.4 was met on the highest of four
+draws, and so was §9.11's headline 0.549. The honest estimate for the pooled native set is
+**κ ≈ 0.40 — straddling the threshold, not clearing it.** Both figures were quoted with a
+precision they never had; that is a reporting failure in this document, not a change in the
+underlying result.
+
+**Classifier test-retest (`scripts/classifier_retest.py`, 3 runs × 51 scenes):**
+
+- Self-agreement **90.8%**, self-κ **0.791**
+- **7 of 51 scenes (13.7%) unstable** across runs: 35, 52, 53, 57, 68, 71, 80
+
+That is the ceiling on any human-classifier κ for this prompt, and it explains the swing
+exactly: ~14% flip rate on n = 17 is ~2 scenes, and 2 scenes move κ by ~0.15.
+
+**The two conclusions that follow are opposite in sign, and both matter.**
+
+1. **The classifier is not the bottleneck.** At a 0.79 ceiling and 0.40 observed, most of the
+   loss is systematic disagreement about what the definitions mean — not model noise. Majority-
+   of-3 voting confirms it: pooled κ moves 0.40 → 0.395, i.e. nowhere. Averaging out noise
+   cannot fix a disagreement about meaning. There is real headroom left in the vocabulary.
+2. **Gate 0.3 fails on `example`.** Best estimate κ ≈ 0.40 against a ≥0.4 criterion, with the
+   pass depending on which draw is quoted. After three vocabularies and 81 turns, that is the
+   result.
+
+#### 9.12.1 Turns 78-81, reported separately
+
+Held out of the main analysis at the rater's request, since they annotated their reasoning.
+
+| Turn | Human | Classifier | |
+|---|---|---|---|
+| 78 | disquiet | comfort | mismatch |
+| 79 | disquiet | comfort | mismatch |
+| 80 | disquiet | disquiet | agree — **but unstable across runs** (`disquiet`, `disquiet`, `comfort`) |
+| 81 | disquiet | comfort | mismatch |
+
+The rater's notes give one consistent reading for both annotated scenes: *"You can only open it
+by giving it something that belongs to both of you"* (80) and *"it won't open for a mark alone…
+It wants an answer"* (81), both read as **someone blocking**. The classifier answers the two
+inconsistently, which is instability rather than a distinction.
+
+**Adjudication: the classifier's `comfort` is correct.** v3 requires *a person acting against a
+person*; in both scenes the speaker is **explaining an obstacle, not being one** — helpfully
+describing how the door opens. But the rater's reading is a natural sense of "blocking," and
+**v3 never excludes it.** This is the third instance of one recurring shape: `disquiet` keeps
+being extended to non-person sources of pressure — objects (v2), events (v3's deleted clause
+4), and now conditions stated by a helpful character. Each vocabulary plugged one and left the
+next.
+
+#### 9.12.2 Protocol change (applies to every future gate run)
+
+**Never quote a single-run κ again.** Run the classifier at least 3× and report the mean and
+range. Every figure in §7 through §9.11 predates this rule and should be read as one draw with
+roughly ±0.15 of run-to-run slack at n ≈ 17, less at larger n. `scripts/classifier_retest.py`
+exists for this; `gate_02.py` should grow a `--runs` flag before the next round.
+
+#### 9.12.3 Final recommendation
+
+The §9.5 sequence is now discharged as far as labelling can take it. Recommended close-out:
+
+- **Do not run a fourth labelling round.** The rater is trained (§9.11 amendment), the
+  remaining sample is small, and single-run noise is comparable to the effect being chased.
+  More turns will not settle a 0.40-vs-0.4 question.
+- **Make the two evidence-backed wording fixes as v3.1**, both derived from adjudicated scenes
+  rather than intuition: (a) obstruction means a character standing in the way, *not* one
+  describing an obstacle, rule, or condition (§9.12.1); (b) conditional and hedged warnings
+  count — "don't X until Y", "safe as long as you don't Z" — which is the classifier's own
+  documented blind spot (§9.11 amendment). Ship it as the story's authored vocabulary.
+- **Validate v3.1 differently, not with another 30-turn round.** The targeted check is whether
+  it flips the specific adjudicated scenes in the predicted direction (80, 81 → `comfort`; 48,
+  50 → `disquiet`), which costs ~50 calls and no human labelling.
+- **Report gate 0.3 as failed, with the failure characterized.** The Phase 0 conclusion is no
+  longer "cross-genre authored vocabularies don't work" (§9's original reading, now superseded
+  twice). It is: *a cozy-genre vocabulary is authorable and the classifier applies it stably
+  (self-κ 0.79), but three successive definitional holes of the same shape were needed to get
+  from κ 0.00 to κ 0.40, and human-classifier agreement has not been shown to clear 0.4.*
+  That is a materially different and more useful finding than the one this report opened with.
+- **The §9.9 hand-off to Phase 6.1 stands**, with one addition: the authoring procedure should
+  include the base-rate check, the κ criterion, **and** a test-retest run, since the last of
+  those is what exposed how noisy the first two are on their own.
