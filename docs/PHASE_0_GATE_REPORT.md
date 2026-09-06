@@ -30,7 +30,7 @@ chance-correction shows the 0.2 pass was weaker than its 75.0% headline suggeste
 | Gate | Specified work | Status | Result |
 |---|---|---|---|
 | 0.1 | Classify every scene in `the_attention_economy.txt` by beat type | **RUN** (24 turns; regenerated corpus) | Release-beat rate 58%, one eight-turn release run (§2) |
-| 0.2 | Hand-label ~30 scenes, run classifier prompt, measure agreement ≥70% | **RUN** (24 scenes) | 41.7% on four beats (FAIL); 75.0% collapsed to two (PASS) — §7 |
+| 0.2 | Hand-label ~30 scenes, run classifier prompt, measure agreement ≥70% | **RUN** (24 scenes) | 41.7% on four beats (FAIL); 75.0% collapsed to two — **the 75.0% was one draw of three; re-measured κ ≈ 0.41, NOT a pass. See §10** |
 | 0.3 | Repeat 0.2 against a second genre's vocabulary | **RUN** (30 scenes, `example`) | 43.3% on four beats, 56.7% collapsed to two — both **FAIL**; κ = 0.00 collapsed (§9) |
 
 ### On the two missing files
@@ -1193,3 +1193,47 @@ when a human would, but its per-scene beat calls will disagree with a careful re
 third of the time, and roughly a fifth of them are not reproducible run to run. Whether that is
 good enough is a **product** decision about how much a wrong beat costs, not a measurement
 question - and §3's counter simulation is where it should be answered.
+
+---
+
+## 10. Post-closure: New Babel re-measured (correction to §7)
+
+Run 2026-09-06 as the Phase 6.1 prerequisite (§16 step 1) — before authoring New Babel's
+module, its vocabulary was measured to the standard §9.12.2 established, which it had never
+been held to. Same 24 labels, same two-beat vocabulary, 3 runs.
+
+| | §7 (2026-09-05, single run) | Re-measured, 3 runs |
+|---|---|---|
+| Agreement vs rater | 75.0% | 66.7% / 70.8% / **75.0%** — majority-of-3 **70.8%** |
+| κ vs rater | 0.500 | 0.314 / 0.408 / **0.500** — mean ≈ **0.41**, majority **0.408** |
+| Classifier self-agreement | not measured | **88.9%**, self-κ **0.777** |
+| Unstable scenes | not measured | **4 of 24 (16.7%)** — turns 13, 16, 20, 22 |
+| Marginals | not reported | human `threat` 42%; classifier 42/46/50% |
+
+**§7's 75.0% / κ 0.500 was the highest of three draws.** Identical error to §9.12's, on the one
+result this project had been treating as its passing case since the beginning. Corrected here
+rather than in §7, which is left as written.
+
+**The consequence is larger than the correction.** Gate 0.3 exists to test whether the
+classifier "can only separate beats when they're violence-shaped" (§0.3). The answer, measured
+the same way on both stories, is that **there is no genre difference**:
+
+| | κ vs rater (mean) | Self-κ | Marginals matched? |
+|---|---|---|---|
+| `new_babel` (thriller, two-beat) | **≈0.41** | 0.777 | yes — 42% vs 42/46/50% |
+| `example` (cozy, v3.1) | **≈0.45** pooled native | 0.734 | yes — 41% vs 39/41/47% |
+
+Both stories sit at κ ≈ 0.4 against a ceiling of ≈0.78, with rates that track the human's.
+The thriller is not better-founded than the cozy mystery; it merely got measured once, early,
+and got a favourable draw. Every "the design doesn't hold cross-genre" reading in §9 — already
+superseded twice — is now dead in a third way: **the cross-genre comparison shows no gap
+because both sides land in the same place.**
+
+**What this changes for Phase 6.** Nothing about the plan, and one thing about its framing.
+The module is no more validated on New Babel than on `example`, so neither story is the "safe"
+one to build against and there is no fallback position of shipping thriller-only (§9.5's step
+3 is now moot — it would ship the *same* κ under a different name). The product question in
+§9.13.1 applies uniformly to both stories: a beat call that disagrees with a careful reader
+about a third of the time, roughly a sixth of which is irreproducible, driving a counter whose
+only observable is *when it crosses a threshold*. Whether that is good enough is decided in
+§14's playtest, on either story.
