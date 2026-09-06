@@ -7,6 +7,7 @@ from functools import wraps
 from dotenv import load_dotenv
 from flask import Flask, Response, redirect, render_template, request, session, url_for
 
+import label_sheet
 import plot_manager
 import state_store
 import story_engine
@@ -85,7 +86,36 @@ def _latest_rendered_turn(ctx: dict, animate: bool) -> dict:
     return _render_turn(all_turns[-1], len(all_turns) - 1, animate, option_count=_option_count(ctx))
 
 
-def _scene_and_controls_response(ctx: dict, story_slug: str) -> str:
+def _label_row(ctx: dict, story_slug: str, user_id: str):
+    """Context for the beat-labelling row under the choices, or None when this story isn't
+    part of a labelling round (label_sheet.LIVE_SHEETS).
+
+    Syncs the worksheet from the save first. Labelling a scene the moment you have read it is
+    the whole point of the inline row, so the scene's block has to exist in the file by the
+    time the page or the post-turn fragment renders - the alternative, appending it lazily on
+    first click, would make the first click of every turn a special case.
+    """
+    if not label_sheet.enabled_for(user_id):
+        return None
+    sheet = label_sheet.LIVE_SHEETS.get(story_slug)
+    if not sheet:
+        return None
+    try:
+        label_sheet.sync_from_save(sheet, user_id, story_slug)
+        data = label_sheet.load(sheet)
+    except (OSError, ValueError):
+        return None  # a labelling round that isn't set up must never break play
+
+    turn = len(_all_turns(ctx)) - 1
+    scene = next((s for s in data["scenes"] if s["turn"] == turn), None)
+    if scene is None:
+        return None  # turn predates this round's start_turn
+    return {"sheet": sheet, "scene": scene, "beats": data["beats"],
+            "intensity": data["intensity"], "tie_break": data["tie_break"],
+            "progress": label_sheet.progress(data)}
+
+
+def _scene_and_controls_response(ctx: dict, story_slug: str, user_id: str = None) -> str:
     """Shared by take_turn and regenerate_turn: renders the latest turn as a _scene_block
     fragment plus an out-of-band _controls update, so a single htmx swap both shows the new
     scene and replaces the old choices with fresh ones (or removes them, at endgame)."""
@@ -93,7 +123,8 @@ def _scene_and_controls_response(ctx: dict, story_slug: str) -> str:
     mode = "concluded" if ctx["state"]["plot"]["endgame"]["concluded"] else "playing"
     scene_html = render_template("_scene_block.html", turn=turn, story_slug=story_slug)
     controls_html = render_template(
-        "_controls.html", turn=turn, options=turn["options"], mode=mode, story_slug=story_slug
+        "_controls.html", turn=turn, options=turn["options"], mode=mode, story_slug=story_slug,
+        label_row=_label_row(ctx, story_slug, user_id) if user_id else None,
     )
     # class must be repeated here: an hx-swap-oob replacement swaps the whole element
     # (attributes included), so omitting it would drop base.html's .post-narration layout
@@ -281,6 +312,7 @@ def play(story_slug):
         "play.html", story_title=story_title, story_slug=story_slug,
         initial_turns=initial_turns, oldest_index=oldest_index, has_older=oldest_index > 0,
         turn=latest, options=latest["options"], mode=mode, animate=animate,
+        label_row=_label_row(ctx, story_slug, user_id),
     )
 
 
@@ -370,7 +402,7 @@ def turn_result(story_slug):
         # retry the same choice.
         return result["error"], 503
     ctx = state_store.load_state(user_id, story_slug)
-    return _scene_and_controls_response(ctx, story_slug)
+    return _scene_and_controls_response(ctx, story_slug, user_id)
 
 
 @app.route("/play/<story_slug>/api/history", methods=["GET"])
@@ -571,6 +603,66 @@ def subplot_manager_view(story_slug):
         entity_contact_count=plot_state["entity_contact_count"],
         tracked_entity_name=tracked_entity["name"] if tracked_entity else "Entity",
     )
+
+
+# --- Beat-labelling worksheets (pacing gate 0.2/0.3) -------------------------------------
+#
+# A dev/measurement tool rather than part of the game, deliberately served by the same app:
+# the worksheets live in data/ on this host and this is already the one authenticated,
+# tunnel-exposed way in. The markdown file stays authoritative (see backend/label_sheet.py) -
+# these views only read and patch it, so scripts/gate_02.py keeps scoring the same artifact
+# whether it was filled in here, in an editor, or half in each.
+
+def _labels_enabled_or_404():
+    """Worksheets are a global artifact - one file per sheet, not one per user - so the
+    feature is restricted to the single operator id in LABEL_SHEETS_USER rather than to any
+    logged-in account. 404 rather than 403: an unauthorised caller should not learn the route
+    exists."""
+    return not label_sheet.enabled_for(session.get("user_id", ""))
+
+
+@app.route("/labels", methods=["GET"])
+@login_required
+def label_sheets_index():
+    if _labels_enabled_or_404():
+        return ("Not found.", 404)
+    sheets = []
+    for name in label_sheet.list_sheets():
+        data = label_sheet.load(name)
+        sheets.append({"name": name, **label_sheet.progress(data)})
+    return render_template("label_sheets.html", sheets=sheets)
+
+
+@app.route("/labels/<sheet>", methods=["GET"])
+@login_required
+def label_sheet_view(sheet):
+    if _labels_enabled_or_404():
+        return ("Not found.", 404)
+    try:
+        data = label_sheet.load(sheet)
+    except (ValueError, FileNotFoundError):
+        return ("No such worksheet.", 404)
+    return render_template("label_sheet.html", **data, progress=label_sheet.progress(data))
+
+
+@app.route("/labels/<sheet>/scene/<int:turn>", methods=["POST"])
+@login_required
+def label_sheet_save(sheet, turn):
+    """One radio change (or note blur) per request - htmx posts the single field that
+    changed. Returns the saved-marker fragment for that scene, plus an out-of-band swap of
+    the progress line, the same one-response-two-updates pattern the play page uses."""
+    if _labels_enabled_or_404():
+        return ("Not found.", 404)
+    try:
+        counts = label_sheet.save_scene(
+            sheet, turn,
+            beat=request.form.get("beat"),
+            intensity=request.form.get("intensity"),
+            note=request.form.get("note"),
+        )
+    except (ValueError, FileNotFoundError) as e:
+        return (str(e), 400)
+    return render_template("_label_saved.html", turn=turn, progress=counts)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Labelling worksheets - Palimpsest{% endblock %}
+{% block header_title %}Beat-labelling worksheets{% endblock %}
+{% block content %}
+<section class="story-list">
+  {% for sheet in sheets %}
+  <a href="{{ url_for('label_sheet_view', sheet=sheet.name) }}">
+    <div class="card">
+      <div style="font-weight:700;">{{ sheet.name }}</div>
+      <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">
+        {{ sheet.done }} / {{ sheet.total }} labelled
+      </div>
+    </div>
+  </a>
+  {% else %}
+  <div class="card">No worksheets in <code>data/</code> yet.</div>
+  {% endfor %}
+</section>
+{% endblock %}

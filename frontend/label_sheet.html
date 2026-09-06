@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Labelling {{ sheet }} - Palimpsest{% endblock %}
+{% block header_title %}Beat labelling — {{ sheet }}{% endblock %}
+{% block content %}
+
+{#
+  Each scene is its own <form>, posting the single field that changed (hx-trigger="change")
+  rather than a page-wide submit button. There is no draft state to lose that way: closing
+  the tab mid-sheet leaves the worksheet exactly as far along as the last click, and the
+  same file can be finished in an editor over SSH instead.
+
+  htmx posts the whole small form on every change, but an unchosen radio group contributes
+  no field at all - so the save route's request.form.get() returns None for it and leaves
+  that line in the worksheet untouched, rather than blanking it.
+#}
+
+<div class="card" style="margin-bottom:18px;">
+  <div id="label-progress" class="label-progress">
+    {{ progress.done }} / {{ progress.total }} labelled
+    {%- if progress.remaining %} — {{ progress.remaining }} to go{% else %} — complete{% endif %}
+  </div>
+  {#
+    Server-rendered from the file itself, so it reflects what is actually on disk rather
+    than what the page thinks it sent. Ten labels went missing on the first sheet with no
+    visible sign, because a scene that never posted looked identical to a saved one.
+  #}
+  <div id="unlabelled-list" style="margin-top:10px;">
+    {% set pending = scenes | rejectattr('beat') | list | map(attribute='turn') | list %}
+    {% set partial = scenes | selectattr('beat') | rejectattr('intensity') | list | map(attribute='turn') | list %}
+    {% if pending or partial %}
+    <div style="color:var(--danger); font-size:0.9rem;">
+      Not yet saved:
+      {% for t in pending + partial | sort %}<a href="#scene-{{ t }}" style="margin-right:6px;">{{ t }}</a>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <details style="margin-top:12px;">
+    <summary style="cursor:pointer;">The beats and the boundary rule</summary>
+    <ul style="margin-top:10px;">
+      {% for beat in beats %}
+      <li style="margin-bottom:6px;"><code>{{ beat.name }}</code> — {{ beat.definition }}</li>
+      {% endfor %}
+    </ul>
+    <ul>
+      {% for level in intensity %}
+      <li style="margin-bottom:6px;"><strong>{{ level.value }}</strong> — {{ level.description }}</li>
+      {% endfor %}
+    </ul>
+    <p style="color:var(--muted);">Scenes that turn in their final paragraph are classified by
+    their <em>terminal</em> state — what is true when the scene stops. First instinct is
+    usually right; disagreements are data, not mistakes.</p>
+  </details>
+</div>
+
+{% for scene in scenes %}
+<section class="card label-scene" id="scene-{{ scene.turn }}">
+  <div class="label-scene-head">
+    <h3 style="margin:0;">Turn {{ scene.turn }}</h3>
+    <span class="saved-slot" id="saved-{{ scene.turn }}">
+      {%- if scene.beat and scene.intensity %}<span class="saved-mark">saved</span>{% endif -%}
+    </span>
+  </div>
+
+  <p class="label-action"><strong>Action:</strong> {{ scene.action }}</p>
+  <p class="story"><strong>Opens:</strong> {{ scene.opens }}</p>
+  {% if scene.closes %}<p class="story"><strong>Closes:</strong> {{ scene.closes }}</p>{% endif %}
+
+  <form class="label-form"
+        hx-post="{{ url_for('label_sheet_save', sheet=sheet, turn=scene.turn) }}"
+        hx-trigger="change"
+        hx-target="#saved-{{ scene.turn }}"
+        hx-swap="innerHTML">
+
+    <div class="label-row">
+      <span class="label-row-title">Beat</span>
+      {% for beat in beats %}
+      <label class="label-choice" title="{{ beat.definition }}">
+        <input type="radio" name="beat" value="{{ beat.name }}"
+               {% if scene.beat == beat.name %}checked{% endif %}>
+        <span>{{ beat.name }}</span>
+      </label>
+      {% endfor %}
+    </div>
+
+    <div class="label-row">
+      <span class="label-row-title">Intensity</span>
+      {% for level in intensity %}
+      <label class="label-choice" title="{{ level.description }}">
+        <input type="radio" name="intensity" value="{{ level.value }}"
+               {% if scene.intensity == level.value %}checked{% endif %}>
+        <span>{{ level.value }}</span>
+      </label>
+      {% endfor %}
+    </div>
+
+    {# Note saves on blur rather than every keystroke - `change` on a text input fires once
+       focus leaves, which is one request per note instead of one per character. #}
+    <div class="label-row">
+      <span class="label-row-title">Note</span>
+      <input class="label-note" type="text" name="note" value="{{ scene.note }}"
+             placeholder="only if the scene was hard to call">
+    </div>
+  </form>
+</section>
+{% endfor %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // A radio click is only "answered" once the server says so. Between the click and the
+  // response the scene shows "saving…", and a failed or never-sent request leaves a loud
+  // "NOT SAVED" instead of a tick - the failure mode that cost ten labels on the first
+  // sheet was a silent one, where an unsent change looked exactly like a saved change.
+  document.body.addEventListener("change", (e) => {
+    const scene = e.target.closest(".label-scene");
+    if (scene) scene.querySelector(".saved-slot").innerHTML =
+      '<span class="saving-mark">saving…</span>';
+  });
+
+  document.body.addEventListener("htmx:afterRequest", (e) => {
+    const scene = e.target.closest && e.target.closest(".label-scene");
+    if (!scene) return;
+    if (!e.detail.successful || (e.detail.xhr && e.detail.xhr.status >= 400)) {
+      scene.querySelector(".saved-slot").innerHTML =
+        '<span class="unsaved-mark">NOT SAVED — click it again</span>';
+    }
+  });
+
+  document.body.addEventListener("htmx:sendError", (e) => {
+    const scene = e.target.closest && e.target.closest(".label-scene");
+    if (scene) scene.querySelector(".saved-slot").innerHTML =
+      '<span class="unsaved-mark">NOT SAVED — click it again</span>';
+  });
+</script>
+{% endblock %}

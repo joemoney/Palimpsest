@@ -36,6 +36,10 @@ from replay_turn import all_turns, split_turn  # noqa: E402
 from make_label_sheet import BEATS, INTENSITY, strip_options  # noqa: E402
 
 VALID = {name for name, _ in BEATS}
+# What a human is allowed to have written in the worksheet. With --vocab this is the vocabulary
+# they actually labelled against, which for a collapsed vocabulary is the PRE-collapse names -
+# those are not in VALID, and scoring them as unrecognised would silently drop every row.
+LABEL_VOCAB = set(VALID)
 
 
 def parse_labels(path: str) -> dict:
@@ -48,13 +52,18 @@ def parse_labels(path: str) -> dict:
         if block.strip().isdigit():
             turn = int(block)
             continue
-        beat = re.search(r"^BEAT:\s*(.*)$", block, flags=re.M)
-        intensity = re.search(r"^INTENSITY:\s*(.*)$", block, flags=re.M)
+        # [ \t]* not \s*: on an unfilled row \s* crosses the newline and captures the NEXT
+        # line, so a half-finished worksheet reported every blank scene as the unrecognised
+        # beat "intensity:" instead of simply skipping it.
+        beat = re.search(r"^BEAT:[ \t]*(.*)$", block, flags=re.M)
+        intensity = re.search(r"^INTENSITY:[ \t]*(.*)$", block, flags=re.M)
         if not beat:
             continue
         raw = beat.group(1).strip().lower()
+        if not raw:
+            continue  # not labelled yet
         raw = {"crises": "crisis", "resolutions": "resolution", "lulls": "lull"}.get(raw, raw)
-        if raw not in VALID and raw not in {"crisis", "escalation", "lull", "resolution"}:
+        if raw not in LABEL_VOCAB:
             print(f"turn {turn}: unrecognised beat {raw!r}", file=sys.stderr)
             continue
         try:
@@ -65,8 +74,15 @@ def parse_labels(path: str) -> dict:
     return labels
 
 
+TIE_BREAK = ""
+
+
 def classifier_prompt(action: str, narration: str) -> str:
     beats = "\n".join(f"- {name}: {defn}" for name, defn in BEATS)
+    # Whatever tie-break the worksheet showed the human has to reach the classifier verbatim
+    # too, for the same reason the definitions do: otherwise the two are answering different
+    # questions and the agreement number measures the gap between them.
+    tie = f"\n\n{TIE_BREAK}" if TIE_BREAK else ""
     levels = "\n".join(f"- {n}: {desc}" for n, desc in INTENSITY)
     return f"""Classify this scene from an interactive story by beat type and intensity.
 
@@ -74,7 +90,7 @@ BEAT TYPES (choose exactly one):
 {beats}
 
 If a scene opens in one mode and turns in its final paragraph, classify by the scene's
-terminal state - what is true when the scene stops.
+terminal state - what is true when the scene stops.{tie}
 
 INTENSITY:
 {levels}
@@ -95,20 +111,26 @@ def main():
     ap.add_argument("--user", default=state_store.DEFAULT_USER_ID)
     ap.add_argument("--story", default=state_store.DEFAULT_STORY_SLUG)
     ap.add_argument("--labels", required=True)
+    ap.add_argument("--tier", choices=["b", "c"], default="c",
+                    help="Which model tier classifies. 'c' (default) is what production would "
+                    "actually run every turn; 'b' adds reasoning, for diagnosing whether a "
+                    "failure is the vocabulary's fault or the cheap model's.")
     ap.add_argument("--vocab", help="JSON vocabulary to test instead of the spec's four beats: "
                     "{beats:{name:{definition}}, collapse:{old_beat:new_beat}, intensity:[[n,desc]]}. "
                     "Human labels are mapped through `collapse` so an existing worksheet can score "
                     "a revised vocabulary without relabelling.")
     args = ap.parse_args()
 
-    global BEATS, INTENSITY, VALID
+    global BEATS, INTENSITY, VALID, LABEL_VOCAB, TIE_BREAK
     collapse = None
     if args.vocab:
         v = json.load(open(args.vocab))
         BEATS = [(n, b["definition"]) for n, b in v["beats"].items()]
         INTENSITY = [tuple(x) for x in v.get("intensity", INTENSITY)]
         VALID = {n for n, _ in BEATS}
-        collapse = v["collapse"]
+        TIE_BREAK = v.get("tie_break", "")
+        collapse = v.get("collapse") or None
+        LABEL_VOCAB = VALID | set(collapse or {})
 
     human = parse_labels(args.labels)
     if not human:
@@ -125,7 +147,12 @@ def main():
         action, narration = split_turn(turns[turn_no - 1])
         prompt = classifier_prompt(action, strip_options(narration))
         try:
-            out = story_engine.call_llm_json(prompt)
+            if args.tier == "b":
+                out = story_engine.call_llm_json(
+                    prompt, model=story_engine.TIER_AB_MODEL,
+                    provider=story_engine.TIER_AB_PROVIDER, reasoning=True)
+            else:
+                out = story_engine.call_llm_json(prompt)
         except (story_engine.LLMUnavailableError, json.JSONDecodeError, ValueError) as e:
             print(f"turn {turn_no}: classifier failed ({e})", file=sys.stderr)
             continue
@@ -143,10 +170,22 @@ def main():
 
     agree = sum(1 for r in rows if r[5])
     pct = 100.0 * agree / len(rows)
+    # Raw agreement alone hides a degenerate classifier: on the example sheet a run that
+    # answered the SAME beat for all 30 scenes scored 56.7%, purely because that beat was
+    # the human's majority class. Kappa corrects for chance and reports 0.00 there, which is
+    # the honest number, so it is printed alongside and the marginals are shown outright.
+    labels = sorted({r[1] for r in rows} | {r[3] for r in rows})
+    n = len(rows)
+    p_e = sum((sum(1 for r in rows if r[1] == k) / n) * (sum(1 for r in rows if r[3] == k) / n)
+              for k in labels)
+    kappa = (pct / 100.0 - p_e) / (1 - p_e) if p_e < 1 else 0.0
     int_agree = sum(1 for r in rows if r[2] is not None and r[2] == r[4])
 
     print(f"\n{'=' * 62}")
     print(f"BEAT AGREEMENT: {agree}/{len(rows)} = {pct:.1f}%   (gate: >=70%)")
+    print(f"COHEN'S KAPPA:  {kappa:.3f}   (0 = no better than guessing the majority class)")
+    print("  human:      " + ", ".join(f"{k}={sum(1 for r in rows if r[1] == k)}" for k in labels))
+    print("  classifier: " + ", ".join(f"{k}={sum(1 for r in rows if r[3] == k)}" for k in labels))
     print(f"INTENSITY EXACT: {int_agree}/{len(rows)} = {100.0 * int_agree / len(rows):.1f}%")
     print(f"{'=' * 62}")
 
@@ -160,6 +199,10 @@ def main():
                   f"disagreements.\n  Per the plan, a consistently confused pair is collapsed "
                   f"into one beat, not reworded.")
 
+    if pct >= 70 and kappa < 0.4:
+        print("\nFAIL - agreement clears 70% but kappa is near chance: the classifier is "
+              "riding a majority class, not discriminating.")
+        return 1
     print("\nPASS" if pct >= 70 else "\nFAIL - do not proceed to 6.2 on this vocabulary")
     return 0 if pct >= 70 else 1
 

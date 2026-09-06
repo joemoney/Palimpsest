@@ -34,3 +34,101 @@
     <button type="submit">{{ "4. Steer" if options else "Continue" }}</button>
   </form>
 {% endif %}
+
+{#
+  Beat-labelling row for the scene just read (gate 0.3, second round). Only rendered for a
+  story in label_sheet.LIVE_SHEETS, so it is invisible during ordinary play of anything else.
+  It posts to the same /labels/<sheet>/scene/<turn> endpoint the standalone worksheet page
+  uses and patches the same markdown file - labelling here or there is the same act, and
+  scripts/gate_02.py cannot tell the difference.
+
+  Being inside #controls means the OOB controls swap at the end of a turn replaces this row
+  wholesale, so it always points at the turn that was just rendered above it rather than the
+  previous one. That is also why it carries no client-side state.
+#}
+{% if label_row %}
+<section class="card label-inline">
+  <div class="label-scene-head">
+    <span class="label-row-title">
+      Label turn {{ label_row.scene.turn }}
+      {# The definitions are the whole measurement - a label given from memory of them, three
+         turns later, is not the same label. Kept one click away rather than inline so the
+         row stays a two-click action once you know them. #}
+      <button type="button" class="label-help-button" title="How to grade this scene"
+              onclick="document.getElementById('label-help-modal').showModal()">?</button>
+    </span>
+    <span class="saved-slot" id="saved-{{ label_row.scene.turn }}">
+      {%- if label_row.scene.beat and label_row.scene.intensity %}<span class="saved-mark">saved</span>{% endif -%}
+    </span>
+  </div>
+  <form class="label-form label-scene"
+        hx-post="{{ url_for('label_sheet_save', sheet=label_row.sheet, turn=label_row.scene.turn) }}"
+        hx-trigger="change"
+        hx-target="#saved-{{ label_row.scene.turn }}"
+        hx-swap="innerHTML">
+    <div class="label-row">
+      <span class="label-row-title">Beat</span>
+      {% for beat in label_row.beats %}
+      <label class="label-choice" title="{{ beat.definition }}">
+        <input type="radio" name="beat" value="{{ beat.name }}"
+               {% if label_row.scene.beat == beat.name %}checked{% endif %}>
+        <span>{{ beat.name }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="label-row">
+      <span class="label-row-title">Intensity</span>
+      {% for level in label_row.intensity %}
+      <label class="label-choice" title="{{ level.description }}">
+        <input type="radio" name="intensity" value="{{ level.value }}"
+               {% if label_row.scene.intensity == level.value %}checked{% endif %}>
+        <span>{{ level.value }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </form>
+  <dialog id="label-help-modal">
+    <h3 style="margin-top:0;">How to grade this scene</h3>
+    <p class="story" style="font-size:0.9rem;">Pick the beat that matches the scene you just
+    read, then score its intensity. Don't overthink it — first instinct is usually right, and
+    disagreements with the classifier are data, not mistakes.</p>
+
+    <h4 style="margin-bottom:6px;">The beats</h4>
+    <ul style="margin-top:0; padding-left:18px;">
+      {% for beat in label_row.beats %}
+      <li style="margin-bottom:8px; font-size:0.85rem;">
+        <code>{{ beat.name }}</code> — {{ beat.definition }}
+      </li>
+      {% endfor %}
+    </ul>
+    {% if label_row.tie_break %}
+    <p style="font-size:0.85rem;"><strong>Tie-break.</strong> {{ label_row.tie_break }}</p>
+    {% endif %}
+
+    <h4 style="margin-bottom:6px;">Intensity</h4>
+    <ul style="margin-top:0; padding-left:18px;">
+      {% for level in label_row.intensity %}
+      <li style="margin-bottom:6px; font-size:0.85rem;"><strong>{{ level.value }}</strong> — {{ level.description }}</li>
+      {% endfor %}
+    </ul>
+    <p style="font-size:0.85rem; color:var(--muted);">Score every scene, including quiet ones —
+    counters accumulate intensity rather than scene count.</p>
+
+    <h4 style="margin-bottom:6px;">If the scene turns partway</h4>
+    <p style="font-size:0.85rem; color:var(--muted); margin-top:0;">Some scenes open in one
+    mode and turn in their final paragraph. Classify by the scene's <em>terminal</em> state —
+    what is true when it stops, since that is what carries into the next turn.</p>
+
+    <form method="dialog" style="margin-top:16px;">
+      <button type="submit" style="width:100%;">Close</button>
+    </form>
+  </dialog>
+
+  {# Same id the standalone page uses, so _label_saved.html's OOB progress swap lands here
+     too instead of htmx logging a missing-target error on every save. #}
+  <div id="label-progress" class="label-progress-inline">
+    {{ label_row.progress.done }} / {{ label_row.progress.total }} labelled —
+    <a href="{{ url_for('label_sheet_view', sheet=label_row.sheet) }}">full worksheet</a>
+  </div>
+</section>
+{% endif %}

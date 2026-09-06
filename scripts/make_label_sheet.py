@@ -15,19 +15,34 @@ repo's history or anywhere hosted.
 
 Usage:
   scripts/make_label_sheet.py --user <id> --story new_babel --out data/labels_new_babel.md
+  scripts/make_label_sheet.py --user <id> --story example --out data/labels_example.md \
+      --vocab data/vocab_example_4beat.json
 
-Gate 0.3 needs the identical artifact for a `example` playthrough, which is why this is a
-script and not a one-off paste.
+The beats below are New Babel's and are the default only because it was labelled first. Gate
+0.3 is the same exercise against a second genre's vocabulary, so pass --vocab with the same
+JSON file gate_02.py will score against - the worksheet and the classifier prompt must
+interpolate identical definition strings or the agreement number compares two questions.
 """
 
 import argparse
+import json
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend"))
 
+import label_sheet  # noqa: E402
 import state_store  # noqa: E402
 from replay_turn import all_turns, split_turn  # noqa: E402
+
+# Scene-block format and excerpting live in backend/label_sheet.py, because the web
+# labelling UI writes worksheets too and a block written by either path has to be readable
+# by the other and by gate_02.py. This script keeps its own, wordier header - a sheet filled
+# in offline needs the "label independently" preamble that a live sheet has no room for.
+strip_options = label_sheet.strip_options
+excerpt = label_sheet.excerpt
+HEAD_WORDS = label_sheet.HEAD_WORDS
+TAIL_WORDS = label_sheet.TAIL_WORDS
 
 # Copied verbatim from pacing spec §5.1 (New Babel) - these are the strings that go into the
 # classifier prompt, so the human must judge against exactly the same wording or the agreement
@@ -48,30 +63,18 @@ INTENSITY = [
     ("3", "Physical danger, active pursuit, body-horror escalation"),
 ]
 
-HEAD_WORDS = 60
-TAIL_WORDS = 150
-
-
-def strip_options(narration: str) -> str:
-    """Stored turns keep the model's whole reply, OPTIONS block included. Those are the choices
-    offered, not part of the scene, and left in they swamp the tail excerpt - which is the half
-    the boundary rule actually depends on."""
-    head = narration.split("\nOPTIONS:")[0]
-    return head.rstrip()
-
-
-def excerpt(narration: str) -> tuple:
-    """Opening and closing of a scene. The closing matters most: the boundary rule below asks
-    for the scene's terminal state, and four of the 24 scenes in the first sample turn over in
-    their final paragraph."""
-    words = strip_options(narration).split()
-    if len(words) <= HEAD_WORDS + TAIL_WORDS:
-        return " ".join(words), ""
-    return " ".join(words[:HEAD_WORDS]), " ".join(words[-TAIL_WORDS:])
+def load_vocab(path: str):
+    """Swaps in a story's own beats/intensity, so the sheet a human fills in is worded exactly
+    like the classifier prompt gate_02.py will run over the same scenes."""
+    global BEATS, INTENSITY
+    v = json.load(open(path))
+    BEATS = [(n, b["definition"]) for n, b in v["beats"].items()]
+    INTENSITY = [tuple(x) for x in v.get("intensity", INTENSITY)]
 
 
 def header(story: str, count: int) -> str:
     beats = "\n".join(f"- **`{name}`** — {defn}" for name, defn in BEATS)
+    n_beats = {2: "two", 3: "three", 4: "four", 5: "five"}.get(len(BEATS), str(len(BEATS)))
     levels = "\n".join(f"- **{n}** — {desc}" for n, desc in INTENSITY)
     return f"""# Beat labelling worksheet — `{story}`
 
@@ -90,7 +93,7 @@ Disagreements are data — they show which beat pairs are ambiguous, and the pla
 consistently confused pair is to collapse it into one beat. First instinct is usually the right
 label.
 
-## The four beats
+## The {n_beats} beats
 
 {beats}
 
@@ -100,8 +103,8 @@ Every scene gets exactly one. If two seem to fit, apply the boundary rule below.
 
 {levels}
 
-Score every scene, including `lull` and `resolution` — counters accumulate intensity rather
-than scene count, so a quiet scene still carries a weight.
+Score every scene, including the quiet ones — counters accumulate intensity rather than scene
+count, so a quiet scene still carries a weight.
 
 ## The boundary rule
 
@@ -124,6 +127,14 @@ def main():
     ap.add_argument("--user", default=state_store.DEFAULT_USER_ID)
     ap.add_argument("--story", default=state_store.DEFAULT_STORY_SLUG)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--vocab", help="JSON vocabulary to label against (same file gate_02.py "
+                    "takes); defaults to the New Babel beats above.")
+    ap.add_argument("--live", action="store_true",
+                    help="Create an EMPTY sheet that fills in as you play, instead of one "
+                    "covering the turns already played.")
+    ap.add_argument("--start-turn", type=int, default=None,
+                    help="With --live: first turn this round covers. Defaults to the next "
+                    "unplayed turn, so an earlier round's turns aren't pulled in.")
     args = ap.parse_args()
 
     if not args.out.startswith("data/"):
@@ -131,19 +142,29 @@ def main():
               "(see module docstring)", file=sys.stderr)
         return 2
 
+    if args.vocab:
+        load_vocab(args.vocab)
+
     ctx = state_store.load_state(args.user, args.story)
     turns = all_turns(ctx)[1:]  # index 0 is the opening scene, not a played turn
+
+    if args.live:
+        # An empty sheet that the play page appends to as turns are played
+        # (label_sheet.sync_from_save), for labelling a round WHILE playing it rather than
+        # from an export afterwards. Point label_sheet.LIVE_SHEETS at the resulting name.
+        sheet = os.path.basename(args.out)[len("labels_"):-len(".md")]
+        path = label_sheet.create(
+            sheet, BEATS, INTENSITY, start_turn=args.start_turn or len(turns) + 1,
+            tie_break=(json.load(open(args.vocab)).get("tie_break", "") if args.vocab else ""),
+        )
+        print(f"Created empty live sheet {path}, starting at turn "
+              f"{label_sheet.start_turn(sheet)}")
+        return 0
 
     parts = [header(args.story, len(turns))]
     for i, entry in enumerate(turns, start=1):
         action, narration = split_turn(entry)
-        head, tail = excerpt(narration)
-        parts.append(f"## Turn {i}\n\n")
-        parts.append(f"**Action:** {action}\n\n")
-        parts.append(f"**Opens:** {head}…\n\n")
-        if tail:
-            parts.append(f"**Closes:** …{tail}\n\n")
-        parts.append("```\nBEAT:       \nINTENSITY:  \nNOTE:       \n```\n\n---\n\n")
+        parts.append(label_sheet.render_scene(i, action, narration))
 
     parts.append("## When you're done\n\nSave the file and say so. The classifier prompt gets "
                  "run over the same scenes via `scripts/replay_turn.py`, and the two label "
