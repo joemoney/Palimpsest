@@ -941,6 +941,10 @@ replication, on a failing round.**
 
 #### Round 3 — pre-registered
 
+**Amended after the fact — see "Round 3 amendment" below. The text of this block is left
+exactly as first written; a pre-registration that gets quietly edited once its assumptions
+break is worth nothing.**
+
 17 more turns (61-77), labelled natively under v3 as played. No vocabulary changes, no
 relabels, no guidance changes; same sheet (`example_v3`), with the native/relabelled boundary
 recorded here rather than enforced by a second file. Stated before the data exists, so the
@@ -959,3 +963,45 @@ result cannot be reinterpreted afterwards:
 If both κs land ≥ 0.4, gate 0.3 passes on `example` and §9.5's step 1 is discharged: the
 authored-vocabulary design holds cross-genre, and Phase 6.1 proceeds with the authoring
 procedure in §9.9 rather than with a thriller-only module.
+
+#### Round 3 — amendment (disclosed deviation from the pre-registration above)
+
+After round 3 was pre-registered but before any of its turns were played, the rater asked
+which scenes they and the classifier had disagreed on in the native slice, and the three were
+adjudicated with them. **This trains the rater**, and the pre-registration above explicitly
+said guidance would not change. Recorded here rather than left implicit.
+
+The three disagreements in turns 44-60, adjudicated against v3's text:
+
+| Turn | Human | Classifier | Adjudication |
+|---|---|---|---|
+| 45 | `comfort` | `disquiet` | **Classifier right** — the protagonist presses ("Turn around… show me what it kept of her"), is refused ("I'm not your mother"), and is warned conditionally ("You can still go back. But you'll have to leave the shoe"). Three qualifying lines missed. |
+| 48 | `disquiet` | `comfort` | **Human right** — "**Don't pick it up** until you're ready to carry what the tide left in it." |
+| 50 | `disquiet` | `comfort` | **Human right** — "so will you, **as long as you don't sit with your back to it**." |
+
+**New finding, classifier side.** Turns 48 and 50 are both warnings *phrased as hospitality* —
+a caution wrapped in care, in a warm kitchen. The classifier misses those, which is the mirror
+image of the rater's own blind spot (§9.10): the human over-weights warm register and misses
+the warning inside it; the classifier does the same on **conditional** warnings ("don't X until
+Y", "safe as long as you don't Z"). This is the first defect found on the classifier's side
+rather than the vocabulary's or the rater's, and it is a candidate fix independent of both —
+naming conditional and hedged warnings explicitly in `disquiet`'s third clause.
+
+It also slightly re-reads §9.11's native slice: two of its three errors are the classifier's,
+not the rater's, so the rater's calibration there was better than κ alone suggests and the
+residual gap is genuinely two-sided.
+
+**Consequences for round 3, all downgrades:**
+
+- The primary criterion is no longer *replication*. It is **replication with a trained rater**
+  — a weaker claim, since a κ ≥ 0.4 on turns 61-77 can no longer be cleanly separated from the
+  effect of this conversation.
+- §9.10's blind spots (physical obstruction, unseen or third-party speakers) are now **partly
+  trained**, so the "lower bound" framing carried since §9.10 no longer applies to round 3.
+- The pooled 34-native-scene figure (44-77) now mixes two rater states. It remains the largest
+  clean-vocabulary sample, but it is no longer a single-condition measurement, and should be
+  reported with the split visible.
+- What round 3 can still do cleanly: test the **base-rate confound** (does κ hold on a stretch
+  that isn't quiet?), and test whether the vocabulary is workable *at all* by a calibrated
+  rater — which is the question Phase 6.1 actually needs answered, since a production rater
+  would be trained too. A truly untrained replication would now need a **different rater**.
