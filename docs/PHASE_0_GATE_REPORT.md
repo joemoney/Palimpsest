@@ -1096,3 +1096,34 @@ The §9.5 sequence is now discharged as far as labelling can take it. Recommende
 - **The §9.9 hand-off to Phase 6.1 stands**, with one addition: the authoring procedure should
   include the base-rate check, the κ criterion, **and** a test-retest run, since the last of
   those is what exposed how noisy the first two are on their own.
+
+### 9.13 v3.1 — targeted validation (pre-registered; committed before the run)
+
+v3.1 applies §9.12.3's two fixes: obstruction means a character standing in the way, not one
+*describing* an obstacle; and a warning still counts when phrased as care or as a condition.
+`data/vocab_example_2beat_v3_1.json`.
+
+Validated against a **gold set** rather than against either rater — the five scenes adjudicated
+against v3's own text in §9.11's amendment and §9.12.1. Both raters have documented, opposite
+blind spots, so neither is the standard here; the adjudicated reading is.
+
+| Turn | Gold | v3 gave | Why |
+|---|---|---|---|
+| 45 | `disquiet` | `disquiet` ✓ | protagonist presses, is refused, is conditionally warned |
+| 48 | `disquiet` | `comfort` ✗ | "Don't pick it up until you're ready" — hedged warning |
+| 50 | `disquiet` | `comfort` ✗ | "as long as you don't sit with your back to it" |
+| 80 | `comfort` | `disquiet` ✗ (unstable) | speaker explains what the door needs |
+| 81 | `comfort` | `comfort` ✓ | same, and answered inconsistently with 80 |
+
+**v3 baseline: 2 of 5.**
+
+Stated before running, per §9.12.2 (3 runs, mean and range):
+
+- **Primary:** gold-set accuracy, majority-of-3. **4/5 or 5/5 validates**; 3/5 or below does not.
+- **Secondary:** turn 80 stable across all three runs (v3 flip-flopped on it).
+- **Tertiary:** self-κ across runs should hold at or above v3's 0.791 — both edits remove
+  ambiguity, so stability should not fall.
+- **Reported but NOT a pass criterion:** κ against the rater's existing v3 labels. v3.1
+  deliberately diverges from those labels on turns 80 and 81, so this number is expected to
+  move little and could fall. Treating it as the criterion would be scoring the fix against
+  the very reading it was written to correct.
