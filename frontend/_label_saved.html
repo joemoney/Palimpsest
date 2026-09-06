@@ -1,0 +1,6 @@
+{# Response to one field save: the per-scene tick, plus an OOB refresh of the progress line. #}
+<span class="saved-mark">saved</span>
+<div id="label-progress" class="label-progress" hx-swap-oob="true">
+  {{ progress.done }} / {{ progress.total }} labelled
+  {%- if progress.remaining %} — {{ progress.remaining }} to go{% else %} — complete{% endif %}
+</div>

@@ -553,6 +553,25 @@ using it — this only stays correct if `narration_before_name` itself never
 contains markdown, which is true for every story's hand-authored opening today
 but isn't otherwise enforced.
 
+### Beat-labelling worksheets (operator tool, off by default)
+`backend/label_sheet.py` + `/labels/<sheet>` + the inline row under the play page's
+choices exist to run the pacing spec's classifier-agreement gates (see
+`docs/PHASE_0_GATE_REPORT.md`), not as a player feature. The worksheet markdown
+file under `data/` is the single artifact `scripts/gate_02.py` scores, and three
+callers write it - `scripts/make_label_sheet.py`, the standalone page, and the
+inline row - so the block format lives in `label_sheet.py` and a save patches
+only the three field lines inside one turn's fence.
+
+Two things are deliberate and easy to undo by accident. Saves take a `filelock`
+around the whole read-modify-write, because labelling fires a burst of
+independent POSTs that gunicorn spreads across worker *processes* and an
+unlocked version silently dropped labels. And the whole feature is gated on
+`LABEL_SHEETS_USER` naming one operator id: worksheets are a single global file
+per sheet, not per-user, so without the gate any logged-in player could read and
+patch them, and any player far enough into a live-sheet story would get
+labelling controls and append their turns to someone else's measurement run.
+Unset means every route 404s and no row renders.
+
 ## Multi-User, Multi-Story Architecture
 Many users, each with independent progress, and many stories (not just one
 the engine can ever run) — see `state_store.py`, the single storage layer
