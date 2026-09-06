@@ -641,7 +641,9 @@ the gate, so this was not re-run.
 
 ### 9.4 Why the cozy beats resist classification — hypothesis, untested
 
-Offered as the next experiment's premise, not as a finding.
+Offered as the next experiment's premise, not as a finding. **Superseded by §9.7**, which
+adjudicated the disputed scenes and found the defect is the two definitions *overlapping*
+rather than `disquiet` alone being permissive.
 
 New Babel's beats key off **pursuit**, which is punctual and visible: a pursuer is in the
 scene or is not. Millbrook's key off **whether something adds up**, which in a mystery is a
@@ -703,3 +705,82 @@ Two things should happen regardless of which branch is taken:
   `frontend/label_sheet.html`) — radio-button labelling that patches the markdown file in
   place, so the file stays the single artifact `gate_02.py` scores whether it was filled in
   through the browser or an editor.
+
+### 9.7 Adjudication: the human labels are not the weak link, but they aren't ground truth either
+
+Raised after §9 was first written: what if the low score is the *human* rater failing to read
+the beat off the prose, rather than the classifier failing? The objection is well founded as
+far as §9's framing goes. The gate measures **agreement**, not accuracy. Neither rater is
+ground truth, and §9 nonetheless attributes every disagreement to the classifier, which the
+data does not license. Its strongest form is sharper still: under v1's `disquiet` — "a detail
+contradicts what was said earlier, a person evades a direct question" — it is arguable that
+*every* scene in a mystery qualifies, in which case the classifier applied the definition
+faithfully and the human applied a stricter, unwritten one.
+
+**Method.** All 13 scenes where the human said `comfort` and the classifier said `disquiet`
+were re-read in full and adjudicated against v1's *written* triggers — not against either
+rater's judgement, and not against a notion of what the scene "really is." The question asked
+of each was narrow: does the text contain a specific, identifiable instance of a trigger the
+definition names?
+
+| Verdict | Turns | n |
+|---|---|---|
+| Classifier better supported by v1's own text | 2, 5, 9, 11, 12, 14 | 6 |
+| Human better supported | 7, 21, 28, 29 | 4 |
+| Genuinely ambiguous — the scene satisfies **both** definitions | 1, 6, 27 | 3 |
+
+The six are not close calls. Turn 2: the protagonist asks whether the door opened by itself
+and is told "old hinges… every door in town develops opinions," which the narration itself
+labels — "It's not an answer, exactly." That is v1's `a person evades a direct question`,
+verbatim. Turn 14: the ferry manifest visibly alters while he reads it, his own arrival time
+changes on the page, and Susan closes the book before he can ask — `a record or object is
+missing or altered`, twice over. Turn 11: tally marks appear on a wall that didn't have them,
+and are explained away with a smile that "lands a little too late." The human labelled all
+three `reassurance`.
+
+**So the answer is: partly.** The human rater misapplied v1's triggers in roughly 6 of 13
+disputed scenes — but was *right* in 4 and defensibly either-way in 3, which is not the
+profile of someone who cannot read the beats off the prose. Their label sequence is also
+internally coherent (comfort-heavy opening, a clustered confrontation run at turns 18-25,
+intensity rising with the arc and relaxing at 27-29) — the signature of a consistent rubric,
+not of noise.
+
+**The real defect is that v1's two definitions overlap.** Millbrook's characters deliver
+anomalies *warmly*: an explanation IS offered, hospitably, about a thing that does not add up.
+Such a scene satisfies a `disquiet` trigger and v1's `comfort` clause ("given an explanation
+that holds for now") simultaneously. Faced with that overlap, the two raters resolved it
+consistently in opposite directions — the **human by social register** (is anyone being
+adversarial?), the **classifier by anomaly presence** (did something fail to add up?). Neither
+is misreading the prose. They are answering two different questions that v1's wording allows
+to be asked of the same scene.
+
+This supersedes §9.4's hypothesis, which named `disquiet`'s permissiveness alone. Permissive-
+ness was real but secondary; non-exclusivity is the defect. It also revises §9.1: the
+classifier's 30-of-30 is less absurd than κ = 0.00 makes it look, since under v1's letter the
+true `disquiet` rate is genuinely high. **What does not change is the production consequence.**
+A beat that is satisfied by nearly every scene cannot drive a counter, whichever rater is
+right about any individual scene, so `force_complication` still never fires and gate 0.3 still
+fails.
+
+**v2 was checked against the same 13.** Requiring that someone *act* on the strangeness, and
+excluding comfort when they do, decides 12 of the 13 by rule rather than by taste — turns 2,
+5, 9, 11 and 14 resolve to `disquiet`; 7, 21, 28 and 29 to `comfort`, matching the human. Turn
+12 flips to `comfort` (nobody presses or refuses; Susan is merely confused), turn 1 is decided
+by the tie-break's quote test on "Best not to watch it go," and turn 27 stays genuinely
+borderline. That is the intended effect, arrived at before this adjudication was run, and it
+is now evidence rather than hypothesis.
+
+**Limits of this adjudication, stated plainly.** It was performed by a model, so it is a third
+reading of the definitions and not an independent human check; two models agreeing measures
+shared bias (§'s own standing warning about the §2 table applies here too). It adjudicates
+*definitional fit*, which is the question that matters for choosing a vocabulary, but it
+cannot establish what a scene "is." And the human side of every number in §7 and §9 remains
+one rater, one session, with no intra-rater reliability measured — if that rater is noisy,
+New Babel's κ = 0.50 falls with it, so this objection widens the error bars on the passing
+result as much as on the failing one.
+
+**Consequence for the second round.** The rewritten definitions only help if the human applies
+the same event test the classifier is given. The inline labelling row's `?` popup carries the
+definitions, the tie-break and the boundary rule for exactly this reason: label from the
+quote test — can you point at the line where someone presses, refuses, warns, or obstructs? —
+rather than from how warm the scene felt.
