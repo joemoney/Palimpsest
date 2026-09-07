@@ -68,12 +68,12 @@ definition, so it does not invalidate `PHASE_0_GATE_REPORT.md` §9.13.1 or requi
 the gate scripts. `reduced_directive` was deliberately left alone - a constrained
 mid-action breath is not the scene to land a revelation in.
 
-**Still open, and deliberately not touched:** `example`'s directive carries the same "if the
-reveal queue is non-empty" bullet, but `example` authors no `mechanics.revelations` at all,
-so its queue can never be non-empty and the bullet is unsatisfiable text in the prompt. It is
-harmless but it is noise, and there is some risk a narrator reads it as licence to invent a
-reveal. Removing it is a one-line template edit; it was left to the repo owner since it is
-authored content, not engine behaviour.
+**Closed:** `example`'s directive carried the same "if the reveal queue is non-empty" bullet,
+but `example` authors no `mechanics.revelations` at all, so its queue could never be
+non-empty and the bullet was unsatisfiable text in the prompt - harmless, but noise, and
+some risk of a narrator reading it as licence to invent a reveal. Removed from `directive`
+in `stories/example/template.json` (the bullet was never in `reduced_directive`). Content-
+only change, no engine code touched.
 
 Tests for all of the above are in `test/test_pacing_loop.py` (suite: 35 files, all passing).
 
