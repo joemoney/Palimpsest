@@ -139,13 +139,13 @@ try:
     print("OK: first /play visit shows the name-entry form")
 
     # --- submitting a name applies it and flips into the first character-creation step
-    # (new_babel authors a two-step character_creation list: class, then starting_place -
-    # this is what exercises that generic mechanism, not an engine default - the example
-    # story defines no steps and skips straight to play) ---
+    # (new_babel authors a three-step character_creation list: gender, then class, then
+    # starting_place - this is what exercises that generic mechanism, not an engine
+    # default - the example story defines no steps and skips straight to play) ---
     resp = client.post("/play/new_babel", data={"name": "Vesper Kade"}, follow_redirects=True)
     assert resp.status_code == 200
-    assert b"choose your approach" in resp.data.lower()
-    assert b"The Ghost Runner" in resp.data
+    assert b"mandatory field" in resp.data
+    assert b"Woman (she/her)" in resp.data
     ctx = ss.load_state(alice_id, "new_babel")
     assert ctx["state"]["protagonist"]["name"] == "Vesper Kade"
     assert ctx["state"]["plot"]["opening_played"] is True
@@ -156,11 +156,23 @@ try:
     # crash or silently proceed ---
     resp = client.post("/play/new_babel", data={"option_id": "not-a-real-option"})
     assert resp.status_code == 200
-    assert b"choose your approach" in resp.data.lower()
+    assert b"mandatory field" in resp.data
     assert b"Please choose one" in resp.data
     ctx = ss.load_state(alice_id, "new_babel")
     assert ctx["state"]["protagonist"]["creation_choices"] == {}
     print("OK: an invalid option_id re-renders the current step with an error instead of proceeding")
+
+    # --- gender is a flavor-only step (no starting_stats on any option), so it records the
+    # pick and advances without seeding player.stats - the same optional-starting_stats
+    # path starting_place relies on ---
+    resp = client.post("/play/new_babel", data={"option_id": "woman"}, follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"choose your approach" in resp.data.lower()
+    assert b"The Ghost Runner" in resp.data
+    ctx = ss.load_state(alice_id, "new_babel")
+    assert ctx["state"]["protagonist"]["creation_choices"] == {"gender": "woman"}
+    assert ctx["state"]["protagonist"]["stats"] == {}
+    print("OK: a step whose options carry no starting_stats advances without seeding stats")
 
     # --- picking a real class option seeds player.stats and advances to the next step
     # (starting_place), rather than dropping straight into play ---
@@ -168,7 +180,7 @@ try:
     assert resp.status_code == 200
     assert b"where do you go first" in resp.data.lower()
     ctx = ss.load_state(alice_id, "new_babel")
-    assert ctx["state"]["protagonist"]["creation_choices"] == {"class": "ghost_runner"}
+    assert ctx["state"]["protagonist"]["creation_choices"] == {"gender": "woman", "class": "ghost_runner"}
     assert ctx["state"]["protagonist"]["stats"] == {"health": 90, "neural_load": 10, "attention_level": 0}
     print("OK: picking a class seeds player.stats and advances to the next creation step")
 
@@ -178,7 +190,8 @@ try:
     assert resp.status_code == 200
     assert b'name="action"' in resp.data
     ctx = ss.load_state(alice_id, "new_babel")
-    assert ctx["state"]["protagonist"]["creation_choices"] == {"class": "ghost_runner", "starting_place": "drowned_quarter"}
+    assert ctx["state"]["protagonist"]["creation_choices"] == {
+        "gender": "woman", "class": "ghost_runner", "starting_place": "drowned_quarter"}
     print("OK: completing the last creation step moves the save into normal play")
 
     # --- GET /api/status with no turn in flight reports nothing (no stale beacon lying

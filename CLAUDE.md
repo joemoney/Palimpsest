@@ -389,9 +389,17 @@ truth once a link exists.
   this entirely, same as before the mechanic existed - `state.get
   ("character_creation", [])`/`player.get("creation_choices", {})` degrade to
   falsy/empty rather than raising, which is also what keeps this fully
-  backward-compatible with every save that predates the feature (a save
-  clones its template once at creation and never re-reads it, so an old save
-  simply lacks the key rather than being retroactively migrated). A stat can
+  backward-compatible with every save that predates the feature: an old save
+  simply lacks `creation_choices` and reads as "no steps answered yet".
+  Note what that does *not* mean - the step list itself lives on the story
+  side, which `load_state` re-reads fresh from the template on every single
+  load, so **adding a step to a story retroactively applies to saves already
+  in progress**: `next_pending_creation_step` returns the first key absent
+  from `creation_choices`, so an in-flight save is asked the new step the
+  next time it loads, whatever turn it's on. That's usually what you want (a
+  save can't play on missing an answer the prompt now depends on), but it is
+  not opt-in, so add a step knowing every live save for that story will stop
+  and ask. A stat can
   only ever be adjusted turn-to-turn (via `update_progress_from_turn`'s
   `stat_changes`, same delta-then-clamp pattern as `relationship_changes`)
   **if it's already in `player.stats`** - the model can't introduce a new
@@ -400,7 +408,14 @@ truth once a link exists.
   story's own options imply their effective scale. `build_system_prompt`
   builds the `PLAYER:` line's per-step "Label: chosen option name" segments
   generically off `character_creation` + `creation_choices` - a new step type
-  needs no engine changes, just a new entry in the story's step list.
+  needs no engine changes, just a new entry in the story's step list. Those
+  segments persist in **every** prompt for the rest of the game, so a step
+  recording a one-time *event* rather than a permanent trait needs past-tense
+  wording or the narrator reads it as a standing, present-tense fact. An
+  optional `prompt_label` overrides `label` for that line only; `label` stays
+  the player-facing wording (the CLI creation loop's step heading, and
+  `app.py`'s fallback when a step authors no `prompt`), where past tense would
+  be wrong since it's shown *before* the choice is made.
   `new_babel` is the first story to use this: a `class` step
   (`ghost_runner`/`cordon_asset`/`fractured_adept`, each weighting the
   pre-existing but previously-inert `health`/`neural_load`/`attention_level`
@@ -409,7 +424,12 @@ truth once a link exists.
   `player.stats` or branch the actual fixed opening scene, which stays the
   one hand-authored constant every playthrough starts from per this doc's
   "Continuous / Long-Running Structure" section; it just seeds a
-  `creation_choices` entry the narration prompt can reference).
+  `creation_choices` entry the narration prompt can reference). That
+  `starting_place` step is also the reason `prompt_label` exists: labelled
+  "Heading" for the player (it asks where you go *first*), it rendered as
+  "Heading: The Drowned Quarter" on turn 50 as readily as turn 1 - a
+  permanent pull back toward a place the player may have long since left. It
+  carries `"prompt_label": "Started out"` for that reason.
 
 ## Web UI
 The `/play/<slug>` page is a single, continuously-appending transcript, not

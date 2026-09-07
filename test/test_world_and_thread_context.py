@@ -105,4 +105,38 @@ assert "CURRENT ACT: Inserted Act - Pushed in at position 2" in recorder.prompts
 print("OK: CR-17 by-key current-act lookup stays correct after non-contiguous renumbering "
       "among generated acts (build_system_prompt and generate_new_subplot)")
 
+# --- character-creation segments on the PLAYER line: label by default, prompt_label when
+# authored. The persistent-segment wording matters because these stay in every prompt for
+# the rest of the game - a step recording a one-time event (new_babel's starting_place,
+# labelled "Heading" for the player) read as a standing present-tense fact at turn 50. ---
+steps = [
+    {"key": "calling", "label": "Calling",
+     "options": [{"id": "sailor", "name": "The Sailor"}]},
+    {"key": "arrival", "label": "Heading", "prompt_label": "Started out",
+     "options": [{"id": "dock", "name": "The Ferry Dock"}]},
+]
+with_story(ctx, lambda s: s.update(character_creation=steps))
+ctx["state"]["protagonist"]["creation_choices"] = {"calling": "sailor", "arrival": "dock"}
+
+prompt = se.build_system_prompt(ctx)
+player_line = next(l for l in prompt.split("\n") if l.startswith("PLAYER:"))
+assert "| Calling: The Sailor" in player_line, player_line
+assert "| Started out: The Ferry Dock" in player_line, player_line
+assert "Heading:" not in player_line, "prompt_label must replace label on the PLAYER line"
+
+# an unanswered step contributes nothing at all, rather than an empty segment
+ctx["state"]["protagonist"]["creation_choices"] = {"calling": "sailor"}
+player_line = next(l for l in se.build_system_prompt(ctx).split("\n") if l.startswith("PLAYER:"))
+assert "| Calling: The Sailor" in player_line and "Started out" not in player_line, player_line
+
+# a story with no character_creation at all still gets no segments (the example story's
+# own default - this mechanic is opt-in per story)
+with_story(ctx, lambda s: s.pop("character_creation", None))
+ctx["state"]["protagonist"]["creation_choices"] = {}
+player_line = next(l for l in se.build_system_prompt(ctx).split("\n") if l.startswith("PLAYER:"))
+assert "Calling:" not in player_line and "Started out:" not in player_line, player_line
+print("OK: PLAYER-line creation segments use prompt_label over label, and stay absent "
+      "for unanswered steps or a story without the mechanic")
+
+
 print("\nALL CHECKS PASSED: test_world_and_thread_context")

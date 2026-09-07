@@ -2157,12 +2157,23 @@ def _section_protagonist(ctx: dict) -> str:
     # character_creation, so a new step type (race, background, whatever a future story
     # wants) needs no changes here. Empty string for a story that doesn't use the mechanic
     # at all, so this adds nothing rather than showing empty labels for every story.
+    #
+    # prompt_label (optional) overrides label for *this* line only. These segments persist
+    # in every prompt for the rest of the game, so a step whose choice was a one-time event
+    # rather than a permanent trait needs past-tense wording here or the narrator reads it
+    # as a standing fact. new_babel's starting_place is exactly that case: labelled
+    # "Heading" for the player (it asks where you go first), it rendered as
+    # "Heading: The Drowned Quarter" on turn 50 as well as turn 1, a present-tense pull
+    # back to a place the player may have long since left. label stays the player-facing
+    # wording (the CLI creation loop's step heading, and app.py's fallback when a step
+    # authors no prompt), where past tense would be wrong - it's asked before you choose.
     creation_str = ""
     for step in story.get("character_creation", []):
         option_id = protagonist.get("creation_choices", {}).get(step["key"])
         option = next((o for o in step["options"] if o["id"] == option_id), None)
         if option:
-            creation_str += f" | {step.get('label', step['key'].title())}: {option['name']}"
+            label = step.get("prompt_label") or step.get("label", step["key"].title())
+            creation_str += f" | {label}: {option['name']}"
     # Internal-only: stats exist for you to reason about and adjust, never to be shown to
     # the player as numbers - reflect their effect narratively (strain, confidence, risk)
     # instead of stating a value. Conditional on the story actually using stats at all, so
