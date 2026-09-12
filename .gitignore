@@ -23,3 +23,8 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Mature/private story content held locally only - NOT committed to this public repo.
+# Move to its own private repo and `git submodule add` it when ready (see CLAUDE.md,
+# "Public repo, private story content, via git submodules").
+stories/the_missing_core/
