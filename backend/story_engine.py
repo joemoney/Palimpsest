@@ -2174,11 +2174,21 @@ def _section_protagonist(ctx: dict) -> str:
         if option:
             label = step.get("prompt_label") or step.get("label", step["key"].title())
             creation_str += f" | {label}: {option['name']}"
-    # Internal-only: stats exist for you to reason about and adjust, never to be shown to
-    # the player as numbers - reflect their effect narratively (strain, confidence, risk)
-    # instead of stating a value. Conditional on the story actually using stats at all, so
-    # a story without them gets no irrelevant instruction clutter.
-    stats_str = f" | Stats (opaque to the player): {protagonist['stats']}" if protagonist.get("stats") else ""
+    # Internal-only by default: stats exist for you to reason about and adjust, never to be
+    # shown to the player as numbers - reflect their effect narratively (strain, confidence,
+    # risk) instead of stating a value. Conditional on the story actually using stats at all,
+    # so a story without them gets no irrelevant instruction clutter.
+    # 5.4: mechanics.stats.visible inverts this per-story, mirroring how mechanics.stats.
+    # floor/.ceiling replaced the global STAT_FLOOR constant. A LitRPG-style story whose
+    # premise is an in-world system reporting the player's own numbers back to them needs
+    # the exact opposite instruction; defaults to False so every existing story is unchanged.
+    stats_visible = ctx["story"].get("mechanics", {}).get("stats", {}).get("visible", False)
+    if not protagonist.get("stats"):
+        stats_str = ""
+    elif stats_visible:
+        stats_str = f" | Stats (SHOWN to the player by this story): {protagonist['stats']}"
+    else:
+        stats_str = f" | Stats (opaque to the player): {protagonist['stats']}"
     # 5.3: absent mechanics.relationships means the story tracks no relationship scores at
     # all - omitted here rather than shown as an always-empty dict, matching how it vanishes
     # from the state-update schema (update_progress_from_turn).
@@ -2276,12 +2286,23 @@ def _section_footer(ctx: dict) -> str:
     # minimum-count fallback too (see app.py's call sites).
     option_pov = narration_cfg.get("option_pov") or narration_cfg.get("pov", "first-person")
     option_count = narration_cfg.get("option_count", 3)
-    stats_instruction = (
-        "\nThe PLAYER line's Stats are for your own internal reasoning only - never state a "
-        "stat's raw numeric value to the player. Reflect what it means narratively instead "
-        "(strain, fatigue, confidence, risk) without quoting the number."
-        if protagonist.get("stats") else ""
-    )
+    # 5.4: see _section_player's stats_visible note. Two opposite instructions, one dial.
+    stats_visible = ctx["story"].get("mechanics", {}).get("stats", {}).get("visible", False)
+    if not protagonist.get("stats"):
+        stats_instruction = ""
+    elif stats_visible:
+        stats_instruction = (
+            "\nThe PLAYER line's Stats are known to the player in this story and their raw "
+            "numeric values may be stated directly, in the voice and format the story's own "
+            "rules establish for them. Report every change you narrate through stat_changes "
+            "so the numbers you show stay true to the state."
+        )
+    else:
+        stats_instruction = (
+            "\nThe PLAYER line's Stats are for your own internal reasoning only - never state a "
+            "stat's raw numeric value to the player. Reflect what it means narratively instead "
+            "(strain, fatigue, confidence, risk) without quoting the number."
+        )
 
     if endgame["requested"]:
         instruction_footer = (
