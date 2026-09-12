@@ -2329,8 +2329,15 @@ def build_system_prompt(ctx: dict) -> str:
     return f"You are the narrator of an interactive story.\n\n{body}\n"
 
 
-_OPTIONS_HEADING_RE = re.compile(r"OPTIONS\s*:\s*\n?", re.IGNORECASE)
-_OPTION_LINE_RE = re.compile(r"^\s*\d+[.)]\s*(.+?)\s*\|\|\s*(.+)$", re.MULTILINE)
+# Both regexes are deliberately more tolerant than the format build_system_prompt actually
+# asks for (a bare "OPTIONS:" line, "action || prose" per option) - observed real model output
+# has dropped the colon and, separately, written a single "|" instead of "||". Either miss used
+# to make parse_narration_and_options fall back to (whole_text, []), leaking the entire options
+# block into the narration shown to the player instead of just failing one option line. The
+# heading is still anchored to its own line (not a bare substring search) so a narration that
+# happens to use the word "options" mid-sentence can't be mistaken for the section heading.
+_OPTIONS_HEADING_RE = re.compile(r"^\s*OPTIONS\s*:?\s*$", re.IGNORECASE | re.MULTILINE)
+_OPTION_LINE_RE = re.compile(r"^\s*\d+[.)]\s*(.+?)\s*\|\|?\s*(.+)$", re.MULTILINE)
 
 
 def parse_narration_and_options(text: str, option_count: int = 3):

@@ -215,28 +215,48 @@ def _lock(user_id: str, story_slug: str) -> filelock.FileLock:
     return filelock.FileLock(path)
 
 
+def _load_existing_state(user_id: str, story_slug: str, story: dict) -> dict | None:
+    """The read side of load_state, split out so peek_state can reuse it without the
+    clone-on-first-play write. Returns None if the player has never saved this story."""
+    path = _save_path(user_id, story_slug)
+    with _lock(user_id, story_slug):
+        if not os.path.isfile(path):
+            return None
+        with open(path, "r") as f:
+            raw_state = json.load(f)
+        if raw_state.get("schema_version", 1) < CURRENT_SCHEMA_VERSION:
+            raw_state = migrate_v1.migrate(raw_state, story_slug, load_template_raw(story_slug))
+            with open(path, "w") as f:
+                json.dump(raw_state, f, indent=2)
+        return _reconcile(raw_state, story)
+
+
 def load_state(user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_SLUG) -> dict:
     """Loads a user's save for a story, cloning a fresh runtime state from the story's
     authored pools on first play. Returns {"story": ctx, "state": ctx} - see module
     docstring. Locked so a concurrent request for the same save can't race the
     clone-on-first-play step, even across gunicorn worker processes."""
     story = load_template(story_slug)
-    path = _save_path(user_id, story_slug)
-    with _lock(user_id, story_slug):
-        if os.path.isfile(path):
-            with open(path, "r") as f:
-                raw_state = json.load(f)
-            if raw_state.get("schema_version", 1) < CURRENT_SCHEMA_VERSION:
-                raw_state = migrate_v1.migrate(raw_state, story_slug, load_template_raw(story_slug))
-                with open(path, "w") as f:
-                    json.dump(raw_state, f, indent=2)
-            state = _reconcile(raw_state, story)
-        else:
+    state = _load_existing_state(user_id, story_slug, story)
+    if state is None:
+        path = _save_path(user_id, story_slug)
+        with _lock(user_id, story_slug):
             state = new_save_state(story, story_slug)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w") as f:
                 json.dump(state, f, indent=2)
-        return {"story": story, "state": state}
+    return {"story": story, "state": state}
+
+
+def peek_state(user_id: str, story_slug: str) -> dict | None:
+    """Read-only counterpart to load_state, for contexts - like the story list's info
+    panel - that need to know how far a save has progressed without the side effect of
+    creating one. Returns None if the player has never started this story."""
+    story = load_template(story_slug)
+    state = _load_existing_state(user_id, story_slug, story)
+    if state is None:
+        return None
+    return {"story": story, "state": state}
 
 
 def save_state(ctx: dict, user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_SLUG):

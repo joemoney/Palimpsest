@@ -46,6 +46,18 @@ def login_required(view):
 
 INITIAL_TURNS_SHOWN = 3
 
+# Display-only cap for the story list's info panel - unrelated to
+# story_engine.SUMMARY_MAX_WORDS, which sizes compressed_summary for LLM prompt context
+# and stays untouched.
+SUMMARY_STAT_WORD_LIMIT = 60
+
+
+def _truncate_words(text: str, limit: int) -> str:
+    words = text.split()
+    if len(words) <= limit:
+        return text
+    return " ".join(words[:limit]) + "…"
+
 
 # Turn-text parsing (split_turn_entry) and chronological ordering (all_turns) live in
 # story_engine.py - export_story.py's CLI export needs the same logic and shouldn't have to
@@ -209,10 +221,35 @@ def index():
     return redirect(url_for("stories"))
 
 
+def _story_save_stats(user_id: str, story_slug: str) -> dict | None:
+    """Non-spoiler save-progress stats for the story list's info panel: turn count,
+    current act, and the running summary - all things the player has already lived
+    through, so none of it risks revealing anything they haven't seen yet. Returns None
+    for a story the player hasn't started (state_store.peek_state, not load_state - this
+    must never create a save as a side effect of just browsing the list)."""
+    ctx = state_store.peek_state(user_id, story_slug)
+    if ctx is None:
+        return None
+    current_act = story_engine._current_act(ctx)
+    summary = ctx["state"]["history"]["compressed_summary"] or "The story has just begun."
+    return {
+        "turn_count": ctx["state"]["pacing"]["turn_count"],
+        "act_title": current_act["title"] if current_act else None,
+        # compressed_summary is sized for LLM prompt context (SUMMARY_MAX_WORDS = 2000
+        # words, see CLAUDE.md) - display-truncated here, not at the source, since a stats
+        # blurb needs a couple sentences, not the full rolling summary.
+        "summary": _truncate_words(summary, SUMMARY_STAT_WORD_LIMIT),
+    }
+
+
 @app.route("/stories")
 @login_required
 def stories():
-    return render_template("stories.html", stories=state_store.list_stories())
+    user_id = session["user_id"]
+    story_list = state_store.list_stories()
+    for story in story_list:
+        story["save_stats"] = _story_save_stats(user_id, story["slug"])
+    return render_template("stories.html", stories=story_list)
 
 
 @app.route("/help")
