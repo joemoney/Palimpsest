@@ -11,7 +11,7 @@ Primary sources, in priority order when they conflict:
 3. `docs/SCHEMA_V2_SPEC.md` — P-1…P-7, all still binding.
 4. This file.
 
-**Status: nothing started.** Phase 0 is the next action.
+**Status: phase 0 complete** (see *Phase 0 measurements* below). Phase 1 is the next action.
 
 ---
 
@@ -35,17 +35,25 @@ Two rules hold across every phase:
 **Goal.** Have numbers, so that later claims about prompt size and field count are
 checkable rather than asserted.
 
-**Work.**
-- Count observation fields emitted by `update_progress_from_turn` for each of the three
-  stories and the three fixtures. This is the number §5.1 promises to shrink.
-- Record assembled `build_system_prompt` size per story, in characters and tokens.
-- Snapshot `data/perf_stats.json` p50s per `_timed` label, so phase 7 can tell whether
-  sharding actually bought anything.
-- Write the numbers into this file as a table. They are the phase 0 deliverable.
+**Status: done.** `scripts/measure_baseline.py`, results below.
 
-**Gate.** The numbers exist and are committed.
+**Work.** All of it landed as a script rather than a one-off, because phases 2, 4 and 7
+each need to re-run the same measurement and diff against this one. It is offline in the
+same sense `test/` is — it reuses `test/_llm_stubs`, needs no API key and no network, and
+captures the observation prompt by monkeypatching `call_llm_json` exactly as
+`test_genre_conformance.py` does. Every target is built through `freeze`/`new_save_state`,
+so running it never creates or touches a save under `data/saves/`, and the stubs' tmp
+redirect keeps it out of the real `data/perf_stats.json`.
 
-**Risk.** None. This is the cheapest phase and the only one that makes the others
+- Observation field count per target — exact, extracted from the built prompt rather than
+  from a hand-kept list, so it cannot drift from what the engine actually asks.
+- Assembled `build_system_prompt` size per target.
+- `data/perf_stats.json` p50 per `_timed` label.
+- `--markdown` emits the tables below; `--json` is for diffing a later run against this one.
+
+**Gate.** Met — the numbers exist and are committed.
+
+**Risk.** None. This was the cheapest phase and the only one that makes the others
 falsifiable. Skipping it is how §5.1 becomes a slogan.
 
 ---
@@ -269,11 +277,55 @@ mechanics is the first point at which it has actually been shown to work.
 
 ## Phase 0 measurements
 
-*(To be filled in by phase 0. Table intentionally empty until then — an estimate written
-here would be indistinguishable from a measurement three months from now.)*
+Measured 2026-09-13 on `engine-v2`, via `python3 scripts/measure_baseline.py --markdown`.
+Re-run it — do not hand-edit these numbers — and diff with `--json`.
 
-| Metric | `example` | `new_babel` | `regency` | `courtroom` | `survival` |
+`the_missing_core` is deliberately not tabled here: it is gitignored and does not belong to
+this repo. The script discovers stories dynamically, so anyone holding it gets its row
+locally.
+
+| Metric | `example` | `new_babel` | `courtroom` | `regency` | `survival` |
 |---|---|---|---|---|---|
-| Observation fields | | | | | |
-| System prompt (chars) | | | | | |
-| System prompt (tokens) | | | | | |
+| Observation fields (turn 0) | 11 | 14 | 8 | 8 | 9 |
+| Observation fields (post-creation) | — | 15 | — | — | — |
+| Observation prompt (chars) | 7,053 | 10,626 | 3,494 | 4,263 | 3,356 |
+| System prompt (chars) | 5,434 | 12,514 | 3,055 | 3,396 | 3,700 |
+| System prompt (~tokens, chars/4) | 1,358 | 3,128 | 763 | 849 | 925 |
+
+Token figures are `chars / 4`. No tokenizer is installed and the offline suite has no pip
+dependencies; the divisor is fixed so successive runs stay comparable to each other, and
+the number that matters for §5.1 — the field count — is exact.
+
+| `_timed` label | p50 | samples |
+|---|---|---|
+| `act_advancement_check` | 12.29s | 50 |
+| `narration` | 14.39s | 50 |
+| `options_generation` | 2.64s | 6 |
+| `state_update` | 1.73s | 50 |
+| `subplot_generation` | 20.47s | 11 |
+| `summary_rollover` | 21.42s | 39 |
+
+### What the numbers say
+
+**§5.4's six-fields-per-shard budget is contradicted by the data, and this is a spec
+decision, not a phase 1 detail.** Today's real stories run 11 and 15 fields. Walking the
+port plan through §7's catalogue — `items_gained`/`items_lost` merging into one inventory
+field, `leverage_gained`/`leverage_spent` into one, `beat_type`/`intensity` into one,
+`memory_fragments_revealed`/`revelations_eligible` cadence-gated to usually none —
+a fully ported `new_babel` still lands around 9 or 10. Three of those belong to no engine
+at all: `flags_set`, `scene_update` and `new_characters` are core, and porting nothing
+removes them. So a six-field cap makes sharding mandatory from phase 1 rather than the
+conditional phase 7 the plan assumes. Either the budget is raised to around ten and
+expressed as *core + engines*, or phase 7 moves to the front. **Resolve this before phase 1
+starts**; it changes what phase 1 has to build.
+
+**The observation prompt is not the small one.** For `example` it is 7,053 chars against a
+5,434-char narration prompt — 30% larger than the prompt everyone thinks of as the big one.
+§5.1's "delete before you move" is aimed at the right target.
+
+**`state_update`'s seed estimate is wrong by more than 10×.** Measured p50 is 1.73s against
+`DEFAULT_STEP_ESTIMATE_SECONDS["state_update"] = 23`. It self-corrects in production —
+`p50_duration` takes over from the seed after one real call — so this is not a bug, and the
+gap is explained by the tier: `state_update` runs on Tier C, the fast model. Worth knowing
+before phase 7 reads wall-clock numbers, since the step sharding would parallelise is
+currently the cheapest one in the turn.

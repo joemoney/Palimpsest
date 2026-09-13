@@ -780,7 +780,7 @@ acceptance gates, risks, and the story-content interleave.
 
 | Phase | Work | Gate |
 |---|---|---|
-| 0 | Baseline measurement: observation field count, prompt sizes, per-call p50s | Numbers recorded; §5.1 and §12.4 have something to compare against |
+| 0 | Baseline measurement: observation field count, prompt sizes, per-call p50s | **Done** — `scripts/measure_baseline.py`; numbers and findings in `ENGINE_V2_PHASES.md` |
 | 1 | Registry, `Effect`, resolve ordering, event log plumbing. No mechanic ported | Full suite green; assembled prompts byte-identical for all three stories and all three fixtures |
 | 2 | Port `resource` (v2's `stats`). **Schema v3 cutover** | Stat tests pass unmodified; readout still deterministic. **Stop-gate — see below** |
 | 3 | Rewrite the three conformance fixtures against the registry | Both directions, three disjoint engine sets, absent-lists still written out in the test |
@@ -831,8 +831,13 @@ than a guideline.
 3. **Does the player ever see the rules?** E-7 makes the mechanics honest enough to show. A
    rules readout is newly *possible*; whether it is desirable is a creative decision, which by
    P-3 means it belongs in the template.
-4. **The sharding threshold.** §5.4 proposes six fields per shard as the split point. That
-   number is a guess and should be set from a real measurement once phase 4 lands.
+4. **The sharding threshold.** §5.4 proposes six fields per shard as the split point.
+   **Phase 0 measured against it and it does not survive**: real stories run 11 and 15
+   fields today, and a fully ported `new_babel` still lands near 9–10, of which
+   `flags_set`, `scene_update` and `new_characters` belong to no engine at all. Six makes
+   sharding mandatory from phase 1 rather than conditional at phase 7. Raise the budget to
+   roughly ten and express it as *core + engines*, or move phase 7 forward. Open, and it
+   blocks phase 1.
 5. **Should a generated act ever carry a `requires`?** Deferred, not rejected — §2.2 records
    the design that would work and the reason not to build it yet. Revisit only if playtesting
    shows acts advancing too early, and only after `gate` has landed.
