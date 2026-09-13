@@ -11,7 +11,7 @@ Primary sources, in priority order when they conflict:
 3. `docs/SCHEMA_V2_SPEC.md` — P-1…P-7, all still binding.
 4. This file.
 
-**Status: phase 0 complete** (see *Phase 0 measurements* below). Phase 1 is the next action.
+**Status: phases 0 and 1 complete.** Phase 2 — the stop-gate — is the next action.
 
 ---
 
@@ -47,6 +47,9 @@ redirect keeps it out of the real `data/perf_stats.json`.
 
 - Observation field count per target — exact, extracted from the built prompt rather than
   from a hand-kept list, so it cannot drift from what the engine actually asks.
+- `--hashes` (added in phase 1) prints a sha per assembled prompt. This is the executable
+  form of the "byte-identical" and "behaviour identical" phase gates: run it before a
+  change and after, and diff.
 - Assembled `build_system_prompt` size per target.
 - `data/perf_stats.json` p50 per `_timed` label.
 - `--markdown` emits the tables below; `--json` is for diffing a later run against this one.
@@ -75,12 +78,33 @@ falsifiable. Skipping it is how §5.1 becomes a slogan.
 - **No mechanic is ported.** Every existing `.get("mechanics", ...)` code path stays exactly
   where it is.
 
-**Gate.** Full suite green, **and** assembled prompts byte-identical for all three stories
-and all three fixtures. Phase 1 is defined by changing nothing observable; a prompt diff
-here means something leaked.
+**Status: done.** `backend/mechanics/`, `test/test_mechanics_registry.py`.
 
-**Risk.** Low, and the one real one is scope creep — the temptation to port `stats` "while
-you're in there." Don't. Phase 1's value is that it isolates registry bugs from porting bugs.
+**Gate.** Met. Suite green (39 files), and all 12 assembled prompts — narration and
+observation, across three stories and three fixtures — byte-identical to a worktree built
+at the pre-registry commit. `scripts/measure_baseline.py --hashes` is the committed form of
+that check; phases 2 and 5 need it again.
+
+**The rule that made this landable without touching a single existing code path:** a
+`mechanics` entry is registry-managed *only* if it carries an explicit `"engine"` key. No
+template that ships today has one, so nothing binds, and `story_engine`'s existing
+`.get("mechanics", ...)` paths keep owning every mechanic exactly as before. Porting means
+adding `"engine": "<name>"` to the template and deleting the old path in the same change —
+never one without the other.
+
+**The gate found a real bug before it could find a leak.** The first byte-identical run
+failed on three targets, and the cause was not the registry: `_existing_character_names`
+did `list()` over a set, so `EXISTING CHARACTERS (do not repeat)` — interpolated into the
+state-update, subplot-generation, steering and act-check prompts — rendered in a different
+order on every process. Same context, different prompt bytes, which defeats prompt caching
+and makes any prompt regression-untestable. Every other caller of `_all_character_names`
+already sorted; this was the one that didn't. Fixed as a prerequisite, then the gate passed
+clean. Worth recording because it is the argument for the gate: a phase that asserts
+"nothing changed" is the only phase that can *detect* something that was already wrong.
+
+**Risk.** Was scope creep — the temptation to port `stats` "while you're in there." Avoided;
+zero engines exist. Phase 1's value is that it isolates registry bugs from porting bugs, and
+phase 2 now starts from a seam that is already exercised.
 
 ---
 

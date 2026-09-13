@@ -15,6 +15,7 @@ load_dotenv()
 import google.generativeai as genai
 import requests
 
+import mechanics
 import state_store
 from state_store import DEFAULT_STORY_SLUG, DEFAULT_USER_ID
 
@@ -780,7 +781,14 @@ def _existing_character_names(ctx: dict) -> list:
     prompting the model for new characters - the merged roster, plus the tracked entity's
     name if the story has one (mechanics.tracked_entity isn't part of the characters
     roster, but a model unaware of it could otherwise reinvent it as a new NPC)."""
-    names = list(_all_character_names(ctx))
+    # sorted(), not list(): _all_character_names returns a set, and set iteration order
+    # varies between processes, so this list - which is interpolated verbatim into the
+    # state-update, subplot-generation, steering and act-check prompts as "EXISTING
+    # CHARACTERS (do not repeat)" - used to render in a different order on every run. Same
+    # context, different prompt bytes, which defeats prompt caching and makes a prompt
+    # impossible to regression-test. Every other caller of _all_character_names already
+    # sorts (plot_manager, app.py, _section_roster); this was the one that didn't.
+    names = sorted(_all_character_names(ctx))
     tracked = ctx["story"].get("mechanics", {}).get("tracked_entity")
     if tracked:
         names.append(tracked["name"])
@@ -2570,6 +2578,13 @@ def update_state_after_turn(
 
     # Separate state-update pass: subplot progress, flags, memory fragments, entity contact
     update_progress_from_turn(ctx, player_action, ai_response)
+
+    # Engine v2 (docs/ENGINE_V2_SPEC.md §4): record what was observed, resolve it into
+    # effects, apply them. Runs unconditionally so the seam exists and is exercised, but
+    # no mechanic is ported yet - every template that ships today binds zero engines, so
+    # this records nothing, resolves nothing and applies nothing. Phase 2 is what gives it
+    # something to do; until then its only job is to already be in the right place.
+    mechanics.run_turn_pipeline(ctx)
 
     # Stat readouts are substituted *after* the state update, so the figures a scene shows
     # are the ones it ended on - "the readout is the aftermath", per the story's own rules.

@@ -24,6 +24,7 @@ Usage:
     python3 scripts/measure_baseline.py --json     # machine-readable, for diffing later
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -112,6 +113,13 @@ def measure(story, label):
 
     row = {
         "target": label,
+        # The phase gates that say "byte-identical" (phase 1) and "behaviour identical"
+        # (phase 5) need something to compare, and a hash is the only comparison that
+        # cannot be fudged. Note these are only stable because of the sorted() in
+        # _existing_character_names - a set-to-list there used to make every prompt
+        # containing EXISTING CHARACTERS render in a different order per process.
+        "narration_sha": hashlib.sha256(narration.encode()).hexdigest()[:16],
+        "observation_sha": hashlib.sha256(observation.encode()).hexdigest()[:16],
         "mechanics": sorted(k for k, v in story.get("mechanics", {}).items() if v),
         "narration_chars": len(narration),
         "narration_tokens_est": len(narration) // CHARS_PER_TOKEN,
@@ -212,10 +220,17 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--markdown", action="store_true", help="markdown tables")
+    ap.add_argument("--hashes", action="store_true",
+                    help="only the prompt hashes, for the byte-identical phase gates; "
+                         "diff two runs of this to prove a change touched no prompt")
     args = ap.parse_args()
 
     rows, p50s = collect(), perf_p50s()
-    if args.json:
+    if args.hashes:
+        for row in rows:
+            print(f"{row['target']:<20} narration={row['narration_sha']} "
+                  f"observation={row['observation_sha']}")
+    elif args.json:
         print(json.dumps({"targets": rows, "p50": p50s}, indent=2))
     elif args.markdown:
         print_markdown(rows, p50s)

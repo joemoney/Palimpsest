@@ -22,6 +22,7 @@ import uuid
 import filelock
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import mechanics
 import migrate_v1
 from frozen_dict import assert_unmutated, freeze, thaw
 
@@ -123,8 +124,15 @@ def load_template(story_slug: str) -> dict:
     """A story's authored content, frozen (see frozen_dict.freeze) - this is what
     ctx["story"] is set to. Re-read fresh from disk on every call, deliberately never
     cached: this is what makes a template edit reach every existing save without any
-    explicit migration step."""
-    return freeze(load_template_raw(story_slug))
+    explicit migration step.
+
+    Validates the mechanics block on the way through: a template naming a mechanic engine
+    this build doesn't have raises here (ENGINE_V2_SPEC §3.2) rather than failing quietly
+    forty turns into a playthrough. Costs one dict scan per load and is silent for every
+    template that predates the registry."""
+    raw = load_template_raw(story_slug)
+    mechanics.validate(raw)
+    return freeze(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +158,16 @@ def new_save_state(story: dict, story_slug: str) -> dict:
     acts = story["plot"]["main_thread"]["acts"]
     initial_scene = story["plot"].get("initial_scene", {})
 
+    # Engine-owned runtime state, one bucket per bound mechanic engine (ENGINE_V2_SPEC
+    # §8.2). P-2 all the way down: a story with no registry-managed mechanics gets no
+    # "mechanics" key at all, not an empty dict - which is why every save written today is
+    # byte-identical to one written before the registry existed.
+    engine_state = {}
+    for bound in mechanics.bind(story):
+        initial = bound.engine.init_state(bound.cfg, {"story": story, "state": None})
+        if initial:
+            engine_state[bound.slot] = initial
+
     return {
         "schema_version": CURRENT_SCHEMA_VERSION,
         "story_slug": story_slug,
@@ -172,6 +190,8 @@ def new_save_state(story: dict, story_slug: str) -> dict:
         },
 
         "characters": {},
+
+        **({"mechanics": engine_state} if engine_state else {}),
 
         "scene": {
             "location": initial_scene.get("location", ""),
