@@ -156,8 +156,11 @@ already gone off the rails.
   because Flask would otherwise resolve them relative to `backend/`.
 - **Adding a story is a content change, not a code change** — drop in
   `stories/<slug>/template.json`.
-- **A story meant to stay private never goes in this repo's history.** Give it its
-  own repo and `git submodule add` it.
+- **A story meant to stay private never goes in this repo's history.** It goes in
+  the single private submodule at `stories/private/<slug>/`, which is a second story
+  root, not a story — `state_store.story_roots()` scans both, and a slug in both
+  resolves to the public one. Mounted inside `stories/` so docker-compose's existing
+  bind mount covers it; don't move it out without adding a second mount.
 - `data/` is runtime-only and gitignored. Accounts are provisioned server-side;
   there is deliberately no self-service registration route.
 

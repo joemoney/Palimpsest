@@ -26,6 +26,13 @@ import migrate_v1
 from frozen_dict import assert_unmutated, freeze, thaw
 
 STORIES_DIR = "stories"
+# Private story content lives in a single git submodule - one folder per story - rather
+# than in this repo. It is a second *root* and not a story: list_stories() skips it
+# naturally, since stories/private/template.json does not exist. Mounted inside stories/
+# on purpose, so docker-compose.yml's existing `./stories:/app/stories` bind mount carries
+# it without a second mount. A clone that never ran `git submodule update --init` just sees
+# an empty directory and gets the public catalog, which is the point.
+STORIES_PRIVATE_DIR = os.path.join("stories", "private")
 DATA_DIR = "data"
 SAVES_DIR = os.path.join(DATA_DIR, "saves")
 ACCOUNTS_DB_PATH = os.path.join(DATA_DIR, "accounts.db")
@@ -51,20 +58,47 @@ def _validate_slug(value: str, label: str) -> str:
 # Story catalog (templates)
 # ---------------------------------------------------------------------------
 
+def story_roots() -> list:
+    """The directories a story may live in, in precedence order. Read through a function
+    rather than referenced as a constant so that a test redirecting STORIES_DIR /
+    STORIES_PRIVATE_DIR to a tmp dir is picked up by every caller - module-level constants
+    would have been captured once at import."""
+    return [STORIES_DIR, STORIES_PRIVATE_DIR]
+
+
+def _story_dir(story_slug: str) -> str:
+    """The directory holding a slug's template, searching roots in order. Falls back to the
+    public root's path when the slug exists nowhere, so the caller raises its own
+    FileNotFoundError against a sensible path rather than getting None back."""
+    for root in story_roots():
+        if os.path.isfile(os.path.join(root, story_slug, "template.json")):
+            return os.path.join(root, story_slug)
+    return os.path.join(STORIES_DIR, story_slug)
+
+
 def list_stories() -> list:
-    """Every story template available to start, read straight off disk - the
-    templates/ directory listing *is* the catalog, no separate index to keep
-    in sync."""
+    """Every story template available to start, read straight off disk - the stories
+    directory listing *is* the catalog, no separate index to keep in sync.
+
+    Scans every root in story_roots(). A slug present in more than one root is taken from
+    the first, so the public repo always wins over a private submodule that shadows it -
+    a shadowing slug is a content mistake, and resolving it silently in favour of the
+    committed copy is the outcome that is debuggable."""
     stories = []
-    if not os.path.isdir(STORIES_DIR):
-        return stories
-    for slug in sorted(os.listdir(STORIES_DIR)):
-        template_path = os.path.join(STORIES_DIR, slug, "template.json")
-        if os.path.isfile(template_path):
-            with open(template_path, "r") as f:
-                data = json.load(f)
-            stories.append({"slug": slug, **data.get("meta", {})})
-    return stories
+    seen = set()
+    for root in story_roots():
+        if not os.path.isdir(root):
+            continue
+        for slug in sorted(os.listdir(root)):
+            if slug in seen:
+                continue
+            template_path = os.path.join(root, slug, "template.json")
+            if os.path.isfile(template_path):
+                with open(template_path, "r") as f:
+                    data = json.load(f)
+                seen.add(slug)
+                stories.append({"slug": slug, **data.get("meta", {})})
+    return sorted(stories, key=lambda s: s["slug"])
 
 
 def load_template_raw(story_slug: str) -> dict:
@@ -73,7 +107,7 @@ def load_template_raw(story_slug: str) -> dict:
     this exists for the handful of callers that need a mutable copy - the migrator building
     a new save from scratch, an admin/debug script, etc."""
     _validate_slug(story_slug, "story_slug")
-    template_path = os.path.join(STORIES_DIR, story_slug, "template.json")
+    template_path = os.path.join(_story_dir(story_slug), "template.json")
     with open(template_path, "r") as f:
         return json.load(f)
 

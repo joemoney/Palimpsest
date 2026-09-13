@@ -266,10 +266,20 @@ Three stories, three different handling requirements:
 | Story | Where it lives | Note |
 |---|---|---|
 | `example` | This repo | The reference port. Do it first, every time. |
-| `new_babel` | Private submodule (`palimpsest-stories`) | **Push the submodule before bumping its pointer.** A pointer bump landing ahead of the push breaks every clone. |
-| `the_missing_core` | Gitignored, deliberately | Stays out of this repo's history. Needs its own private repo before any push that would carry it. |
+| `new_babel` | `stories/private/new_babel/` | **Push the submodule before bumping its pointer.** A pointer bump landing ahead of the push breaks every clone. |
+| `the_missing_core` | `stories/private/the_missing_core/` | Same submodule, same rule. No longer a standalone local repo. |
 
 Both non-`example` stories are repo-owner items, not agent items.
+
+**Pending as of 2026-09-13.** The submodule was restructured to one folder per story and
+mounted at `stories/private/` (it was `stories/new_babel/`, a submodule of the same repo
+whose content sat at its root). That restructure is committed **in the submodule and not
+pushed**, so this branch deliberately carries the gitlink at the old commit with an
+unstaged pointer bump — the same intentional state `PHASE_6_HANDOFF.md` §1 describes, for
+the same reason. Until the owner runs `git -C stories/private push` and bumps the pointer,
+a fresh clone that initialises the submodule gets the *old* layout, where no
+`stories/private/<slug>/template.json` exists and the private catalog is simply empty.
+Nothing crashes; the private stories just aren't there.
 
 ---
 
@@ -291,9 +301,9 @@ mechanics is the first point at which it has actually been shown to work.
 Measured 2026-09-13 on `engine-v2`, via `python3 scripts/measure_baseline.py --markdown`.
 Re-run it — do not hand-edit these numbers — and diff with `--json`.
 
-`the_missing_core` is deliberately not tabled here: it is gitignored and does not belong to
-this repo. The script discovers stories dynamically, so anyone holding it gets its row
-locally.
+`the_missing_core` is deliberately not tabled here: it lives in the private
+`stories/private/` submodule and does not belong to this repo. The script scans both story
+roots, so anyone with the submodule checked out gets its row locally.
 
 | Metric | `example` | `new_babel` | `courtroom` | `regency` | `survival` |
 |---|---|---|---|---|---|

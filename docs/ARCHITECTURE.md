@@ -633,14 +633,18 @@ new wiring.
   drop in a new `stories/<slug>/template.json` and it's picked up
   automatically, whether that directory is committed directly or checked
   out from a submodule (see next point).
-- **Public repo, private story content, via git submodules.** This repo is
+- **Public repo, private story content, via one git submodule.** This repo is
   public but story *content* isn't necessarily meant to be — `stories/
   example/` is committed directly (public, and the CLI/web default so the
-  repo works out of the box); `stories/new_babel/` is a **git submodule**
-  pointing at a separate private repo, not committed here. Don't put a story
-  meant to stay private directly in this repo's history — give it its own
-  repo and `git submodule add` it instead. `.gitmodules` (which is public)
-  reveals a submodule's name/URL either way, just not its content.
+  repo works out of the box), while every private story lives in a single
+  **git submodule** at `stories/private/`, one folder per story, pointing at
+  a separate private repo. Don't put a story meant to stay private directly
+  in this repo's history — add it to that submodule instead. `.gitmodules`
+  (which is public) reveals the submodule's name/URL either way, just not its
+  content. The engine finds both roots via `state_store.story_roots()`; the
+  submodule is mounted *inside* `stories/` on purpose, so docker-compose's
+  existing `./stories:/app/stories` bind mount carries it with no second
+  mount, and a slug present in both roots resolves to the public one.
 - **`data/`** — runtime-only, gitignored:
   - `data/saves/<user_id>/<story_slug>.json` — one live save per user per
     story, cloned from the matching template on first play. Plain JSON

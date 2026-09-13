@@ -2671,7 +2671,7 @@ def next_pending_creation_step(ctx: dict) -> dict:
     """The first character-creation step (from the story's template-authored
     character_creation list - see apply_creation_choice) the player hasn't completed yet,
     or None once they're all done (or the story doesn't define any). A story opts into
-    this mechanic entirely by authoring that list - stories/new_babel/template.json has
+    this mechanic entirely by authoring that list - new_babel's template.json has
     a "class" step and a "starting_place" step, in that order; a story that doesn't
     define character_creation at all (e.g. the cozy-mystery example story, where a class/
     race pick wouldn't fit the genre) skips this entirely, same as before the mechanic

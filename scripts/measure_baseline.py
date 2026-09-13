@@ -38,7 +38,12 @@ from _llm_stubs import RecordingLLM, load_story_engine  # noqa: E402
 se = load_story_engine()
 
 FIXTURES_DIR = os.path.join(REPO_ROOT, "test", "fixtures")
-STORIES_DIR = os.path.join(REPO_ROOT, "stories")
+# Both story roots (see state_store.story_roots): stories/ is public and in-repo,
+# stories/private/ is the submodule of private story content. Anyone without the
+# submodule checked out measures the public catalog and the fixtures, which is enough for
+# every comparison this script exists to support.
+STORY_ROOTS = [os.path.join(REPO_ROOT, "stories"),
+               os.path.join(REPO_ROOT, "stories", "private")]
 PERF_STATS = os.path.join(REPO_ROOT, "data", "perf_stats.json")
 
 # No tokenizer is installed and the offline suite deliberately has no pip dependencies, so
@@ -133,11 +138,16 @@ def measure(story, label):
 
 def collect():
     rows = []
-    for slug in sorted(os.listdir(STORIES_DIR)):
-        path = os.path.join(STORIES_DIR, slug, "template.json")
-        if os.path.exists(path):
-            with open(path) as f:
-                rows.append(measure(json.load(f), slug))
+    seen = set()
+    for root in STORY_ROOTS:
+        if not os.path.isdir(root):
+            continue
+        for slug in sorted(os.listdir(root)):
+            path = os.path.join(root, slug, "template.json")
+            if slug not in seen and os.path.exists(path):
+                seen.add(slug)
+                with open(path) as f:
+                    rows.append(measure(json.load(f), slug))
     for name in sorted(os.listdir(FIXTURES_DIR)):
         if name.endswith(".json"):
             with open(os.path.join(FIXTURES_DIR, name)) as f:

@@ -143,8 +143,9 @@ def load_story_engine():
 
 def load_state_store(tmp_path):
     """Import state_store with external deps stubbed out AND its storage paths
-    redirected under tmp_path, so tests never touch the real stories/ or data/
-    directories. tmp_path should be a fresh directory per test."""
+    redirected under tmp_path, so tests never touch the real stories/ (either root - see
+    state_store.story_roots) or data/ directories. tmp_path should be a fresh directory
+    per test."""
     os.environ.setdefault("GOOGLE_API_KEY", "test-key")
     os.environ.setdefault("TESTING_FORCE_GOOGLE", "true")  # see load_story_engine() above
     _install_stubs()
@@ -154,8 +155,14 @@ def load_state_store(tmp_path):
 
     import state_store as ss
     ss.STORIES_DIR = os.path.join(tmp_path, "stories")
+    # Both roots, or the real private-story submodule leaks into a test that asserts on
+    # the exact contents of list_stories() - it did, the first time this ran. Pointed at a
+    # sibling of the redirected public root rather than nested inside it, so a test writing
+    # a story into STORIES_DIR can never accidentally create one in the private root too.
+    ss.STORIES_PRIVATE_DIR = os.path.join(tmp_path, "stories-private")
     _redirect_data_dir(ss, os.path.join(tmp_path, "data"))
     os.makedirs(ss.STORIES_DIR, exist_ok=True)
+    os.makedirs(ss.STORIES_PRIVATE_DIR, exist_ok=True)
     return ss
 
 

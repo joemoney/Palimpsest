@@ -25,16 +25,18 @@ meant to be. Two kinds of `stories/<slug>/` entries exist side by side:
   this repo is runnable and demoable with nothing more than a clone — see
   [`stories/example/README.md`](stories/example/README.md). Also the
   reference to copy from when authoring a new story's `template.json`.
-- **`stories/new_babel/`** — a **git submodule** pointing at a private
-  companion repo, not committed directly here. *The Attention Economy*, a
-  Lovecraftian-cyberpunk reincarnation story — see
-  [`stories/new_babel/README.md`](stories/new_babel/README.md) once checked
-  out. This repo's `.gitmodules` records the private repo's name and URL
-  (so its existence is visible), but its content is only readable by
-  someone with access to that repo.
+- **`stories/private/`** — a single **git submodule** pointing at a private
+  companion repo, holding every private story, one folder each
+  (`stories/private/<slug>/template.json`). It is a second story *root*, not a
+  story: the engine scans both (`state_store.story_roots`), and
+  `stories/private/` itself is skipped since it has no `template.json` of its
+  own. This repo's `.gitmodules` records the private repo's name and URL (so
+  its existence is visible), but its content is only readable by someone with
+  access to that repo.
 
-A plain `git clone` of this repo leaves `stories/new_babel/` as an empty
-directory. To pull it in (if you have access):
+A plain `git clone` of this repo leaves `stories/private/` as an empty
+directory, and the catalog is just the public stories. To pull it in (if you
+have access):
 ```bash
 git submodule update --init --recursive
 ```
@@ -246,9 +248,9 @@ here for when the story needs a deliberate push.
 ## File Structure
 - `stories/<slug>/template.json` — authored seed content for one story (meta,
   world, player, characters, plot, history_log). `stories/example/` is
-  committed here directly (public); `stories/new_babel/` is a private git
-  submodule — see "Public vs. private stories" above. Adding a new story is
-  a content change, not a code change.
+  committed here directly (public); `stories/private/<slug>/` comes from a
+  private git submodule — see "Public vs. private stories" above. Adding a new
+  story is a content change, not a code change, in either root.
 - `backend/` — all engine/server Python code:
   - `state_store.py` — the storage layer: story catalog, per-user save
     load/save, and account creation/login.

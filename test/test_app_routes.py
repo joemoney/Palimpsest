@@ -6,6 +6,9 @@ testing the fake rather than the app. story_engine's LLM calls are still
 monkeypatched (no network), and state_store's storage is redirected to a temp
 directory (never the real stories/ or data/).
 
+It also needs the private story submodule at stories/private/ checked out, and skips
+gracefully when it isn't.
+
 NOTE: unlike the rest of test/, this one needs the real `flask` package (and
 its dependencies) installed - `pip install -r requirements.txt` - since it's
 specifically verifying the real Flask integration. It cannot run in an
@@ -43,7 +46,17 @@ try:
     # routes exercise the full opening-scene/take_turn machinery, which needs
     # the real schema (plot.opening_scene, player.flags_active, etc.), not a
     # minimal stub template.
-    real_template_path = os.path.join(REPO_ROOT, "stories", "new_babel", "template.json")
+    # stories/private/ is a git submodule of private story content (see state_store's
+    # STORIES_PRIVATE_DIR). Built from REPO_ROOT rather than ss.STORIES_PRIVATE_DIR, which
+    # load_state_store has already redirected to this test's tmp dir. A public clone that
+    # never ran `git submodule update --init` doesn't have it, so skip rather than fail -
+    # same contract as the flask check above, for the same reason.
+    real_template_path = os.path.join(REPO_ROOT, "stories", "private", "new_babel",
+                                      "template.json")
+    if not os.path.isfile(real_template_path):
+        print("SKIPPED: stories/private/ (private story submodule) is not checked out - "
+              "run `git submodule update --init` to run this test for real.")
+        sys.exit(0)
     with open(real_template_path) as f:
         template = json.load(f)
     story_dir = os.path.join(ss.STORIES_DIR, "new_babel")
