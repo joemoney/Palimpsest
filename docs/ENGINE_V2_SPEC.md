@@ -108,7 +108,9 @@ state-update: the output gets messier and the authority gets muddy.
 `mechanics.<slot>.engine` names a registered implementation. The template supplies its
 parameters. An author writes JSON; the rules live in Python. This is P-3 read in the other
 direction: P-3 pushed *creative* decisions out of the engine into the template, and E-2
-pulls *mechanical* decisions out of the template's prompt strings into the engine.
+pulls *mechanical* decisions out of the template's prompt strings into the engine. Act
+advancement is the single declared exception to E-1 and E-2 alike; §2.1 reasons it from
+E-7 rather than carving it out, and bounds it to the verdict only.
 
 **E-3 — Observations are typed, categorical, and mutually independent.**
 An observation field asks the model to *classify*, never to compute. Legal:
@@ -141,6 +143,70 @@ gets this wrong once, is the result a slightly worse scene, or a broken promise 
 player?* Prose, tone and pacing are slightly-worse and stay in the template. Numbers,
 inventory contents, whether a door is locked, whether a deadline has passed, and the odds
 of an attempt are broken promises and belong to an engine.
+
+### 2.1 The declared exception: act advancement
+
+**Act advancement is exempt from E-1 and E-2. The model keeps the verdict.**
+
+An exception that isn't reasoned from the principles is just a leak, so this one is
+derived from E-7's own test rather than carved out around it. *If the model gets this
+wrong once, is the result a slightly worse scene or a broken promise to the player?* An
+act advancing a turn early or a turn late is a pacing wobble. Nobody was shown a number,
+no threshold was published, and the player was never invited to reason over it. By E-7's
+test that is paint, and moving it into code would be moving it to the wrong side of the
+line — the engine has no better basis for the judgement than the model does, and would
+have to fake one by inventing a threshold that no novelist would defend (which is P-3
+run backwards).
+
+This is also the one place where the model's opinion is not a fallible proxy for a fact.
+"Has this act narratively resolved?" has no ground truth for `resolve()` to compute. It
+is a reading of the story, and the director prompt in `check_and_advance_act` already
+tells the model to judge "what's actually happened - not a checklist."
+
+**The exception is narrow, and it is about the verdict only.** The engine already owns
+everything around it and keeps all of it:
+
+| Engine (rails) | Model (paint) |
+|---|---|
+| The no-op once `endgame.requested` is set | `ready` — has this act resolved? |
+| The OR-trigger: a subplot completed this act, *or* `act_check_frequency` turns elapsed | `reason` |
+| Resetting `turns_since_act_check` | The next act's title, description and `completion_signals` |
+| Act numbering, `_mark_act_completed`, `act_history`, `current_act` | |
+| Resetting `subplots_completed_this_act` | |
+| Validating the verdict before it is allowed to take effect | |
+| NPC insertion, via `insert_character` | |
+
+Read as a rule: **the engine owns when the question is asked, whether the answer is
+allowed to land, and everything that happens afterwards. The model owns only the reading.**
+
+The last engine-side row is work, not description. `SCHEMA_V2_SPEC` §3.8 requires that a
+generated act saved with an empty `completion_signals` list be treated as a validation
+failure, equivalent to a missing title — because without signals the pacing-nudge block
+silently disappears for the rest of the story. What shipped is
+`verdict.get("completion_signals") or []`, which accepts the empty list. Engine v2 should
+close that gap while it is formalising the boundary: an exception granted to the model's
+*judgement* is not an exception granted to its *output shape*.
+
+**Why this is not a §6.4 judgement.** It looks like one and it is not. A §6.4 judgement
+returns a boolean, is capped at one per turn across all engines, and belongs to an engine
+that declared `judgement: true`. Act advancement returns structured generated content,
+runs on its own pacing cadence, and belongs to no engine at all. Folding it into §6.4
+would either break that section's boolean-only rule or force a fake engine into the
+registry to host it. It stays where it is, outside the registry, as a named exception.
+
+**Subplot progress is not covered by this exception.** It was raised alongside act
+advancement and it resolves the other way. `subplot_progress` asks the model for an
+integer 0–100 that the engine adds to a running total and compares against
+`completion_threshold` — arithmetic performed by the model, which is exactly the shape
+E-3 forbids, and the same shape as the `stat_changes` and `relationship_changes` this
+spec exists to remove. The model should classify how materially a beat advanced a thread;
+the engine should price the classification. That makes subplot progress ordinary registry
+work (§10, phase 4), not an exception.
+
+**Consequences for §3.2.** The registry resolves `mechanics` only. `check_and_advance_act`
+is not a bound engine, contributes no observation field, and is not reached through
+`resolve()`. It keeps its own `_timed("act_advancement_check", ...)` call site and its
+existing `STATUS_LABELS`/`DEFAULT_STEP_ESTIMATE_SECONDS` entries, unchanged.
 
 ---
 
@@ -374,6 +440,9 @@ predicate**. Conditions, all mandatory:
 logged, budgeted judgement," which is a narrower hole than it sounds: an engine without
 `judgement: true` cannot make the call at all.
 
+Act advancement resembles a judgement and is deliberately not one — see §2.1 for why it
+cannot be folded in here without breaking rule 2.
+
 ---
 
 ## 7. The engine catalogue
@@ -486,6 +555,13 @@ close: the model already emits labels and kinds rather than arithmetic, and the 
 already owns numbering, spend-matching and eviction. Both are good first ports precisely
 because they should barely change — if the registry cannot host them without distorting
 them, the registry is wrong.
+
+### 7.9 Deliberately not an engine
+
+`check_and_advance_act` stays outside the registry, per §2.1. It is listed here so that a
+later reader looking for "the act engine" finds the reasoning instead of concluding it was
+an oversight. `check_subplot_status`'s progress arithmetic *does* come inside, as part of
+phase 4.
 
 ---
 
@@ -626,8 +702,9 @@ Each phase ends green, and nothing after phase 1 is obliged to be started.
    slot already exists as `apply_stat_readouts`, and it is the mechanic with a documented
    real-world failure to point at. If the registry cannot host it cleanly, stop here.
 3. **Rewrite the three conformance fixtures** against the registry, both directions (§9).
-4. **Port `relationship`, `inventory`, `revelation`, `failure`.** Each port must not grow the
-   observation field count without a stated reason (§5.1).
+4. **Port `relationship`, `inventory`, `revelation`, `failure`, and subplot progress**
+   (§2.1 — the model classifies how materially a beat advanced a thread, the engine prices
+   it). Each port must not grow the observation field count without a stated reason (§5.1).
 5. **Relocate `pacing_loop` and `progression`** behind the registry, deliberately unchanged.
 6. **`gate`**, including the pre-action check and the refusal path.
 7. **Observation sharding** (§5.3) — only once field count actually demands it. Premature
@@ -663,18 +740,13 @@ than a guideline.
 
 ## 12. Open questions
 
-1. **Where do subplot progress and act advancement sit?** They are mechanics by E-2's
-   definition, but their rules are genuinely narrative judgement — `check_subplot_status` and
-   `check_and_advance_act` are the two places where a model's opinion may be the correct
-   authority. Current lean: leave them outside the registry for now, and revisit once the
-   event log exists and it is clear whether progress can be priced from events instead.
-2. **Does `world.locations` become a graph?** `gate` implies adjacency and reachability, and
+1. **Does `world.locations` become a graph?** `gate` implies adjacency and reachability, and
    a location table with no edges can only gate the destination, never the route.
-3. **Should a refused action consume a turn?** A refusal that costs nothing invites retry-spam;
+2. **Should a refused action consume a turn?** A refusal that costs nothing invites retry-spam;
    a refusal that costs a turn may feel punitive. Probably per-gate configuration, which is
    one more field in the authoring burden.
-4. **Does the player ever see the rules?** E-7 makes the mechanics honest enough to show. A
+3. **Does the player ever see the rules?** E-7 makes the mechanics honest enough to show. A
    rules readout is newly *possible*; whether it is desirable is a creative decision, which by
    P-3 means it belongs in the template.
-5. **The sharding threshold.** §5.4 proposes six fields per shard as the split point. That
+4. **The sharding threshold.** §5.4 proposes six fields per shard as the split point. That
    number is a guess and should be set from a real measurement once phase 4 lands.
