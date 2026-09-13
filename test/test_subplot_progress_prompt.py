@@ -17,7 +17,7 @@ ctx = se.state_store.load_state("subplotprogresstest", se.state_store.DEFAULT_ST
 ctx["state"]["plot"]["subplots"]["subplot_001"]["progress"] = 40
 
 recorder = RecordingLLM(lambda p: {
-    "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
+    "subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 })
 se.call_llm_json = recorder
@@ -31,7 +31,7 @@ print("OK: active subplot's description, progress, and threshold appear in the s
 # --- clamping behaviour is unchanged: a delta is added to current progress, clamped to
 # [0, completion_threshold] ---
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {"subplot_001": 90}, "flags_set": {}, "memory_fragments_revealed": [],
+    {"subplot_progress": {"subplot_001": 90}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
      "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "make real progress", "narration text")

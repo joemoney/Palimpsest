@@ -94,7 +94,7 @@ try:
         "OPTIONS:\n1. Rest. || I rest.\n2. Move on. || I move on."
         "\n3. Look around. || I look around.",
     ]
-    state_update = {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [], "entity_interaction": False}
+    state_update = {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []}, "entity_interaction": False}
     call_queue = CannedResponses(narrations)
     json_queue = CannedResponses([state_update] * len(narrations))
     se.call_llm = call_queue

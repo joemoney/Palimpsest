@@ -64,7 +64,7 @@ SCHEMA_FIELD_RE = re.compile(r'^  "([a-z_]+)":', re.MULTILINE)
 # A turn's worth of empty diff - enough for update_progress_from_turn to apply cleanly
 # without inventing state that would skew a later measurement.
 EMPTY_DIFF = {
-    "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
+    "subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
     "inventory": {"gained": [], "used": []}, "new_characters": [],
     "scene_update": {"location": "", "summary": "unchanged", "present_npcs": []},
 }

@@ -21,7 +21,7 @@ from _llm_stubs import RecordingLLM, CannedResponses, load_story_engine  # noqa:
 se = load_story_engine()
 
 BASE_DIFF = {
-    "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
+    "subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 }
 
@@ -371,34 +371,41 @@ assert not ctx["story"]["mechanics"].get("revelations")
 recorder = RecordingLLM(lambda p: dict(BASE_DIFF))
 se.call_llm_json = recorder
 se.update_progress_from_turn(ctx, "look around", "narration text")
-assert '"revelations_eligible"' not in recorder.prompts[-1], \
+assert '"eligible"' not in recorder.prompts[-1], \
     "a story with no unrevealed fragments is never asked to queue one"
 assert "reveal_queue" not in ctx["state"]["pacing"] or ctx["state"]["pacing"]["reveal_queue"] == []
-print("OK: a story authoring no revelations gets no revelations_eligible field")
+print("OK: a story authoring no revelations is never asked to queue a reveal")
 
 
 def add_revelation(s):
-    s["mechanics"]["revelations"] = [
-        {"id": "frag_0001", "trigger": "The player reads the ledger.",
-         "content": "The ledger's last entry is dated a year after the fire."},
-    ]
+    # Phase 4 wrapped the bare list so the block can carry `engine` (ENGINE_V2_SPEC §8.1);
+    # the placement mechanics below are the triggered_reveal engine's now, but everything
+    # this file asserts about them is unchanged.
+    s["mechanics"]["revelations"] = {
+        "engine": "triggered_reveal",
+        "entries": [
+            {"id": "frag_0001", "trigger": "The player reads the ledger.",
+             "content": "The ledger's last entry is dated a year after the fire."},
+        ],
+    }
 
 
 ctx = se.state_store.load_state("pacingtest18", se.state_store.DEFAULT_STORY_SLUG)
 with_story(ctx, add_revelation)
-recorder = RecordingLLM(lambda p: dict(BASE_DIFF, revelations_eligible=["frag_0001"]))
+recorder = RecordingLLM(lambda p: dict(
+    BASE_DIFF, revelations={"revealed": [], "eligible": ["frag_0001"]}))
 se.call_llm_json = recorder
 se.update_progress_from_turn(ctx, "read the ledger", "narration text")
-assert '"revelations_eligible"' in recorder.prompts[-1]
+assert '"eligible"' in recorder.prompts[-1]
 assert ctx["state"]["pacing"]["reveal_queue"] == ["frag_0001"]
 assert "frag_0001" not in ctx["state"]["plot"]["revelations_revealed"], \
     "queueing is not revealing - the fragment stays unrevealed until the narration writes it"
-print("OK: revelations_eligible appends to pacing.reveal_queue without marking the "
-      "fragment revealed")
+print("OK: an eligible-but-unwritten reveal appends to pacing.reveal_queue without "
+      "marking the fragment revealed")
 
 # --- re-reporting the same id doesn't duplicate it; an unknown id is dropped ---
 se.call_llm_json = CannedResponses([
-    dict(BASE_DIFF, revelations_eligible=["frag_0001", "frag_9999"]),
+    dict(BASE_DIFF, revelations={"revealed": [], "eligible": ["frag_0001", "frag_9999"]}),
 ])
 se.update_progress_from_turn(ctx, "read it again", "narration text")
 assert ctx["state"]["pacing"]["reveal_queue"] == ["frag_0001"]
@@ -417,11 +424,11 @@ assert "frag_0001" not in prompt and "The player reads the ledger." not in promp
 print("OK: a fired directive interpolates the queued reveal's content, not its bookkeeping")
 
 # --- consumption is on CONFIRMED reveal, not on firing: still queued after the directive
-# fired, and dropped only once memory_fragments_revealed reports it ---
+# fired, and dropped only once the observation pass reports it as revealed ---
 assert ctx["state"]["pacing"]["reveal_queue"] == ["frag_0001"], \
     "firing the directive is an instruction, not a guarantee - the entry stays queued"
 se.call_llm_json = CannedResponses([
-    dict(BASE_DIFF, memory_fragments_revealed=["frag_0001"]),
+    dict(BASE_DIFF, revelations={"revealed": ["frag_0001"], "eligible": []}),
 ])
 se.update_progress_from_turn(ctx, "let it land", "narration text")
 assert "frag_0001" in ctx["state"]["plot"]["revelations_revealed"]

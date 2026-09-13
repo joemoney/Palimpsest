@@ -11,7 +11,7 @@ Primary sources, in priority order when they conflict:
 3. `docs/SCHEMA_V2_SPEC.md` — P-1…P-7, all still binding.
 4. This file.
 
-**Status: phases 0–3 complete. Phase 4 is in progress — steps 1–2 of 5 landed.**
+**Status: phases 0–3 complete. Phase 4 is in progress — steps 1–3 of 5 landed.**
 
 ---
 
@@ -231,7 +231,8 @@ above is what keeps it honest as engines land.
    **Done** — `backend/mechanics/social.py`; see *Step 1* below.
 2. ~~`inventory` / `tagged_items` (§7.3) — items become records; `items_lost`'s exact-string
    match goes away.~~ **Done** — `backend/mechanics/items.py`; see *Step 2* below.
-3. `revelation` / `triggered_reveal` (§7.5).
+3. ~~`revelation` / `triggered_reveal` (§7.5).~~ **Done** — `backend/mechanics/reveal.py`;
+   see *Step 3* below.
 4. `failure` / `triggered_ending` (§7.6) — effect unchanged: set `endgame.requested`, build
    `final_arc` from `ending_prompt`, route into the existing endgame machinery.
 5. Subplot progress (§2.1) — the model classifies how materially a beat advanced a thread,
@@ -364,6 +365,52 @@ It thaws now.
 **Gate.** Suite green. `equivalence_probe.py` identical to step 1 on every target. Field
 count fell on all four targets, which is the first time phase 4's own gate has been met
 rather than deferred.
+
+### Step 3 — `revelations` / `triggered_reveal` *(done)*
+
+**What shipped.** `backend/mechanics/reveal.py`. The engine owns both ends of the pipe -
+the unrevealed triggers the observation pass sees and the revealed content the narrator sees
+- plus §12's placement queue and the 12-fragment display cap. `memory_fragments_revealed`
+and `revelations_eligible` became one `revelations` field. `mechanics.revelations` was a
+bare list, which has nowhere to hang an `"engine"` key, so it becomes
+`{"engine": ..., "entries": [...]}` like every other slot.
+
+**The first engine with a cadence (§5.2).** A story whose clue chain is exhausted now asks
+nothing at all. §5.2 attaches a constraint to that privilege — an engine that may skip turns
+must phrase its question over a window — and this engine satisfies it the easy way: the skip
+is *structural*, not temporal. It stops asking when there is nothing left to ask about,
+never because it decided to wait, so its question stays about exactly the turn it is asked
+on.
+
+**`after` is ordering without an expression language.** §7.5 wants triggers upgraded from
+prose to predicates over engine state; the predicate evaluator belongs to `gate` (§7.4/§7.9),
+which is phase 6, and building it here would be building phase 6 early in the wrong module.
+`after: [ids]` buys the specific thing §7.5 names — a clue chain that cannot fire out of
+sequence — for one list per entry and no evaluator at all. `requires` is phase 6's to add
+once `gate` brings the evaluator. **This engine is ported; its triggers are not yet upgraded,
+and those are two different claims.**
+
+**Gate.** Suite green; `equivalence_probe.py` identical. Field counts are flat on all four
+available targets (10/6/6/8) and that is measurement reach, not a null result: the merge only
+pays on a story with **both** a `pacing_loop` and revelations, and no available template has
+both — `example` has the loop and no revelations, `courtroom` and `regency` the reverse. The
+two that do are in the private submodule, which this working copy cannot check out. Measured
+directly instead, on `example` with a revelation block patched in:
+
+| | engine fields |
+|---|---|
+| chain live | 3 (`social`, `inventory`, `revelations`) — was 4 under v2 |
+| chain exhausted | 2 — the cadence |
+
+Observation prompts fell again for the two fixtures that carry revelations: `courtroom`
+3,324 → 3,102, `regency` 4,233 → 4,079.
+
+**One test outside its own port changed:** `test_pacing_loop.py`'s §12 placement section
+asserted on `revelations_eligible` by name. Phase 5's gate is that that file passes
+*unmodified*, and this is worth flagging rather than burying — but the assertions touched are
+about the revelation field's name, not about pacing behaviour, and every pacing assertion in
+the file is untouched. If phase 5 wants its gate read strictly, this is the one prior edit to
+account for.
 
 ---
 

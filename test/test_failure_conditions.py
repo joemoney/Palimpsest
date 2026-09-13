@@ -27,7 +27,7 @@ def with_story(ctx, mutate):
 ctx = se.state_store.load_state("failuretest", se.state_store.DEFAULT_STORY_SLUG)
 assert "failure_conditions" not in ctx["story"].get("mechanics", {})
 recorder = RecordingLLM(lambda p: {
-    "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
+    "subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 })
 se.call_llm_json = recorder
@@ -43,7 +43,7 @@ with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(failure_condition
      "safe, intact, and permanently unsatisfied."},
 ]))
 recorder = RecordingLLM(lambda p: {
-    "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
+    "subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
     "failure_triggered": "fail_ferry",
 })
@@ -63,7 +63,7 @@ print("OK: a fired failure condition locks in endgame with cause=<condition id> 
 
 # --- once ending, no more failure conditions are offered or evaluated ---
 recorder = RecordingLLM(lambda p: {
-    "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
+    "subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 })
 se.call_llm_json = recorder

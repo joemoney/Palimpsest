@@ -60,7 +60,7 @@ STATE_UPDATE_MARKERS = {
     "failure_conditions": "failure_triggered",
     "progression": "leverage_gained",
     "pacing_loop": "beat_type",
-    "revelations": "UNREVEALED MEMORY FRAGMENT TRIGGERS",
+    "revelations": "LIVE TRIGGERS",
 }
 
 # What each fixture deliberately does NOT author. Kept here rather than derived from the
@@ -92,14 +92,14 @@ EXPECTED_PRESENT = {
 # **Every phase 4 port must add its engine to this table and to at least one fixture in the
 # same commit**, or nothing is guarding P-2 for it.
 EXPECTED_ENGINES = {
-    "regency.json": ["relationships"],
-    "courtroom.json": [],
+    "regency.json": ["relationships", "revelations"],
+    "courtroom.json": ["revelations"],
     "survival.json": ["inventory", "stats"],
 }
 ALL_ENGINE_SLOTS = sorted({slot for slot, _ in se.mechanics.registered_engines()})
 
 EMPTY_DIFF = {
-    "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
+    "subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
     "inventory": {"gained": [], "used": []}, "new_characters": [],
     "scene_update": {"location": "", "summary": "unchanged", "present_npcs": []},
 }

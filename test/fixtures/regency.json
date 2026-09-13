@@ -87,18 +87,21 @@
       ],
       "limit": 12
     },
-    "revelations": [
-      {
-        "id": "rev_001",
-        "trigger": "The protagonist overhears their own name in a conversation not meant for them.",
-        "content": "You have been discussed. Recently, and at length, and by someone whose good opinion you had assumed."
-      },
-      {
-        "id": "rev_002",
-        "trigger": "The protagonist reads a letter, note or inscription written by someone else's hand.",
-        "content": "The hand is familiar and the date is wrong. Whatever was arranged, it was arranged before you were told of it."
-      }
-    ]
+    "revelations": {
+      "engine": "triggered_reveal",
+      "entries": [
+        {
+          "id": "rev_001",
+          "trigger": "The protagonist overhears their own name in a conversation not meant for them.",
+          "content": "You have been discussed. Recently, and at length, and by someone whose good opinion you had assumed."
+        },
+        {
+          "id": "rev_002",
+          "trigger": "The protagonist reads a letter, note or inscription written by someone else's hand.",
+          "content": "The hand is familiar and the date is wrong. Whatever was arranged, it was arranged before you were told of it."
+        }
+      ]
+    }
   },
   "plot": {
     "main_thread": {

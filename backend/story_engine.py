@@ -36,7 +36,6 @@ FLAGS_ACTIVE_LIMIT = 25
 # CR-03: revealed memory fragments accumulate for the whole game, same shape of problem as
 # SUBPLOT_TITLE_HISTORY_LIMIT - bound how many of them reach the narration prompt, keyed off
 # revealed_turn so the most recently revealed ones are the ones that survive the cap.
-MEMORY_FRAGMENT_PROMPT_LIMIT = 12
 # Spec 7's retention/bounding policy for protagonist.leverage. Spent entries are deliberately
 # RETAINED rather than pruned on spend - they're cheap, they enable callbacks, and
 # history.compressed_summary is already lossy, so a spent-but-retained entry may end up the
@@ -672,29 +671,17 @@ def _unspent_leverage_text(ctx: dict) -> str:
 
 
 def _queued_reveal_text(ctx: dict) -> str:
-    """{queued_reveal} interpolation (spec §11/§12). pacing.reveal_queue is populated by
-    update_progress_from_turn's revelations_eligible field: a revelation whose authored
-    trigger is already satisfied but which the narration hasn't actually written yet waits
-    here for a corrective beat to place it, rather than firing into whatever scene happens
-    to be next. FIFO, so the oldest eligible reveal is the one offered.
+    """{queued_reveal} interpolation (spec §11/§12) - placement only; the queue itself and
+    everything about what may go in it belong to the triggered_reveal engine (phase 4).
 
-    Only the *content* is interpolated, never the id or the trigger - the narrator writes
-    the reveal, it doesn't get told the bookkeeping. Skips (rather than shows) an entry
-    that has since been revealed by other means, so a stale queue entry can never make the
-    directive ask for something the player has already read.
-
-    CR-03 - this section's hard prerequisite (spec §12) - has landed: _section_revelations
-    puts revealed content into the narration prompt, so a placed reveal now reaches a pipe
-    that is actually connected."""
-    queue = ctx["state"]["pacing"].get("reveal_queue", [])
-    if not queue:
+    "none queued" rather than an omitted section because this is interpolated into the
+    middle of an authored pacing directive, not appended as a block of its own - a story
+    writes "{queued_reveal}" into a sentence and needs something there. P-2 governs whether
+    the *directive* fires at all, which is the pacing module's call, not this one's."""
+    bound = mechanics.bound_for(ctx["story"], "revelations")
+    if bound is None:
         return "none queued"
-    revealed = ctx["state"]["plot"]["revelations_revealed"]
-    revelations = {r["id"]: r for r in ctx["story"].get("mechanics", {}).get("revelations", [])}
-    for rev_id in queue:
-        if rev_id in revelations and rev_id not in revealed:
-            return revelations[rev_id]["content"]
-    return "none queued"
+    return bound.engine.queued_content(bound.cfg, ctx) or "none queued"
 
 
 def _suppress_predicate(name: str, ctx: dict, rule_id: str, fired_last_turn: str | None) -> bool:
@@ -909,11 +896,6 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         f"  {sid}: {sp['title']} - {sp['description']} [{sp['progress']}/{sp['completion_threshold']}]"
         for sid, sp in subplots_view.items() if sp["active"]
     ) or "  none"
-    revelations = ctx["story"].get("mechanics", {}).get("revelations", [])
-    revealed_ids = set(ctx["state"]["plot"]["revelations_revealed"].keys())
-    unrevealed_fragments = {
-        rev["id"]: rev["trigger"] for rev in revelations if rev["id"] not in revealed_ids
-    }
     characters = ctx["state"]["characters"]
     # Phase 4: relationships are the `scored_axis` engine's now (backend/mechanics/
     # social.py) - the scale, the price list, the tiers, the cap and the eviction rule all
@@ -971,14 +953,6 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         "identity; false if it's situational and safe to eventually forget once it's no "
         'longer recent>}}',
     ]
-    # P-2: mechanics.revelations is an optional module, so neither its schema field nor its
-    # context line may appear for a story that doesn't author one - an always-empty
-    # "UNREVEALED MEMORY FRAGMENT TRIGGERS: {}" is exactly the zeroed header P-2 forbids.
-    if revelations:
-        schema_fields.append(
-            '  "memory_fragments_revealed": ["<the exact id of every UNREVEALED MEMORY FRAGMENT '
-            'TRIGGER below that the narration satisfies this turn, or [] if none>"]'
-        )
     if tracked_entity:
         schema_fields.append(
             f'  "entity_interaction": <true if {tracked_entity["name"]} appeared or acted this '
@@ -1045,52 +1019,12 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
             "spent when it has been cashed in and can't be cashed again, or when events "
             'made it worthless. Not merely mentioned or acted on. [] if none>"]'
         )
-    # Spec §12's placement policy. Only asked when the story has a pacing_loop, since that
-    # module's directive is the only thing that ever consumes the queue - without it there
-    # is nothing to place a reveal *into* and the queue would just be dead state.
-    if pacing_loop_cfg and unrevealed_fragments:
-        schema_fields.append(
-            '  "revelations_eligible": ["<the exact id of every UNREVEALED MEMORY FRAGMENT '
-            "TRIGGER below whose condition the story has now satisfied but which the "
-            "NARRATION did NOT actually write onto the page this turn - these wait for a "
-            'better scene to land in. Never list an id you also put in '
-            'memory_fragments_revealed. [] if none>"]'
-        )
     if failure_conditions:
         schema_fields.append(
             '  "failure_triggered": "<the exact id of a FAILURE CONDITION below that has now '
             'been met this turn, or null if none have>"'
         )
     schema_str = ",\n".join(schema_fields)
-
-    # A trigger is authored as a description of an event ("the first time the protagonist
-    # attempts a non-trivial computational proof"), but narration never echoes that wording -
-    # it renders the event. Without this, the model treats the trigger list as context rather
-    # than as something to evaluate, and fires nothing: 0 of 2 across a 24-turn playthrough
-    # whose turns 18 and 23 both plainly satisfied one (docs/PHASE_0_GATE_REPORT.md §4).
-    fragment_instruction = ""
-    if unrevealed_fragments:
-        fragment_instruction = (
-            "For memory_fragments_revealed, check the NARRATION against each UNREVEALED MEMORY "
-            "FRAGMENT TRIGGER and list the id of every one the narration satisfies this turn. "
-            "Judge a trigger by what actually happens in the scene, not by whether the narration "
-            "reuses the trigger's wording - a trigger describing an act is satisfied by the "
-            "protagonist performing that act however it is written. Return [] if none apply; "
-            "never force a match.\n"
-        )
-        if pacing_loop_cfg:
-            # Spec §12: the split between "satisfied AND written" and "satisfied but not yet
-            # written" is the whole point - the first is a reveal that already happened and
-            # gets marked revealed, the second is one the pacing directive can place into a
-            # scene built to carry it. Without this sentence the model reads the two fields
-            # as near-synonyms and puts the same id in both.
-            fragment_instruction += (
-                "A trigger can be satisfied without the narration having actually delivered "
-                "the memory on the page. Put an id in memory_fragments_revealed only if the "
-                "NARRATION itself wrote the memory into the scene; if the condition is met "
-                "but the memory has not surfaced yet, put the id in revelations_eligible "
-                "instead, and never in both.\n"
-            )
 
     failure_line = f"\nFAILURE CONDITIONS (id: trigger): {json.dumps(failure_triggers)}" if failure_conditions else ""
 
@@ -1118,15 +1052,11 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
             f"verbatim from here for leverage_spent): {json.dumps(unspent_labels)}"
         )
 
-    fragments_line = (
-        f"UNREVEALED MEMORY FRAGMENT TRIGGERS: {json.dumps(unrevealed_fragments)}\n"
-        if revelations else ""
-    )
     prompt = f"""Given this turn of an interactive story, report what changed in the world state.
 
 ACTIVE SUBPLOTS (id: title - description [progress/threshold]):
 {active_subplot_lines}
-{fragments_line}CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}{engine_context}{leverage_line}
+CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}{engine_context}{leverage_line}
 EXISTING CHARACTERS (do not repeat in new_characters): {', '.join(existing_characters) or 'none'}{stats_block}
 CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}{failure_line}{beat_section}
 
@@ -1140,7 +1070,7 @@ Respond with ONLY a JSON object, no other text, in this exact shape:
 Only include subplot ids, flags, fragment ids, items, character names, and stats that actually
 changed this turn. Use {{}}/[] for nothing changed. Omit scene_update entirely if the
 protagonist's location and situation are unchanged from CURRENT SCENE above.
-{fragment_instruction}{engine_instructions}Only add an entry to new_characters when a character is given an actual proper name for the
+{engine_instructions}Only add an entry to new_characters when a character is given an actual proper name for the
 first time this turn (e.g. "Marlowe", "Elena Cho") AND isn't already in EXISTING CHARACTERS -
 never for a generic/descriptive handle (e.g. "the guard", "the advocate", "the woman at the
 terminal"). Promoting a generic-label character to a full one later
@@ -1170,40 +1100,6 @@ is a separate, manual step."""
             pinned = False
         flags["active"][flag_name] = value
         flags["meta"][flag_name] = {"turn_set": turn_count, "pinned": pinned}
-
-    revealed_now = set(diff.get("memory_fragments_revealed", []))
-    valid_revelation_ids = {r["id"] for r in revelations}
-    for rev_id in revealed_now:
-        if rev_id in valid_revelation_ids:
-            ctx["state"]["plot"]["revelations_revealed"][rev_id] = {"turn": turn_count}
-
-    # Spec §12 reveal placement: a revelation whose trigger is satisfied but which the
-    # narration hasn't written yet queues up for the pacing directive to place, rather than
-    # firing into whatever scene comes next. Gated on the story having a pacing_loop, since
-    # that directive is the only consumer. Lazily created, same as every other pacing key.
-    #
-    # Consumption is on *confirmed* reveal, not on directive firing. Spec §12 words it as
-    # "the directive consumes one entry per firing", but a firing is an instruction to the
-    # narrator, not a guarantee - popping unconditionally would silently drop a reveal any
-    # time the model ignored the bullet, and nothing would ever re-queue it (its trigger
-    # already fired once, in a scene now well behind us). Leaving the entry until
-    # memory_fragments_revealed actually reports it means the worst case is the next firing
-    # citing the same reveal again, which is self-correcting rather than lossy.
-    if pacing_loop_cfg:
-        reveal_queue = ctx["state"]["pacing"].setdefault("reveal_queue", [])
-        for rev_id in diff.get("revelations_eligible", []) or []:
-            if (
-                rev_id in valid_revelation_ids
-                and rev_id not in ctx["state"]["plot"]["revelations_revealed"]
-                and rev_id not in reveal_queue
-            ):
-                reveal_queue.append(rev_id)
-        # Bounded implicitly by the template's revelation count, but a revealed entry is
-        # dead weight that would otherwise sit at the head of the FIFO forever.
-        ctx["state"]["pacing"]["reveal_queue"] = [
-            rev_id for rev_id in reveal_queue
-            if rev_id not in ctx["state"]["plot"]["revelations_revealed"]
-        ]
 
     if diff.get("entity_interaction"):
         ctx["state"]["plot"]["entity_contact_count"] += 1
@@ -2091,24 +1987,10 @@ def _section_scene(ctx: dict) -> str:
 
 
 def _section_revelations(ctx: dict) -> str | None:
-    # CR-03: only revealed fragments' content ever reaches the narrator here; the state-update
-    # prompt (update_progress_from_turn) sees only unrevealed triggers - neither pass sees the
-    # other half. Capped to the most recently revealed MEMORY_FRAGMENT_PROMPT_LIMIT so this
-    # doesn't grow unbounded over a long game.
-    revelations = ctx["story"].get("mechanics", {}).get("revelations", [])
-    revealed_map = ctx["state"]["plot"]["revelations_revealed"]
-    revealed_fragments = sorted(
-        (r for r in revelations if r["id"] in revealed_map),
-        key=lambda r: revealed_map[r["id"]].get("turn", 0),
-        reverse=True,
-    )
-    if not revealed_fragments:
-        return None
-    memory_lines = "\n".join(f"- {r['content']}" for r in revealed_fragments[:MEMORY_FRAGMENT_PROMPT_LIMIT])
-    return (
-        "REVEALED MEMORIES (the protagonist already knows these; reference them naturally, "
-        f"do not re-reveal them as though they were new):\n{memory_lines}"
-    )
+    # CR-03 lives in the triggered_reveal engine now: only revealed content reaches the
+    # narrator, only unrevealed triggers reach the observation pass, and neither pass sees
+    # the other half. This keeps the placement only.
+    return mechanics.prompt_sections(ctx).get("revelations.memories")
 
 
 def _section_protagonist(ctx: dict) -> str:

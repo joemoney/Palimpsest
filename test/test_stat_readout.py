@@ -83,7 +83,7 @@ print("OK: token instruction appears only when a readout is configured")
 # --- integration: the stored turn carries post-update figures, not pre-update ones ---
 with_story(ctx, lambda s: s["mechanics"].update(stats={"engine": "bounded_counter", "visible": True, "readout": READOUT}))
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
+    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
      "inventory": {"gained": [], "used": []}, "new_characters": [], "stat_changes": {"sync": 6},
      "scene_update": {"location": "", "summary": "x", "present_npcs": []}},
 ])

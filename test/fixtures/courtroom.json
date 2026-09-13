@@ -43,18 +43,24 @@
     "default_name": "Counsel"
   },
   "mechanics": {
-    "revelations": [
-      {
-        "id": "test_001",
-        "trigger": "A witness contradicts a detail of their own earlier statement, on the record.",
-        "content": "It is small, and it is fatal, and you are the only person in the room who has both versions in front of them."
-      },
-      {
-        "id": "test_002",
-        "trigger": "The protagonist enters a physical exhibit into evidence.",
-        "content": "The moment it is in your hand you understand why the prosecution never entered it themselves."
-      }
-    ],
+    "revelations": {
+      "engine": "triggered_reveal",
+      "entries": [
+        {
+          "id": "test_001",
+          "trigger": "A witness contradicts a detail of their own earlier statement, on the record.",
+          "content": "It is small, and it is fatal, and you are the only person in the room who has both versions in front of them."
+        },
+        {
+          "id": "test_002",
+          "trigger": "The protagonist enters a physical exhibit into evidence.",
+          "content": "The moment it is in your hand you understand why the prosecution never entered it themselves.",
+          "after": [
+            "test_001"
+          ]
+        }
+      ]
+    },
     "failure_conditions": [
       {
         "id": "fail_contempt",

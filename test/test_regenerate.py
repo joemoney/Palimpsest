@@ -47,7 +47,7 @@ print("OK: take_turn() applies state changes and stashes a pre-turn snapshot")
 # --- regenerate: state should roll back to pre-turn, then re-apply based on the NEW response ---
 se.call_llm = CannedResponses(["Second narration (regenerated).\n\nOPTIONS:\n1. x || x\n2. y || y\n3. z || z"])
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": []},
+    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []}},
 ])
 result = se.regenerate_last_turn()
 assert result is False
@@ -69,7 +69,7 @@ print("OK: regenerate_last_turn() restores pre-turn state, then applies the fres
 recorder = RecordingLLM(lambda prompt: "Third narration.\n\nOPTIONS:\n1. p || p\n2. q || q\n3. r || r")
 se.call_llm = recorder
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": []},
+    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []}},
 ])
 se.regenerate_last_turn()
 ctx = ctx_holder["ctx"]
