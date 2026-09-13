@@ -61,6 +61,45 @@ try:
     assert stories[0]["title"] == "Story A"
     print("OK: list_stories() reflects the current template catalog")
 
+    # --- a second story root, and the nested-root guard ---
+    # stories/private/ is a submodule of private story content mounted *inside* stories/,
+    # so the scan of the outer root sees it as a directory that looks exactly like a slug.
+    # It must never be offered as one. This is a real regression, not a hypothetical: the
+    # submodule used to hold a single story's template.json at its own root, so scanning
+    # the outer root found <private_root>/template.json and offered the whole submodule as
+    # a story called "private" - and any clone still pinned to that older submodule commit
+    # reproduces the layout exactly.
+    private_root = os.path.join(ss.STORIES_DIR, "private")
+    os.makedirs(private_root, exist_ok=True)
+    ss.STORIES_PRIVATE_DIR = private_root
+    with open(os.path.join(private_root, "template.json"), "w") as f:
+        json.dump({**MINIMAL_TEMPLATE, "meta": {"title": "Should Never Be A Slug"}}, f)
+    assert [s["slug"] for s in ss.list_stories()] == ["story_a"], ss.list_stories()
+    print("OK: a story root nested inside another root is never offered as a slug")
+
+    # A story *inside* the private root is offered, and load_template_raw resolves it
+    # from whichever root holds it.
+    story_p_dir = os.path.join(private_root, "story_p")
+    os.makedirs(story_p_dir, exist_ok=True)
+    with open(os.path.join(story_p_dir, "template.json"), "w") as f:
+        json.dump({**MINIMAL_TEMPLATE, "meta": {"title": "Story P"}}, f)
+    assert [s["slug"] for s in ss.list_stories()] == ["story_a", "story_p"], ss.list_stories()
+    assert ss.load_template_raw("story_p")["meta"]["title"] == "Story P"
+
+    # A slug present in both roots resolves to the public one - a shadowing slug is a
+    # content mistake, and preferring the committed copy is the debuggable outcome.
+    shadow_dir = os.path.join(private_root, "story_a")
+    os.makedirs(shadow_dir, exist_ok=True)
+    with open(os.path.join(shadow_dir, "template.json"), "w") as f:
+        json.dump({**MINIMAL_TEMPLATE, "meta": {"title": "Shadow"}}, f)
+    titles = {s["slug"]: s["title"] for s in ss.list_stories()}
+    assert titles["story_a"] == "Story A", titles
+    assert ss.load_template_raw("story_a")["meta"]["title"] == "Story A"
+    shutil.rmtree(shadow_dir)
+    shutil.rmtree(story_p_dir)
+    os.remove(os.path.join(private_root, "template.json"))
+    print("OK: private root is scanned, and a slug in both roots resolves to the public one")
+
     # --- the story/state split: ctx["story"] is frozen, ctx["state"] is mutable ---
     ctx_alice = ss.load_state("alice", "story_a")
     assert set(ctx_alice.keys()) == {"story", "state"}

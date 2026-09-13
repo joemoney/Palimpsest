@@ -86,11 +86,18 @@ def list_stories() -> list:
     committed copy is the outcome that is debuggable."""
     stories = []
     seen = set()
-    for root in story_roots():
+    roots = story_roots()
+    # A root nested inside another root (stories/private inside stories) is a directory the
+    # outer scan would otherwise treat as a slug. That is not hypothetical: before the
+    # submodule was restructured to one folder per story, its root held a template.json
+    # directly, so scanning stories/ found stories/private/template.json and offered the
+    # whole private submodule as a single story called "private".
+    nested = {os.path.basename(r) for r in roots}
+    for root in roots:
         if not os.path.isdir(root):
             continue
         for slug in sorted(os.listdir(root)):
-            if slug in seen:
+            if slug in seen or os.path.join(root, slug) in roots or slug in nested:
                 continue
             template_path = os.path.join(root, slug, "template.json")
             if os.path.isfile(template_path):
