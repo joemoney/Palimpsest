@@ -668,6 +668,49 @@ a fresh clone that initialises the submodule gets the *old* layout, where no
 `stories/private/<slug>/template.json` exists and the private catalog is simply empty.
 Nothing crashes; the private stories just aren't there.
 
+**Where that restructure physically is, established 2026-09-13.** It is committed in the
+submodule working copy on the **homelab** (the Docker/cloudflared host — `docker-compose.yml`
+bind-mounts `.:/app`, so the checkout is persistent), edited there through Claude Code on
+that device. It is not on the author's Windows workstation and it is not on GitHub: a
+search of that workstation for `*missing_core*` across both drives, every branch and
+dangling object in both repos, the submodule object store, local session transcripts and
+recycle bins turned up nothing, and `github.com/joemoney/palimpsest-stories` still has
+`README.md` + `template.json` at its root on every branch.
+
+Two consequences worth acting on:
+
+- **Never run `git clean -xdf` in the homelab checkout.** `stories/the_missing_core/` is
+  gitignored, and that is the one ordinary command that would destroy the vestigial `.git`
+  holding that story's baseline commit. The current version of the story lives at
+  `stories/private/the_missing_core/template.json` inside the unpushed submodule commits;
+  the baseline is recoverable with
+  `git -C stories/the_missing_core show <commit>:template.json`.
+- **Phase 4 landed without either private template**, because the machine it was written on
+  could not reach them. Both are still v2-shaped and will load *inert* rather than raising:
+  `_declared()` only binds a `mechanics` entry that is a dict carrying `"engine"`, so a bare
+  `revelations`/`failure_conditions` list is silently skipped and an undeclared
+  `relationships` block tracks nothing. Converting them is the remaining phase 4 content
+  work:
+
+| Block | v2 shape | v3 shape |
+|---|---|---|
+| `revelations` | bare list | `{"engine": "triggered_reveal", "entries": [...]}` |
+| `failure_conditions` | bare list | `{"engine": "triggered_ending", "conditions": [...]}` |
+| `relationships` | `{axis, limit}` | add `"engine": "scored_axis"` and a **required** `registers` price list; optional `scale`, `tiers`, `cap_per_window` |
+| `inventory` | (none) | `{"engine": "tagged_items"}` if the story uses items; optional `tags`, `capacity` |
+| `subplots` | (none) | `{"engine": "weighted_threads"}` wherever `plot.subplots` is authored |
+
+`mechanics.validate()` warns at load for the two most damaging omissions — seeded stats or
+`starting_inventory` with no engine declared, and authored `plot.subplots` with no
+`weighted_threads`. Take those warnings seriously: an undeclared subplot engine leaves the
+threads visible in every prompt and never progressing, which looks like a working story
+that simply never resolves anything.
+
+**Recovery order is fixed** (the same rule as above, restated because it is easy to invert
+under pressure): confirm the story survives, **push the submodule**, pull `engine-v2`, and
+only then bump the gitlink. Phase 4's five commits touch neither `.gitmodules` nor the
+gitlink, so a fast-forward pull works even with the pointer bump sitting unstaged.
+
 ---
 
 ## Rollback
