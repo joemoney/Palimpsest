@@ -28,7 +28,7 @@ ctx = se.state_store.load_state("failuretest", se.state_store.DEFAULT_STORY_SLUG
 assert "failure_conditions" not in ctx["story"].get("mechanics", {})
 recorder = RecordingLLM(lambda p: {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 })
 se.call_llm_json = recorder
 se.update_progress_from_turn(ctx, "look around", "narration text")
@@ -44,7 +44,7 @@ with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(failure_condition
 ]))
 recorder = RecordingLLM(lambda p: {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
     "failure_triggered": "fail_ferry",
 })
 se.call_llm_json = recorder
@@ -64,7 +64,7 @@ print("OK: a fired failure condition locks in endgame with cause=<condition id> 
 # --- once ending, no more failure conditions are offered or evaluated ---
 recorder = RecordingLLM(lambda p: {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 })
 se.call_llm_json = recorder
 se.update_progress_from_turn(ctx, "keep narrating the ending", "narration text")

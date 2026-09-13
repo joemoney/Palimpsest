@@ -41,7 +41,7 @@ print("OK: no revealed fragments -> no REVEALED MEMORIES header")
 ctx["state"]["pacing"]["turn_count"] = 5
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": ["frag_1"],
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "attempt a proof", "narration text")
 
@@ -57,7 +57,7 @@ print("OK: revealing a fragment records its turn and surfaces its content, not t
 # --- the state-update prompt continues to see only unrevealed triggers, never revealed content ---
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 captured = {}
 original_json = se.call_llm_json
@@ -96,7 +96,7 @@ print(f"OK: revealed-fragment block capped to {se.MEMORY_FRAGMENT_PROMPT_LIMIT},
 # --- with unrevealed fragments present, the state-update prompt instructs evaluation ---
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 captured = {}
 original_json = se.call_llm_json
@@ -123,7 +123,7 @@ all_revealed_ctx["story"] = se.state_store.freeze(all_revealed_story)
 all_revealed_ctx["state"]["plot"]["revelations_revealed"] = {"frag_1": {"turn": 1}}
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 captured = {}
 original_json = se.call_llm_json
@@ -139,7 +139,7 @@ no_rev_story["mechanics"]["revelations"] = []
 no_rev_ctx["story"] = se.state_store.freeze(no_rev_story)
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 captured = {}
 original_json = se.call_llm_json

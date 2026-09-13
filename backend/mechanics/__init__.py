@@ -200,10 +200,18 @@ def validate(story):
         for step in story.get("character_creation", []) or []
         for option in step.get("options", []) or []
     )
-    if seeded and not any(slot == "stats" for slot, _ in _declared(story)):
+    declared = {slot for slot, _ in _declared(story)}
+    if seeded and "stats" not in declared:
         print("WARNING: this story seeds protagonist stats but declares no "
               "mechanics.stats.engine - they will be inert (no bounds, no prompt line, "
               "no stat_changes field). Add \"engine\": \"bounded_counter\" to use them.")
+    # Phase 4 gave inventory the same failure mode declare-to-bind created for stats: seed
+    # starting_inventory, never declare the engine, and the items sit in the save with no
+    # prompt line and no way to gain or lose one.
+    if story.get("protagonist", {}).get("starting_inventory") and "inventory" not in declared:
+        print("WARNING: this story seeds protagonist.starting_inventory but declares no "
+              "mechanics.inventory.engine - the items will be inert (no prompt line, no way "
+              "to gain or spend one). Add \"engine\": \"tagged_items\" to use them.")
 
     for slot, cfg in _declared(story):
         if (slot, cfg["engine"]) not in _REGISTRY:
@@ -363,4 +371,4 @@ def run_observation_pipeline(ctx, diff):
 
 # Engines register by being imported. At the bottom, because each one imports names from
 # this module - the package is the contract, the modules are the implementations.
-from . import resource, social  # noqa: E402,F401
+from . import items, resource, social  # noqa: E402,F401

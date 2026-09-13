@@ -65,7 +65,7 @@ SCHEMA_FIELD_RE = re.compile(r'^  "([a-z_]+)":', re.MULTILINE)
 # without inventing state that would skew a later measurement.
 EMPTY_DIFF = {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "new_characters": [],
+    "inventory": {"gained": [], "used": []}, "new_characters": [],
     "scene_update": {"location": "", "summary": "unchanged", "present_npcs": []},
 }
 

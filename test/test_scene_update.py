@@ -22,7 +22,7 @@ se.call_llm_json = CannedResponses([
          "location": "loc_inn", "summary": "Now warming up by the fire at the Harborlight.",
          "present_npcs": ["Mrs. Abbott"],
      },
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "follow her inside", "narration text")
 scene = ctx["state"]["scene"]
@@ -36,7 +36,7 @@ se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
      "scene_update": {"location": "loc_not_a_real_place", "summary": "Should still apply.",
                        "present_npcs": []},
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "wander off", "narration text")
 assert ctx["state"]["scene"]["location"] == "loc_inn", "invalid id must not overwrite"
@@ -48,7 +48,7 @@ print("OK: an invalid location id is rejected, keeping the previous value, while
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
      "scene_update": {"location": "loc_inn", "summary": "", "present_npcs": []},
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "stay quiet", "narration text")
 assert ctx["state"]["scene"]["summary"] == "Should still apply.", \
@@ -59,7 +59,7 @@ print("OK: an empty summary is a no-op, not a blank-out")
 before = dict(ctx["state"]["scene"])
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "do nothing in particular", "narration text")
 assert ctx["state"]["scene"] == before
@@ -74,7 +74,7 @@ se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
      "scene_update": {"location": "the rooftop, somewhere improvised", "summary": "s",
                        "present_npcs": []},
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 se.update_progress_from_turn(free_ctx, "climb up", "narration text")
 assert free_ctx["state"]["scene"]["location"] == "the rooftop, somewhere improvised"

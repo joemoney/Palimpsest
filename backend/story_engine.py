@@ -900,7 +900,7 @@ def check_subplot_status(ctx: dict) -> dict:
 def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -> dict:
     """Separate LLM pass (kept apart from narration) that extracts a state diff from the
     turn just narrated: subplot progress, flags, revealed memory fragments, entity contact,
-    inventory changes, scene, and relationship-score changes."""
+    scene, and - through the bound mechanic engines - inventory, relationships and stats."""
     subplots_view = _all_subplots(ctx)
     # CR-08: previously just {id: title}, giving the model a delta to report with no idea
     # where the subplot currently stands - it couldn't tell "this beat should finish the
@@ -999,10 +999,6 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         'protagonist is now and the immediate situation, as of the end of this turn>", '
         f'"present_npcs": ["<character name>", "..."]{threat_present_field}}}'
     )
-    schema_fields += [
-        '  "items_gained": ["<short item description>", "..."]',
-        '  "items_lost": ["<item description, matching an existing inventory entry exactly>", "..."]',
-    ]
     schema_fields.append(
         '  "new_characters": [{"name": "<full name>", "description": "<who they are, appearance, '
         'personality>", "role": "<their narrative role>", "relationship_to_player": "<their '
@@ -1040,8 +1036,9 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         )
         # Spec §7: the ledger is a ratchet the release directive points at, so an entry that
         # has been used up or invalidated has to stop being pointed at. Matched by exact
-        # label string against the CURRENT <LABEL> line in the prompt, exactly like
-        # items_lost against CURRENT INVENTORY - which is why that line is shown here.
+        # label string against the CURRENT <LABEL> line in the prompt - the pattern
+        # items_lost used before phase 4 gave inventory real ids, and the reason that line
+        # is shown here. Worth revisiting when progression is ported (phase 5).
         schema_fields.append(
             f'  "leverage_spent": ["<the exact label, copied verbatim from CURRENT '
             f'{label.upper()} above, of every entry this turn used up or invalidated - '
@@ -1129,8 +1126,7 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
 
 ACTIVE SUBPLOTS (id: title - description [progress/threshold]):
 {active_subplot_lines}
-{fragments_line}CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}
-CURRENT INVENTORY: {json.dumps(ctx["state"]["protagonist"]["inventory"])}{engine_context}{leverage_line}
+{fragments_line}CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}{engine_context}{leverage_line}
 EXISTING CHARACTERS (do not repeat in new_characters): {', '.join(existing_characters) or 'none'}{stats_block}
 CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}{failure_line}{beat_section}
 
@@ -1229,14 +1225,6 @@ is a separate, manual step."""
         if pacing_loop_cfg and "threat_present" in scene_update:
             scene["threat_present"] = bool(scene_update["threat_present"])
 
-    inventory = ctx["state"]["protagonist"]["inventory"]
-    for item in diff.get("items_gained", []):
-        if item:
-            inventory.append(item)
-    for item in diff.get("items_lost", []):
-        if item in inventory:
-            inventory.remove(item)
-
     # New, properly-named characters the narration introduced this turn (see the
     # new_characters prompt instruction above) get a real record immediately and are
     # ready to be scored by a `social` entry in the very same diff (the engine pipeline
@@ -1316,10 +1304,10 @@ is a separate, manual step."""
 
         # Spec §7: mark spent, don't remove - a spent entry is retained for callbacks and
         # for the record (see LEVERAGE_LIMIT). Matched by exact label string against an
-        # entry that is still unspent, mirroring items_lost against inventory: the model is
-        # shown the unspent labels verbatim in the prompt for exactly this reason. Applied
-        # after gains, again mirroring inventory's gained-then-lost order, so a gain cashed
-        # in within the same turn resolves correctly.
+        # entry that is still unspent: the model is shown the unspent labels verbatim in
+        # the prompt for exactly this reason. Applied after gains, mirroring the inventory
+        # engine's gains-before-expenditures order, so a gain cashed in within the same turn
+        # resolves correctly.
         for label in diff.get("leverage_spent", []) or []:
             for entry in leverage:
                 if entry["label"] == label and not entry.get("spent"):
@@ -2160,11 +2148,11 @@ def _section_protagonist(ctx: dict) -> str:
     # it vanishes from the observation schema (update_progress_from_turn).
     sections = mechanics.prompt_sections(ctx)
     stats_str = sections.get("stats.player_line", "")
+    inventory_part = sections.get("inventory.player_line", "")
     relationships_part = sections.get("relationships.player_line", "")
     return (
         f"PLAYER: {protagonist['name']}{creation_str} | Traits: {', '.join(protagonist['traits'])}"
-        f"{stats_str} | Inventory: {', '.join(protagonist['inventory']) or 'nothing'}"
-        f"{relationships_part} | Flags: {protagonist['flags']['active']}"
+        f"{stats_str}{inventory_part}{relationships_part} | Flags: {protagonist['flags']['active']}"
     )
 
 
@@ -2259,6 +2247,7 @@ def _section_footer(ctx: dict) -> str:
     sections = mechanics.prompt_sections(ctx)
     stats_instruction = sections.get("stats.footer", "")
     standing_instruction = sections.get("relationships.tiers", "")
+    carry_instruction = sections.get("inventory.footer", "")
 
     if endgame["requested"]:
         instruction_footer = (
@@ -2272,7 +2261,7 @@ def _section_footer(ctx: dict) -> str:
             f"{_options_block_instruction(option_count, option_pov)}"
         )
 
-    return f"""Stay strictly within the established world, tone, and rules above.{stats_instruction}{standing_instruction}
+    return f"""Stay strictly within the established world, tone, and rules above.{stats_instruction}{standing_instruction}{carry_instruction}
 You may lightly mark up emphasis in your prose using exactly these three markers, used
 sparingly (most sentences should have none): **text** for bold, *text* for italic
 (e.g. internal thought or stressed words), __text__ for underline. Do not nest them,

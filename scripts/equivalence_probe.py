@@ -49,7 +49,7 @@ DELTA_SEQUENCE = [
 
 BASE_DIFF = {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "new_characters": [],
+    "inventory": {"gained": [], "used": []}, "new_characters": [],
     "scene_update": {"location": "", "summary": "unchanged", "present_npcs": []},
 }
 

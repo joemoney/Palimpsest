@@ -11,7 +11,7 @@ Primary sources, in priority order when they conflict:
 3. `docs/SCHEMA_V2_SPEC.md` — P-1…P-7, all still binding.
 4. This file.
 
-**Status: phases 0–3 complete. Phase 4 is in progress — step 1 of 5 landed.**
+**Status: phases 0–3 complete. Phase 4 is in progress — steps 1–2 of 5 landed.**
 
 ---
 
@@ -229,8 +229,8 @@ above is what keeps it honest as engines land.
 **Work.** In this order, each landing green before the next:
 1. ~~`relationship` / `scored_axis` (§7.2) — and the scale stops being hardcoded `±100`.~~
    **Done** — `backend/mechanics/social.py`; see *Step 1* below.
-2. `inventory` / `tagged_items` (§7.3) — items become records; `items_lost`'s exact-string
-   match goes away.
+2. ~~`inventory` / `tagged_items` (§7.3) — items become records; `items_lost`'s exact-string
+   match goes away.~~ **Done** — `backend/mechanics/items.py`; see *Step 2* below.
 3. `revelation` / `triggered_reveal` (§7.5).
 4. `failure` / `triggered_ending` (§7.6) — effect unchanged: set `endgame.requested`, build
    `final_arc` from `ending_prompt`, route into the existing endgame machinery.
@@ -318,6 +318,52 @@ is exactly what §7.1's implicit `STAT_FLOOR = 0` turned out to be.
   unstated. As an engine it has to be explicit, because a newcomer scored this turn is not
   yet in the roster when the roster is measured — get it backwards and a strong new bond is
   dropped on arrival. There is now a test that fails if the two are reordered.
+
+### Step 2 — `inventory` / `tagged_items` *(done)*
+
+**What shipped.** `backend/mechanics/items.py`. Items are records (`id`, `label`, `tags`,
+optional `uses`) rather than free strings; `items_gained` and `items_lost` became one
+`inventory` field; expenditure cites a minted `itm_NNN` id instead of matching a stored
+string character for character. Capacity is owned and refuses rather than evicts.
+
+**The field-count reduction landed here, and the bigger half was not the one §7.3
+predicted.** Merging two fields into one saves one field. Making inventory a *declared
+module* saves two, for every story that has no inventory concept — and `items_gained` /
+`items_lost` had been unconditional since v1, asked of a courtroom drama and a comedy of
+manners every turn. That was a standing P-2 violation that nothing could catch, because
+inventory had no module to be absent from. Measured against phase 0:
+
+| | `example` | `courtroom` | `regency` | `survival` |
+|---|---|---|---|---|
+| Fields, phase 0 → now | 11 → **10** | 8 → **6** | 8 → **6** | 9 → **8** |
+| Observation prompt | 7,053 → 7,772 | 3,494 → **3,324** | 4,263 → **4,233** | 3,356 → 3,795 |
+
+**Prompt size moved both ways, and the direction says what it should.** Stories that shed a
+module got smaller. `example` grew ~10%, and that is the honest price of E-3: a model that
+classifies into a vocabulary has to be shown the vocabulary, and `example` now carries both
+a register list and a tag list. `survival` grew because it *gained* an inventory module it
+never had (capacity, tags, `uses`), so its row is not like for like. Both new instruction
+blocks were tightened after the first measurement — worth doing, since the observation
+prompt was already the larger of the two prompts at phase 0.
+
+**What the step found.** Capacity and §6.2's declared order collide, and neither can simply
+win. §6.2 records "gains before losses so a gain cashed in on the same turn resolves" — free
+while inventory was unbounded. With a capacity, gains-first refuses "put the rope down, take
+the axe", and losses-first breaks the same-turn pickup-and-spend. `resolve()` therefore runs
+three passes: expenditures of things already held, then gains against the room that freed,
+then whatever expenditures are left (which can only be of something gained this turn). Both
+properties hold, and the ordering is stated rather than implied by statement order — which is
+the argument for §6.2 in miniature.
+
+**Also fixed on the way through:** `new_save_state` shallow-copied `starting_inventory`
+straight out of the frozen template. Harmless while items were strings; with records it
+would have seeded a save with `FrozenDict`s, so spending a use would raise on the first turn
+and only until the save round-tripped through disk — about the worst shape a bug can have.
+It thaws now.
+
+**Gate.** Suite green. `equivalence_probe.py` identical to step 1 on every target. Field
+count fell on all four targets, which is the first time phase 4's own gate has been met
+rather than deferred.
 
 ---
 

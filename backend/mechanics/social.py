@@ -159,20 +159,22 @@ class ScoredAxis(MechanicEngine):
             f"+{high} {axis.get('positive', 'devoted')}, 0 neutral/unknown): "
             f"{self._standing_line(cfg, ctx)}"
         )
+        # Kept deliberately tight: §5.1 is about field count, but the observation prompt is
+        # already the larger of the two prompts (phase 0), so an engine's instruction earns
+        # its characters or loses them. Everything here is load-bearing - the magnitude ban
+        # is the port, and the verbatim-name rule is inherited from v2, where a paraphrased
+        # key silently forked a character's standing into a new one.
         instruction = (
-            "For social, report one entry per distinct social beat the NARRATION actually "
-            "contains - who it was with and which register best describes it. Do not report "
-            "a magnitude: how much each register moves a relationship is fixed by this "
-            "story, not by you. Pick the single closest register or omit the beat entirely; "
-            "never invent a register outside the list. [] if nothing social happened.\n"
-            "If a target is someone already listed in EXISTING CHARACTERS, its value must be "
-            "that exact string, copied verbatim - never a shortened, reordered, or "
-            "paraphrased version of it (e.g. if EXISTING CHARACTERS lists \"Salome Vence "
-            "(the Advocate)\", use that exact string, not \"Salome Vence\" or \"the "
-            "advocate\"). This is what keeps the standing attached to that character's "
-            "record instead of silently forking into a seemingly-new name. A "
-            "generic-label character should still get a social entry as usual, just not a "
-            "new_characters one.\n"
+            "For social, report one entry per distinct social beat the NARRATION contains - "
+            "who it was with, and which register best fits. Never report a magnitude: what a "
+            "register is worth is fixed by this story, not by you. Pick the closest register "
+            "or omit the beat; never invent one outside the list. [] if nothing social "
+            "happened.\n"
+            "A target already in EXISTING CHARACTERS must be copied from there verbatim - "
+            "never shortened, reordered or paraphrased (given \"Salome Vence (the "
+            "Advocate)\", write that, not \"Salome Vence\" or \"the advocate\"), or the "
+            "standing forks into a seemingly-new name. A generic-label character still gets "
+            "a social entry, just not a new_characters one.\n"
         )
         return [ObservationField("social", schema, context, instruction)]
 

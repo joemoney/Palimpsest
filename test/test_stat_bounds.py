@@ -30,7 +30,7 @@ ctx = se.state_store.load_state("statboundstest", se.state_store.DEFAULT_STORY_S
 ctx["state"]["protagonist"]["stats"] = {"health": 2}
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
      "stat_changes": {"health": -10}},
 ])
 se.update_progress_from_turn(ctx, "get hurt badly", "narration text")
@@ -44,7 +44,7 @@ with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(stats={"engine": 
 ctx["state"]["protagonist"]["stats"] = {"days_remaining": -5}
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
      "stat_changes": {"days_remaining": -20}},
 ])
 se.update_progress_from_turn(ctx, "time runs out", "narration text")
@@ -57,7 +57,7 @@ ctx["state"]["protagonist"]["stats"]["days_remaining"] = -8
 with_story(ctx, lambda s: s["mechanics"].update(stats={"engine": "bounded_counter", "floor": -10, "ceiling": 7}))
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
      "stat_changes": {"days_remaining": 30}},
 ])
 se.update_progress_from_turn(ctx, "a windfall of time", "narration text")

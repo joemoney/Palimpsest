@@ -18,7 +18,7 @@ ctx["state"]["plot"]["subplots"]["subplot_001"]["progress"] = 40
 
 recorder = RecordingLLM(lambda p: {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 })
 se.call_llm_json = recorder
 se.update_progress_from_turn(ctx, "chat with the innkeeper", "narration text")
@@ -32,7 +32,7 @@ print("OK: active subplot's description, progress, and threshold appear in the s
 # [0, completion_threshold] ---
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {"subplot_001": 90}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": []},
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "make real progress", "narration text")
 assert se._subplot_view(ctx, "subplot_001")["progress"] == 100, \

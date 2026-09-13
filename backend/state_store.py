@@ -178,7 +178,13 @@ def new_save_state(story: dict, story_slug: str) -> dict:
         "protagonist": {
             "name": "",
             "traits": list(story.get("protagonist", {}).get("traits", [])),
-            "inventory": list(story.get("protagonist", {}).get("starting_inventory", [])),
+            # thaw, not list(): phase 4's tagged_items engine lets a story author an item
+            # as a record ({"id", "label", "tags", "uses"}) rather than a bare string, and
+            # a shallow copy would seed the save with FrozenDicts straight out of the
+            # template - immutable, so spending a use would raise on the first turn and
+            # only until the save round-tripped through disk, which is the worst shape a
+            # bug can have. A story seeding plain strings is unaffected.
+            "inventory": thaw(story.get("protagonist", {}).get("starting_inventory", [])),
             # P-2/P-4: stats used to be seedable only through character_creation, which made
             # them accidentally dependent on an unrelated optional module - a survival or
             # horror story wanting a stat scale but no class picker had no way to start one.

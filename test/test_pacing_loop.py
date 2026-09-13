@@ -22,7 +22,7 @@ se = load_story_engine()
 
 BASE_DIFF = {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 }
 
 

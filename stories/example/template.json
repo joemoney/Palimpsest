@@ -90,6 +90,16 @@
     "starting_inventory": []
   },
   "mechanics": {
+    "inventory": {
+      "engine": "tagged_items",
+      "tags": [
+        "key",
+        "document",
+        "keepsake",
+        "tool",
+        "food"
+      ]
+    },
     "relationships": {
       "engine": "scored_axis",
       "scale": {

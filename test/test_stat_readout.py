@@ -84,7 +84,7 @@ print("OK: token instruction appears only when a readout is configured")
 with_story(ctx, lambda s: s["mechanics"].update(stats={"engine": "bounded_counter", "visible": True, "readout": READOUT}))
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "new_characters": [], "stat_changes": {"sync": 6},
+     "inventory": {"gained": [], "used": []}, "new_characters": [], "stat_changes": {"sync": 6},
      "scene_update": {"location": "", "summary": "x", "present_npcs": []}},
 ])
 # with_story deliberately diverges ctx["story"] from the on-disk template, which

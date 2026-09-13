@@ -33,7 +33,7 @@ ENGINE = mechanics.social.ENGINE
 
 EMPTY_DIFF = {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "social": [], "new_characters": [],
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 }
 
 

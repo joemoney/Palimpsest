@@ -50,9 +50,6 @@
     "default_name": "Miss Ashby",
     "traits": [
       "observant"
-    ],
-    "starting_inventory": [
-      "a letter you have not answered"
     ]
   },
   "mechanics": {

@@ -25,7 +25,7 @@ print("OK: no tracked_entity -> no TRACKED ENTITY block in the narration prompt"
 
 recorder = RecordingLLM(lambda p: {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 })
 se.call_llm_json = recorder
 se.update_progress_from_turn(ctx, "look around", "narration text")
@@ -56,7 +56,7 @@ print("OK: a configured tracked_entity's name/description/pacing_note/contact co
       "reach the narration prompt")
 recorder = RecordingLLM(lambda p: {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 })
 se.call_llm_json = recorder
 se.update_progress_from_turn(ctx, "look around", "narration text")
@@ -76,7 +76,7 @@ print("OK: a configured tracked_entity adds the encounters line, using its name 
 old_ctx = se.state_store.load_state("trackedentitytest2", se.state_store.DEFAULT_STORY_SLUG)
 se.call_llm_json = lambda p, **kw: {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 }
 se.update_progress_from_turn(old_ctx, "do something", "narration text")
 print("OK: a save/template without tracked_entity at all doesn't crash")

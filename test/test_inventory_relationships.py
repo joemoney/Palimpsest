@@ -30,6 +30,20 @@ CONFIDED = 9        # example's registers.confided_in_them
 def social(target, register, reciprocated=True):
     return [{"target": target, "register": register, "reciprocated": reciprocated}]
 
+
+def labels(ctx):
+    """Item labels in order. Phase 4: the inventory holds records, not bare strings, and
+    the ids are minted by the engine - so a test asserting on contents asserts on what the
+    player would see, not on bookkeeping it does not own."""
+    return [se.mechanics.items.TaggedItems._record(e).get("label")
+            for e in ctx["state"]["protagonist"]["inventory"]]
+
+
+def item_ids(ctx):
+    return [se.mechanics.items.TaggedItems._record(e).get("id")
+            for e in ctx["state"]["protagonist"]["inventory"]]
+
+
 ctx = se.state_store.load_state("invreltest", se.state_store.DEFAULT_STORY_SLUG)
 ctx["state"]["protagonist"]["inventory"] = []
 assert ctx["state"]["characters"] == {}, "a fresh save shouldn't need to predeclare this"
@@ -37,40 +51,47 @@ assert ctx["state"]["characters"] == {}, "a fresh save shouldn't need to predecl
 # --- items gained/lost, relationship established ---
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": ["a brass key", "a torn letter"], "items_lost": [],
+     "inventory": {"gained": [{"label": "a brass key", "tags": ["key"]},
+                              {"label": "a torn letter", "tags": ["document"]}], "used": []},
      "social": social("Mrs. Abbott", "kindness_shown"), "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "take the key", "narration text")
-assert ctx["state"]["protagonist"]["inventory"] == ["a brass key", "a torn letter"]
+assert labels(ctx) == ["a brass key", "a torn letter"]
+assert item_ids(ctx) == ["itm_001", "itm_002"], item_ids(ctx)
 assert ctx["state"]["characters"]["Mrs. Abbott"]["relationship"] == KINDNESS
-print("OK: items gained and a new relationship score both applied")
+print("OK: items gained (as records, with minted ids) and a new relationship score applied")
+
+letter_id = item_ids(ctx)[1]
 
 # --- an item lost is removed; a relationship delta accumulates onto the existing score ---
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": ["a torn letter"],
+     "inventory": {"gained": [], "used": [letter_id]},
      "social": social("Mrs. Abbott", "went_behind_their_back"), "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "hand over the letter", "narration text")
-assert ctx["state"]["protagonist"]["inventory"] == ["a brass key"]
+assert labels(ctx) == ["a brass key"]
 assert ctx["state"]["characters"]["Mrs. Abbott"]["relationship"] == KINDNESS + BEHIND_BACK
 print("OK: item removal and relationship delta accumulation both applied")
 
-# --- losing an item not actually held is a safe no-op, not an error ---
+# --- citing an id that is not held is a safe no-op, not an error. This is what replaced
+# v2's exact-string match against the inventory, and it has to fail the same harmless way:
+# an unmatched expenditure leaves the inventory alone rather than raising or removing
+# something adjacent. ---
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": ["a sword that was never picked up"], "social": [],
-     "new_characters": []},
+     "inventory": {"gained": [], "used": ["itm_404", "a sword that was never picked up"]},
+     "social": [], "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "swing a sword I don't have", "narration text")
-assert ctx["state"]["protagonist"]["inventory"] == ["a brass key"]
-print("OK: losing an item not in inventory is a safe no-op")
+assert labels(ctx) == ["a brass key"]
+print("OK: expending an id (or label) that is not held is a safe no-op")
 
 # --- relationship score clamps to the authored scale instead of drifting past it ---
 ctx["state"]["characters"]["Mrs. Abbott"]["relationship"] = 95
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "social": social("Mrs. Abbott", "confided_in_them"),
+     "inventory": {"gained": [], "used": []}, "social": social("Mrs. Abbott", "confided_in_them"),
      "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "do something wonderful", "narration text")
@@ -85,7 +106,7 @@ ctx["state"]["characters"] = {
 }
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "social": social("Newcomer", "confided_in_them"),
+     "inventory": {"gained": [], "used": []}, "social": social("Newcomer", "confided_in_them"),
      "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "meet someone new", "narration text")
@@ -111,7 +132,7 @@ story_dict["world"]["characters"][authored_name] = {
 ctx["story"] = se.state_store.freeze(story_dict)
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "social": [], "new_characters": []},
+     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "nothing relationship-related happens", "narration text")
 assert authored_name in ctx["state"]["characters"], "an authored character must survive eviction regardless of score"
@@ -121,7 +142,7 @@ print("OK: an authored character is never evicted, even at neutral score over bu
 ctx2 = se.state_store.load_state("invreltest2", se.state_store.DEFAULT_STORY_SLUG)
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "social": social("Marlowe", "kindness_shown"),
+     "inventory": {"gained": [], "used": []}, "social": social("Marlowe", "kindness_shown"),
      "new_characters": [{"name": "Marlowe", "description": "a wiry informant", "role": "informant",
                           "relationship_to_player": "guarded", "hook": "reachable by drone"}]},
 ])
@@ -135,7 +156,7 @@ print("OK: a properly-named new_characters entry creates a full record, keyed di
 # --- a generic/descriptive label gets a relationship score only, never a full record ---
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "social": social("the advocate", "kindness_shown"),
+     "inventory": {"gained": [], "used": []}, "social": social("the advocate", "kindness_shown"),
      "new_characters": []},
 ])
 se.update_progress_from_turn(ctx2, "thank the advocate", "narration text")
@@ -150,7 +171,7 @@ ctx2["state"]["characters"]["Sable"] = {
 }
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-     "items_gained": [], "items_lost": [], "social": social("Sable", "kindness_shown"),
+     "inventory": {"gained": [], "used": []}, "social": social("Sable", "kindness_shown"),
      "new_characters": []},
 ])
 se.update_progress_from_turn(ctx2, "greet Sable", "narration text")

@@ -39,6 +39,11 @@ NARRATION_MARKERS = {
     "characters": "KNOWN CHARACTERS",
     "tracked_entity": "TRACKED ENTITY",
     "stats": "Stats (",
+    # Phase 4: inventory became a declared module, so the PLAYER line's Inventory segment
+    # is now a presence signal rather than something every story carries. Two fixtures
+    # deliberately omit it - a courtroom drama and a comedy of manners have no inventory
+    # concept, and used to be asked about items_gained/items_lost every turn regardless.
+    "inventory": "| Inventory:",
     # Phase 4: "Relationships:" was the v2 marker, but the PLAYER line now omits the
     # fragment entirely while the roster is empty rather than rendering "Relationships: {}"
     # - a zeroed header is exactly what P-2 forbids, and a fixture at turn 0 has no
@@ -51,6 +56,7 @@ STATE_UPDATE_MARKERS = {
     "tracked_entity": "entity_interaction",
     "stats": "stat_changes",
     "relationships": '"social"',
+    "inventory": '"inventory"',
     "failure_conditions": "failure_triggered",
     "progression": "leverage_gained",
     "pacing_loop": "beat_type",
@@ -62,16 +68,17 @@ STATE_UPDATE_MARKERS = {
 # weakening the test.
 EXPECTED_ABSENT = {
     "regency.json": ["locations", "factions", "stats", "tracked_entity",
-                     "failure_conditions", "progression", "pacing_loop"],
+                     "failure_conditions", "progression", "pacing_loop", "inventory"],
     "courtroom.json": ["locations", "factions", "tracked_entity", "stats",
-                       "relationships", "progression", "pacing_loop"],
+                       "relationships", "progression", "pacing_loop", "inventory"],
     "survival.json": ["relationships", "characters", "revelations",
                       "progression", "pacing_loop"],
 }
 EXPECTED_PRESENT = {
     "regency.json": ["relationships", "characters", "revelations"],
     "courtroom.json": ["characters", "revelations", "failure_conditions"],
-    "survival.json": ["stats", "tracked_entity", "failure_conditions", "locations"],
+    "survival.json": ["stats", "tracked_entity", "failure_conditions", "locations",
+                      "inventory"],
 }
 
 # --- the registry dimension (engine v2 phase 3) ------------------------------------
@@ -87,13 +94,13 @@ EXPECTED_PRESENT = {
 EXPECTED_ENGINES = {
     "regency.json": ["relationships"],
     "courtroom.json": [],
-    "survival.json": ["stats"],
+    "survival.json": ["inventory", "stats"],
 }
 ALL_ENGINE_SLOTS = sorted({slot for slot, _ in se.mechanics.registered_engines()})
 
 EMPTY_DIFF = {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "new_characters": [],
+    "inventory": {"gained": [], "used": []}, "new_characters": [],
     "scene_update": {"location": "", "summary": "unchanged", "present_npcs": []},
 }
 
