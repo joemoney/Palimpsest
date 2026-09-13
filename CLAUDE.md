@@ -13,6 +13,7 @@ works. For that:
 | Pacing loop, beats, counters, directives | `docs/Narrative_Pacing_Loop_Spec_v4.md` |
 | Web UI design intent | `docs/Web_UI_Spec.md` |
 | What the engine stores but never prompts | `docs/Narrative_Engine_Spec.md` |
+| Engine v2 / schema v3 — design, not yet built | `docs/ENGINE_V2_SPEC.md` |
 
 If you are about to change something below, read the matching section of
 `docs/ARCHITECTURE.md` first — every rule here has a reason recorded there, and
