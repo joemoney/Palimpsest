@@ -66,6 +66,7 @@
   },
   "mechanics": {
     "stats": {
+      "engine": "bounded_counter",
       "floor": -10,
       "ceiling": 10
     },

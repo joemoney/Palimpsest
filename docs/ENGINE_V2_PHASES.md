@@ -11,7 +11,7 @@ Primary sources, in priority order when they conflict:
 3. `docs/SCHEMA_V2_SPEC.md` — P-1…P-7, all still binding.
 4. This file.
 
-**Status: phases 0 and 1 complete.** Phase 2 — the stop-gate — is the next action.
+**Status: phases 0, 1 and 2 complete.** Phase 3 (conformance fixtures) is the next action.
 
 ---
 
@@ -108,34 +108,67 @@ phase 2 now starts from a seam that is already exercised.
 
 ---
 
-## Phase 2 — Port `resource`, and cut over to schema v3
+## Phase 2 — Port `stats` → `bounded_counter`
 
-**Goal.** Prove the registry can host a real mechanic. **This is the stop-gate.**
+**Status: done.** `backend/mechanics/resource.py`, `scripts/equivalence_probe.py`.
 
-**Work.**
-- `resource` / `bounded_counter` (§7.1): axes, `floor`/`ceiling`, event-priced deltas,
-  `per_turn` drift, `visible`, and `readout` — which becomes this engine's `render()` and
-  needs no other home.
-- `apply_stat_readouts` moves behind `render()`. Its guarantee does not change: the model
-  emits a token, the engine substitutes, and it still rewrites a figure line the model wrote
-  by hand anyway (P-7 is not softened by relocation).
-- Bump `CURRENT_SCHEMA_VERSION` to 3. `load_state` refuses a v2 save plainly (§8.3), no
-  partial upgrade.
-- Rewrite `stories/example`'s `mechanics.stats` into `mechanics.resource`.
+**Goal.** Prove the registry can host a real mechanic. This was the stop-gate, and it
+tripped before a line was written — see *What the stop-gate caught* below.
 
-**Gate.**
-- `test_stat_bounds.py`, `test_stat_readout.py`, `test_stat_visibility.py` pass **without
-  being modified**. If a test has to change to accommodate the port, the port changed
-  behaviour, and phase 2's whole point is that it must not.
-- Prompt diff for `example` is limited to intended changes and each one is named.
-- Observation field count for `example` is **lower** than phase 0's, not higher —
-  `stat_changes` leaves and nothing replaces it.
+**What shipped.**
+- `stats` / `bounded_counter`: bounds and their defaults, the clamp, the "never a new axis"
+  invariant, the `visible` dial, all three footer wordings, and the P-7 readout.
+- **Declare-to-bind.** A story authors `mechanics.stats.engine = "bounded_counter"` or gets
+  no stat mechanic at all. The implicit `STAT_FLOOR = 0` is deleted.
+- `the_missing_core` and the `survival` fixture gained the declaration; `new_babel` gained
+  `{"engine": "bounded_counter", "floor": 0, "ceiling": null}`, which is exactly what it was
+  silently getting from the old constant. `example` has no stats and was untouched.
+- `_stat_readout_cfg` / `render_stat_readout` / `apply_stat_readouts` survive as thin
+  delegations, so nothing else in the codebase had to move.
+- **No schema cutover** (§8.3), and stats stay at `state.protagonist.stats`.
 
-**Risk.** This is the phase that can end the project, on purpose. `resource` is the
-best-covered and least-surprising mechanic in the system, with the `render()` slot already
-built and a documented real-world failure behind it. If the registry cannot host it
-cleanly, the registry is wrong — stop and fix the design rather than porting a second engine
-onto a bad seam.
+**Gate.** Met, and more strictly than specified:
+- `scripts/equivalence_probe.py --saves`: byte-identical stat behaviour on all 8 targets —
+  6 templates plus 3 real saves — across a delta sequence crossing both bounds and poking
+  an undeclared axis.
+- All 12 assembled prompts byte-identical to phase 1. The gate only asked for "diff limited
+  to intended changes"; the diff is empty.
+- Full suite green (39 files).
+
+**Not met, because it was never possible:** "`example`'s observation field count comes out
+lower." `example` has no stats, so it never had a `stat_changes` field to lose. Counts are
+unchanged everywhere (11/15/15/8/8/9) and that is correct for this phase: converting
+`stat_changes` into an E-3 event vocabulary changes the prompt, which this phase's own gate
+forbids. **The field-count reduction belongs to phase 4.**
+
+### What the stop-gate caught
+
+Phase 2 as originally written could not be executed, and the plan's rule — a phase that
+cannot pass its gate has found a design error, so amend rather than proceed — is what
+produced the shape above. Three errors, all from writing the phase against the spec instead
+of against the templates:
+
+1. **"Rewrite `stories/example`'s `mechanics.stats`"** — `example` has no stats anywhere.
+2. **"`example`'s field count must come out lower"** — it never had `stat_changes`.
+3. **"The three stat tests pass unmodified" contradicted "delete the old path."** All three
+   author `mechanics.stats` with no `engine` key, and `test_stat_bounds` asserted the
+   no-block fallback outright. Both halves could not hold.
+
+The underlying discovery is worth keeping: **`stats` is the least module-shaped mechanic in
+the system, not the most.** Every other mechanic is keyed on its template block; stats were
+keyed on *state* (`stat_changes` appears iff `protagonist.stats` is non-empty) while
+`mechanics.stats` merely configured behaviour that was already on. That is why it had an
+always-on default at all, and why it was the wrong thing to call the cleanest first port.
+
+**The gate that replaced it generalises.** "These test files do not change" fails for any
+port that moves where configuration lives, so it would have failed again at phase 4.
+`equivalence_probe.py` exercises behaviour instead of pinning a test's shape, and runs
+against real saves. Use it for every remaining port.
+
+**One new failure mode, guarded.** Declare-to-bind means a story can seed
+`protagonist.stats` and never declare the engine, leaving the stats inert — no bounds, no
+prompt line, no `stat_changes`. `mechanics.validate` now prints a warning for exactly that
+shape. A warning, not a raise: it is an authoring smell, not broken content.
 
 ---
 

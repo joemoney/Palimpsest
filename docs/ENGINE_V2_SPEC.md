@@ -595,7 +595,18 @@ cannot be folded in here without breaking rule 2.
 Ordered by ratio of new capability to implementation cost. Each entry records what it owns,
 what it asks the model, and whether it may declare a cadence (§5.2).
 
-### 7.1 `resource` — `bounded_counter`
+### 7.1 `stats` — `bounded_counter`
+
+**Shipped in phase 2.** Three things differ from this section as first written, each
+recorded where it bites:
+
+- **The slot is `stats`, not `resource`.** Renaming the slot would have rewritten every
+  authored template for no gain, and §8.1's example below is corrected to match.
+- **Declare-to-bind.** A story gets the mechanic by authoring
+  `mechanics.stats.engine = "bounded_counter"`, and gets nothing without it. This deletes
+  the implicit `STAT_FLOOR = 0`, which was a live P-3 violation: §3.6 claimed
+  `mechanics.stats` "replaces the global STAT_FLOOR = 0" and it had only shadowed it.
+- **Stats stay at `state.protagonist.stats`.** The engine owns the rules, not the storage.
 
 **Owns.** Named numeric axes with bounds, event-priced deltas, and optional per-turn drift.
 Absorbs v2's `mechanics.stats` wholesale, including `floor`/`ceiling`, `visible`, and
@@ -718,7 +729,7 @@ phase 4.
 
 ```jsonc
 "mechanics": {
-  "resource": {
+  "stats": {
     "engine": "bounded_counter",
     "axes": {
       "fuel":      { "start": 40, "floor": 0, "ceiling": 60,
@@ -785,10 +796,28 @@ Per-engine runtime state lives at `state.mechanics.<slot>`, initialised by `init
 is that engine's alone. No engine reads another's state; cross-engine dependencies go through
 effects.
 
-### 8.3 Migration: none
+### 8.3 Migration: none, and the cutover is deferred
 
 **Decision:** there is no migration from v2 saves. The only playtester is the author, and a
 fresh start is acceptable. `backend/migrate_v1.py` is not the model to follow here.
+
+**Amended in phase 2: the version bump does not happen until save *state* actually moves.**
+Phase 2 was specified to cut over to `schema_version: 3`, and doing it there turned out to
+be all cost and no benefit. A save holds runtime deltas only (P-1) and carries no
+`mechanics` config at all, so adding `"engine": "bounded_counter"` to a template is
+invisible to every existing save. Meanwhile `CURRENT_SCHEMA_VERSION` gates exactly one
+thing — `if saved < CURRENT: migrate_v1.migrate(...)` — so bumping it would route live v2
+saves into a v1→v2 converter, and §8.3's "refuse plainly" would have to be written as new
+code. The bump creates work rather than enabling any.
+
+It also costs the thing this project can least afford to lose: **every significant bug here
+has come from a long save** — the 70-turn `SYNC` drift behind P-7, the 2,912-word summary
+behind the code-side cap. Invalidating saves at phase 2 would end long-running playtesting
+for phases 2 through 6, which is most of the port.
+
+So the cutover moves to the first phase that genuinely relocates state into
+`state.mechanics.<slot>`. Until then a v2 save keeps loading, and each port is verified
+against real saves instead of only synthetic fixtures.
 
 Consequences, accepted deliberately:
 
@@ -846,7 +875,7 @@ acceptance gates, risks, and the story-content interleave.
 |---|---|---|
 | 0 | Baseline measurement: observation field count, prompt sizes, per-call p50s | **Done** — `scripts/measure_baseline.py`; numbers and findings in `ENGINE_V2_PHASES.md` |
 | 1 | Registry, `Effect`, resolve ordering, event log plumbing. No mechanic ported | Full suite green; assembled prompts byte-identical for all three stories and all three fixtures |
-| 2 | Port `resource` (v2's `stats`). **Schema v3 cutover** | Stat tests pass unmodified; readout still deterministic. **Stop-gate — see below** |
+| 2 | Port `stats` → `bounded_counter`, declare-to-bind. **No schema cutover** (§8.3) | **Done.** Equivalence harness identical on 8 targets incl. 3 live saves; all 12 prompts byte-identical |
 | 3 | Rewrite the three conformance fixtures against the registry | Both directions, three disjoint engine sets, absent-lists still written out in the test |
 | 4 | Port `relationship`, `inventory`, `revelation`, `failure`, subplot progress | Per-engine tests; absent-engine tests; field count not grown against phase 0 |
 | 5 | Relocate `pacing_loop` and `progression`, deliberately unchanged | `test_pacing_loop.py` passes unmodified |

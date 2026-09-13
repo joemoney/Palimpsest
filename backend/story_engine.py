@@ -61,10 +61,6 @@ DEFAULT_ACT_CHECK_FREQUENCY = 12
 # through .get() with one of these rather than subscripting the block into existence.
 DEFAULT_NUDGE_FREQUENCY = 8
 DEFAULT_MAX_PARALLEL_SUBPLOTS = 3
-# Fallback floor for a story that doesn't author mechanics.stats.floor at all (see 5.2's
-# use in update_progress_from_turn) - mechanics.stats.floor/.ceiling is the real per-story
-# dial now; this is just what a minimal template without one degrades to.
-STAT_FLOOR = 0
 # Fallback scene length for a story that omits narration.scene_length entirely (P-4: a
 # minimal template must still run).
 DEFAULT_SCENE_WORD_MIN = 470
@@ -1024,12 +1020,14 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         'initial stance toward the player>", "hook": "<a concrete way they could naturally '
         'reappear or matter going forward>"}]'
     )
-    if stats:
-        schema_fields.append(
-            f'  "stat_changes": {{"<stat name, must be one of: {", ".join(stats)}>": <integer '
-            "delta this turn, positive or negative - only stats the turn's events actually "
-            "moved, never a stat name outside that fixed list>}"
-        )
+    # Phase 2: the stats mechanic is an engine now (backend/mechanics/resource.py). The
+    # field it contributes is unchanged - converting it to an E-3 event vocabulary is
+    # phase 4's job, and would change the prompt, which phase 2's gate forbids.
+    stats_engine = mechanics.bound_for(ctx["story"], "stats")
+    if stats_engine:
+        stat_field = stats_engine.engine.schema_field(stats_engine.cfg, ctx)
+        if stat_field:
+            schema_fields.append(stat_field)
     if pacing_loop_cfg:
         beat_names = list(pacing_loop_cfg["beats"].keys())
         schema_fields.append(
@@ -1327,23 +1325,12 @@ is a separate, manual step."""
         for name in removable[:len(characters) - limit]:
             del characters[name]
 
-    # 5.2: mechanics.stats.floor/.ceiling replaces the old global STAT_FLOOR=0 constant -
-    # per-story bounds, since one story's scale might be a 0-10 attribute and another's a
-    # negative-capable meter (debt, temperature). ceiling is null/absent by default
-    # (unbounded); floor falls back to the old global default for a story that doesn't
-    # author mechanics.stats at all. Only ever adjusts a stat that's already in
-    # protagonist.stats (seeded once, at character creation, from the chosen class's
-    # starting_stats - see apply_creation_choice) - the model can't introduce a new stat
-    # axis outside that fixed, story-authored set.
-    stats_cfg = ctx["story"].get("mechanics", {}).get("stats", {})
-    floor = stats_cfg.get("floor", STAT_FLOOR)
-    ceiling = stats_cfg.get("ceiling")
-    for stat_name, delta in diff.get("stat_changes", {}).items():
-        if stat_name in stats:
-            new_value = max(floor, stats[stat_name] + int(delta))
-            if ceiling is not None:
-                new_value = min(ceiling, new_value)
-            stats[stat_name] = new_value
+    # Phase 2: bounds, clamping and the "never a new axis" invariant all live in the
+    # bounded_counter engine now. The engine returns effects; the registry applies them.
+    if stats_engine:
+        mechanics.apply_effects(ctx, stats_engine.engine.resolve(
+            stats_engine.cfg, ctx,
+            [{"type": "stat_changes", "changes": diff.get("stat_changes", {})}], []))
 
     # Phase 6 steps 3-4 (docs/PHASE_6_HANDOFF.md §3/§4, spec §9 steps 3-4): store the raw
     # beat classification as pacing.last_beat, then run the counter arithmetic - the beat's
@@ -2223,17 +2210,9 @@ def _section_protagonist(ctx: dict) -> str:
     # shown to the player as numbers - reflect their effect narratively (strain, confidence,
     # risk) instead of stating a value. Conditional on the story actually using stats at all,
     # so a story without them gets no irrelevant instruction clutter.
-    # 5.4: mechanics.stats.visible inverts this per-story, mirroring how mechanics.stats.
-    # floor/.ceiling replaced the global STAT_FLOOR constant. A LitRPG-style story whose
-    # premise is an in-world system reporting the player's own numbers back to them needs
-    # the exact opposite instruction; defaults to False so every existing story is unchanged.
-    stats_visible = ctx["story"].get("mechanics", {}).get("stats", {}).get("visible", False)
-    if not protagonist.get("stats"):
-        stats_str = ""
-    elif stats_visible:
-        stats_str = f" | Stats (SHOWN to the player by this story): {protagonist['stats']}"
-    else:
-        stats_str = f" | Stats (opaque to the player): {protagonist['stats']}"
+    # 5.4/phase 2: the visible dial and both wordings belong to the bounded_counter engine;
+    # this only places the fragment it returns. An unbound story contributes nothing.
+    stats_str = mechanics.prompt_sections(ctx).get("stats.player_line", "")
     # 5.3: absent mechanics.relationships means the story tracks no relationship scores at
     # all - omitted here rather than shown as an always-empty dict, matching how it vanishes
     # from the state-update schema (update_progress_from_turn).
@@ -2331,37 +2310,9 @@ def _section_footer(ctx: dict) -> str:
     # minimum-count fallback too (see app.py's call sites).
     option_pov = narration_cfg.get("option_pov") or narration_cfg.get("pov", "first-person")
     option_count = narration_cfg.get("option_count", 3)
-    # 5.4: see _section_player's stats_visible note. Two opposite instructions, one dial.
-    stats_visible = ctx["story"].get("mechanics", {}).get("stats", {}).get("visible", False)
-    if not protagonist.get("stats"):
-        stats_instruction = ""
-    elif stats_visible:
-        readout_cfg = ctx["story"].get("mechanics", {}).get("stats", {}).get("readout")
-        if readout_cfg and readout_cfg.get("labels"):
-            # The model is deliberately not trusted to transcribe numbers - see
-            # _stat_readout_cfg. It marks the place; the engine fills it in from state.
-            token = readout_cfg.get("token", "[[STATS]]")
-            stats_instruction = (
-                f"\nThis story shows the player their own figures, but you must NEVER write a "
-                f"number for one yourself. Where a line of figures belongs, put {token} alone "
-                f"on its own line and nothing else - no labels, no values, no punctuation. It "
-                f"is replaced with the true current figures after your reply. Writing the "
-                f"numbers out by hand instead will show the player values that are wrong. "
-                f"Report what actually changed through stat_changes as normal."
-            )
-        else:
-            stats_instruction = (
-                "\nThe PLAYER line's Stats are known to the player in this story and their raw "
-                "numeric values may be stated directly, in the voice and format the story's own "
-                "rules establish for them. Report every change you narrate through stat_changes "
-                "so the numbers you show stay true to the state."
-            )
-    else:
-        stats_instruction = (
-            "\nThe PLAYER line's Stats are for your own internal reasoning only - never state a "
-            "stat's raw numeric value to the player. Reflect what it means narratively instead "
-            "(strain, fatigue, confidence, risk) without quoting the number."
-        )
+    # 5.4/phase 2: all three wordings - opaque, visible, and the P-7 readout token - belong
+    # to the bounded_counter engine now (see its _footer). This keeps only the placement.
+    stats_instruction = mechanics.prompt_sections(ctx).get("stats.footer", "")
 
     if endgame["requested"]:
         instruction_footer = (
@@ -2506,59 +2457,24 @@ def _enforce_word_cap(text: str, max_words: int) -> str:
 
 
 def _stat_readout_cfg(ctx: dict) -> dict | None:
-    """mechanics.stats.readout - opt-in, per-story, and the mechanism behind the one thing
-    a LitRPG-style story cannot delegate to a prompt: the numbers must be *true*.
-
-    A model asked to transcribe its own stat block drifts. Measured on a real 70-turn save:
-    the displayed SYNC read 26 for four consecutive turns while the save held 34, and the
-    sequence was not even monotonic (28, then 26, 26, 26). A wrong number in a status
-    readout is worse than no number at all.
-
-    So the model never writes one. It emits `token` where a figure line belongs and the
-    engine substitutes the real values afterwards, from state, deterministically. Absent
-    config means no substitution happens at all (P-2) - a story with no status readouts is
-    completely unaffected."""
-    stats_cfg = ctx["story"].get("mechanics", {}).get("stats", {})
-    readout = stats_cfg.get("readout")
-    return readout if readout and readout.get("labels") else None
+    """The story's live `readout` config, or None. Phase 2: the bounded_counter engine owns
+    this; these three functions stay as the names the rest of the codebase already calls."""
+    bound = mechanics.bound_for(ctx["story"], "stats")
+    return bound.engine.readout(bound.cfg) if bound else None
 
 
 def render_stat_readout(ctx: dict) -> str | None:
-    """The authoritative stat line, built from state. Label order follows the authored
-    `labels` dict, which JSON preserves, so a story controls the ordering without the
-    engine needing an opinion about it. A stat named in `labels` but absent from
-    protagonist.stats is skipped rather than rendered as 0 - it was never seeded."""
-    cfg = _stat_readout_cfg(ctx)
-    if not cfg:
-        return None
-    stats = ctx["state"]["protagonist"].get("stats", {})
-    entry_format = cfg.get("entry_format", "**{label}** {value}")
-    parts = [
-        entry_format.format(label=label, value=stats[key])
-        for key, label in cfg["labels"].items()
-        if key in stats
-    ]
-    return cfg.get("separator", " - ").join(parts) if parts else None
+    """The authoritative stat line, built from state rather than transcribed by the model -
+    the worked example of P-7. See mechanics/resource.py for why."""
+    bound = mechanics.bound_for(ctx["story"], "stats")
+    return bound.engine.line(bound.cfg, ctx) if bound else None
 
 
 def apply_stat_readouts(ctx: dict, text: str) -> str:
-    """Replaces the authored token with the true stat line, and - as a backstop - rewrites
-    any line the model wrote out by hand anyway. The backstop keys on a line carrying two
-    or more of the story's own configured labels each followed by a number, which prose
-    does not accidentally look like. Without it "deterministic" would hold only as long as
-    the model followed the token instruction, which is exactly the assumption this function
-    exists to stop making."""
-    cfg = _stat_readout_cfg(ctx)
-    line = render_stat_readout(ctx)
-    if not cfg or line is None:
-        return text
-    token = cfg.get("token", "[[STATS]]")
-    text = text.replace(token, line)
-
-    labels = [re.escape(l) for l in cfg["labels"].values()]
-    label_hit = r"(?:" + "|".join(labels) + r")\**\s*-?\s*\d+"
-    handwritten = re.compile(rf"^.*?{label_hit}.*?{label_hit}.*$", re.MULTILINE)
-    return handwritten.sub(lambda m: line, text)
+    """Substitute the authored token with the true figures, and rewrite any figure line the
+    model wrote by hand anyway. Delegates to every bound engine's render(), so a later
+    mechanic with its own deterministic substitution needs no change here."""
+    return mechanics.render_all(ctx, text)
 
 
 def update_state_after_turn(

@@ -90,10 +90,14 @@ for root in roots:
         with open(path) as f:
             story = json.load(f)
         mechanics.validate(story)  # must not raise
-        assert mechanics.bind(story) == [], f"{slug} unexpectedly binds an engine in phase 1"
-        checked.append(slug)
+        declared = sorted(s for s, cfg in (story.get("mechanics") or {}).items()
+                          if isinstance(cfg, dict) and cfg.get("engine"))
+        assert sorted(b.slot for b in mechanics.bind(story)) == declared, \
+            f"{slug}: bound engines must be exactly the slots that declare one"
+        checked.append(f"{slug}={declared or 'none'}")
 assert checked, "no story templates were checked - discovery is broken"
-print(f"OK: every shipped template ({', '.join(checked)}) validates and binds zero engines")
+print(f"OK: every shipped template validates, and binds exactly what it declares "
+      f"({'; '.join(checked)})")
 
 # An authored mechanics block with no "engine" key is invisible to the registry - that is
 # what lets phase 1 land without touching story_engine's existing .get("mechanics") paths.

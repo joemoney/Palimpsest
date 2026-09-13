@@ -20,7 +20,12 @@ def with_story(ctx, mutate):
     ctx["story"] = se.state_store.freeze(story_dict)
 
 
-# --- no mechanics.stats at all: falls back to the old default (floor 0, unbounded) ---
+# --- no mechanics.stats at all: the mechanic does not exist (engine v2 declare-to-bind) ---
+# This used to assert a fallback to a hardcoded floor of 0. That implicit default was a P-3
+# violation - an engine constant deciding a creative question for any story that stayed
+# quiet - and SCHEMA_V2_SPEC §3.6 already claimed mechanics.stats had replaced it when it
+# had only shadowed it. A story that wants a floor of 0 now declares one; a story that
+# declares no engine gets no stat mechanic at all, per P-2.
 ctx = se.state_store.load_state("statboundstest", se.state_store.DEFAULT_STORY_SLUG)
 ctx["state"]["protagonist"]["stats"] = {"health": 2}
 se.call_llm_json = CannedResponses([
@@ -29,11 +34,13 @@ se.call_llm_json = CannedResponses([
      "stat_changes": {"health": -10}},
 ])
 se.update_progress_from_turn(ctx, "get hurt badly", "narration text")
-assert ctx["state"]["protagonist"]["stats"]["health"] == 0, "should clamp at the default floor of 0"
-print("OK: a story with no mechanics.stats falls back to floor=0, matching the old default")
+assert ctx["state"]["protagonist"]["stats"]["health"] == 2, \
+    "an undeclared stats mechanic must be inert - no clamping, and no delta applied"
+assert "stat_changes" not in se.build_system_prompt(ctx)
+print("OK: with no mechanics.stats.engine the mechanic does not exist at all (P-2)")
 
 # --- an authored negative floor is respected ---
-with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(stats={"floor": -10, "ceiling": None}))
+with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(stats={"engine": "bounded_counter", "floor": -10, "ceiling": None}))
 ctx["state"]["protagonist"]["stats"] = {"days_remaining": -5}
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
@@ -47,7 +54,7 @@ print("OK: an authored negative floor (mechanics.stats.floor) is respected")
 
 # --- an authored ceiling caps upward growth ---
 ctx["state"]["protagonist"]["stats"]["days_remaining"] = -8
-with_story(ctx, lambda s: s["mechanics"].update(stats={"floor": -10, "ceiling": 7}))
+with_story(ctx, lambda s: s["mechanics"].update(stats={"engine": "bounded_counter", "floor": -10, "ceiling": 7}))
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
      "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],

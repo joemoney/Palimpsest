@@ -33,24 +33,26 @@ def with_story(ctx, mutate):
 ctx = se.state_store.load_state("statvistest", se.state_store.DEFAULT_STORY_SLUG)
 ctx["state"]["protagonist"]["stats"] = {"health": 40}
 
-# --- no mechanics.stats at all: the old opaque behaviour, unchanged ---
+# --- no mechanics.stats at all: no stat mechanic, so neither instruction appears ---
+# Declare-to-bind (engine v2 phase 2): this used to fall through to the opaque wording,
+# which meant an undeclared story still got a mechanic it never asked for.
 with_story(ctx, lambda s: s.get("mechanics", {}).pop("stats", None))
 prompt = se.build_system_prompt(ctx)
-assert OPAQUE_LABEL in prompt and SHOWN_LABEL not in prompt, \
-    "a story with no mechanics.stats must keep the opaque label"
-assert OPAQUE_RULE in prompt and SHOWN_RULE not in prompt, \
-    "a story with no mechanics.stats must keep the opaque instruction"
-print("OK: no mechanics.stats at all leaves stats opaque, matching pre-5.4 behaviour")
+assert OPAQUE_LABEL not in prompt and SHOWN_LABEL not in prompt, \
+    "a story with no mechanics.stats.engine must get no stats label at all"
+assert OPAQUE_RULE not in prompt and SHOWN_RULE not in prompt, \
+    "a story with no mechanics.stats.engine must get no stats instruction at all"
+print("OK: no mechanics.stats.engine means no stats label and no stats instruction (P-2)")
 
 # --- mechanics.stats authored but visible absent: still defaults to opaque ---
-with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(stats={"floor": 0, "ceiling": 100}))
+with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(stats={"engine": "bounded_counter", "floor": 0, "ceiling": 100}))
 prompt = se.build_system_prompt(ctx)
 assert OPAQUE_LABEL in prompt and OPAQUE_RULE in prompt, \
     "mechanics.stats without an explicit visible key must still default to opaque"
 print("OK: mechanics.stats without 'visible' defaults to opaque, so floor/ceiling stays orthogonal")
 
 # --- visible: true flips both the label and the instruction together ---
-with_story(ctx, lambda s: s["mechanics"].update(stats={"floor": 0, "ceiling": 100, "visible": True}))
+with_story(ctx, lambda s: s["mechanics"].update(stats={"engine": "bounded_counter", "floor": 0, "ceiling": 100, "visible": True}))
 prompt = se.build_system_prompt(ctx)
 assert SHOWN_LABEL in prompt and OPAQUE_LABEL not in prompt, \
     "visible: true must flip the PLAYER line's label"
@@ -59,14 +61,14 @@ assert SHOWN_RULE in prompt and OPAQUE_RULE not in prompt, \
 print("OK: visible: true flips the PLAYER-line label and the footer instruction together")
 
 # --- visible: false is explicitly honoured, not just falsy-by-absence ---
-with_story(ctx, lambda s: s["mechanics"].update(stats={"floor": 0, "visible": False}))
+with_story(ctx, lambda s: s["mechanics"].update(stats={"engine": "bounded_counter", "floor": 0, "visible": False}))
 prompt = se.build_system_prompt(ctx)
 assert OPAQUE_LABEL in prompt and OPAQUE_RULE in prompt, "an explicit visible: false must stay opaque"
 print("OK: an explicit visible: false is honoured")
 
 # --- a story with no stats at all gets neither instruction, whatever the dial says ---
 ctx["state"]["protagonist"]["stats"] = {}
-with_story(ctx, lambda s: s["mechanics"].update(stats={"visible": True}))
+with_story(ctx, lambda s: s["mechanics"].update(stats={"engine": "bounded_counter", "visible": True}))
 prompt = se.build_system_prompt(ctx)
 assert OPAQUE_LABEL not in prompt and SHOWN_LABEL not in prompt, \
     "a story with no stats must get no stats label, even with visible: true"

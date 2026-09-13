@@ -37,7 +37,7 @@ ctx = se.state_store.load_state("readouttest", se.state_store.DEFAULT_STORY_SLUG
 ctx["state"]["protagonist"]["stats"] = {"sync": 34, "reach": 40, "frame": 29}
 
 # --- P-2: no readout config means the engine does not touch narration at all ---
-with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(stats={"visible": True}))
+with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(stats={"engine": "bounded_counter", "visible": True}))
 text = "**[ SYSTEM ]**\n[[STATS]]"
 assert se.apply_stat_readouts(ctx, text) == text, \
     "a story with no mechanics.stats.readout must have its narration passed through untouched"
@@ -45,7 +45,7 @@ assert se.render_stat_readout(ctx) is None
 print("OK: no readout config -> narration untouched, nothing rendered")
 
 # --- the token is replaced with values read from state, in the authored label order ---
-with_story(ctx, lambda s: s["mechanics"].update(stats={"visible": True, "readout": READOUT}))
+with_story(ctx, lambda s: s["mechanics"].update(stats={"engine": "bounded_counter", "visible": True, "readout": READOUT}))
 assert se.render_stat_readout(ctx) == "**SYNC** 34 - **REACH** 40 - **FRAME** 29"
 assert se.apply_stat_readouts(ctx, "a\n[[STATS]]\nb") == "a\n**SYNC** 34 - **REACH** 40 - **FRAME** 29\nb"
 print("OK: token substituted with true values, in the authored label order")
@@ -74,14 +74,14 @@ print("OK: prose mentioning one label and a number is left alone")
 prompt = se.build_system_prompt(ctx)
 assert "[[STATS]]" in prompt, "the prompt must name the token the model is supposed to emit"
 assert "NEVER write a" in prompt, "the prompt must forbid writing numbers by hand"
-with_story(ctx, lambda s: s["mechanics"].update(stats={"visible": True}))
+with_story(ctx, lambda s: s["mechanics"].update(stats={"engine": "bounded_counter", "visible": True}))
 prompt = se.build_system_prompt(ctx)
 assert "[[STATS]]" not in prompt, "a visible-stats story with no readout config gets no token instruction"
 assert "may be stated directly" in prompt, "it should fall back to the plain visible-stats instruction"
 print("OK: token instruction appears only when a readout is configured")
 
 # --- integration: the stored turn carries post-update figures, not pre-update ones ---
-with_story(ctx, lambda s: s["mechanics"].update(stats={"visible": True, "readout": READOUT}))
+with_story(ctx, lambda s: s["mechanics"].update(stats={"engine": "bounded_counter", "visible": True, "readout": READOUT}))
 se.call_llm_json = CannedResponses([
     {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
      "items_gained": [], "items_lost": [], "new_characters": [], "stat_changes": {"sync": 6},

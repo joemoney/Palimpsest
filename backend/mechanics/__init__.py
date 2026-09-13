@@ -153,6 +153,22 @@ def validate(story):
 
     Deliberately silent about a mechanics entry with no "engine" key - that is not an
     error, it is a mechanic the registry does not own yet."""
+    # Declare-to-bind created one new way to author a story wrongly: seed protagonist.stats
+    # (or a character_creation starting_stats) but never declare the engine, and the stats
+    # sit in state doing nothing - no bounds, no prompt line, no stat_changes field. Silent
+    # inertness is exactly the failure this architecture exists to remove, so say so. A
+    # warning rather than a raise: it is an authoring smell, not broken content, and a
+    # story may legitimately carry a vestigial stat block.
+    seeded = story.get("protagonist", {}).get("stats") or any(
+        option.get("starting_stats")
+        for step in story.get("character_creation", []) or []
+        for option in step.get("options", []) or []
+    )
+    if seeded and not any(slot == "stats" for slot, _ in _declared(story)):
+        print("WARNING: this story seeds protagonist stats but declares no "
+              "mechanics.stats.engine - they will be inert (no bounds, no prompt line, "
+              "no stat_changes field). Add \"engine\": \"bounded_counter\" to use them.")
+
     for slot, cfg in _declared(story):
         if (slot, cfg["engine"]) not in _REGISTRY:
             known = sorted(n for s, n in _REGISTRY if s == slot)
@@ -240,6 +256,15 @@ def apply_effects(ctx, effects: list):
         handler(ctx, effect)
 
 
+def bound_for(story, slot: str):
+    """The single bound engine serving `slot`, or None. Most call sites want one specific
+    mechanic rather than the whole list."""
+    for b in bind(story):
+        if b.slot == slot:
+            return b
+    return None
+
+
 def render_all(ctx, text: str) -> str:
     """Each bound engine's deterministic post-narration substitution, in resolve order."""
     for b in bind(ctx["story"]):
@@ -253,3 +278,8 @@ def run_turn_pipeline(ctx, observations=None):
     with no bound engines it records nothing, resolves nothing and applies nothing."""
     record_events(ctx["state"], observations)
     apply_effects(ctx, resolve_all(ctx, observations))
+
+
+# Engines register by being imported. At the bottom, because each one imports names from
+# this module - the package is the contract, the modules are the implementations.
+from . import resource  # noqa: E402,F401
