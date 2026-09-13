@@ -36,6 +36,10 @@ class BoundedCounter(MechanicEngine):
     # Before relationships/inventory: a later engine reading a stat threshold should see
     # this turn's value, not last turn's.
     resolve_order = 20
+    # §5.4. Largest real section today is the_missing_core's readout footer at 433 chars;
+    # 600 leaves headroom for a longer axis list without being vacuous. What reaches a
+    # prompt must stay bounded even though the disk record need not.
+    prompt_budget = 600
 
     # --- configuration -------------------------------------------------------------
 

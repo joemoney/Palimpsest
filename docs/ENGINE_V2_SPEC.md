@@ -876,7 +876,7 @@ acceptance gates, risks, and the story-content interleave.
 | 0 | Baseline measurement: observation field count, prompt sizes, per-call p50s | **Done** — `scripts/measure_baseline.py`; numbers and findings in `ENGINE_V2_PHASES.md` |
 | 1 | Registry, `Effect`, resolve ordering, event log plumbing. No mechanic ported | Full suite green; assembled prompts byte-identical for all three stories and all three fixtures |
 | 2 | Port `stats` → `bounded_counter`, declare-to-bind. **No schema cutover** (§8.3) | **Done.** Equivalence harness identical on 8 targets incl. 3 live saves; all 12 prompts byte-identical |
-| 3 | Rewrite the three conformance fixtures against the registry | Both directions, three disjoint engine sets, absent-lists still written out in the test |
+| 3 | Registry dimension in the conformance fixtures | **Done.** Both directions, `EXPECTED_ENGINES` written out, budget rule made structural |
 | 4 | Port `relationship`, `inventory`, `revelation`, `failure`, subplot progress | Per-engine tests; absent-engine tests; field count not grown against phase 0 |
 | 5 | Relocate `pacing_loop` and `progression`, deliberately unchanged | `test_pacing_loop.py` passes unmodified |
 | 6 | `gate`: pre-action check, refusal path, and §2.2's authored act `requires` | Refusal path test; predicate latching test; no reachable deadlock |

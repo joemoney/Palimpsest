@@ -206,7 +206,15 @@ def prompt_sections(ctx) -> dict:
         for key, text in (b.engine.prompt_sections(b.cfg, ctx) or {}).items():
             if not text:
                 continue  # P-2: an omitted section, never an empty header
-            if b.engine.prompt_budget and len(text) > b.engine.prompt_budget:
+            # §5.4 is structural rather than advisory: an engine that contributes prompt
+            # text must declare what it is allowed to spend. Leaving prompt_budget at 0
+            # and calling it "unlimited" is how a bounded prompt stops being bounded.
+            if not b.engine.prompt_budget:
+                raise ValueError(
+                    f"{b.slot}:{key} contributes prompt text but {type(b.engine).__name__} "
+                    f"declares no prompt_budget (§5.4)"
+                )
+            if len(text) > b.engine.prompt_budget:
                 raise ValueError(
                     f"{b.slot}:{key} is {len(text)} chars, over its "
                     f"{b.engine.prompt_budget}-char budget"

@@ -11,7 +11,7 @@ Primary sources, in priority order when they conflict:
 3. `docs/SCHEMA_V2_SPEC.md` — P-1…P-7, all still binding.
 4. This file.
 
-**Status: phases 0, 1 and 2 complete.** Phase 3 (conformance fixtures) is the next action.
+**Status: phases 0–3 complete.** Phase 4 (port the remaining state-carrying engines) is next.
 
 ---
 
@@ -174,25 +174,51 @@ shape. A warning, not a raise: it is an authoring smell, not broken content.
 
 ## Phase 3 — Conformance fixtures
 
-**Goal.** Prove the registry is generic **before** anything else is ported to it.
+**Status: done.** `test/test_genre_conformance.py`, checks (5)–(7).
 
-**Work.**
-- Rewrite `regency.json`, `courtroom.json`, `survival.json` to select three *disjoint*
-  engine sets.
-- Update `test_genre_conformance.py`'s marker table and per-fixture absent-lists.
+**Goal.** Prove the registry is generic, and get the guard in place *before* four more
+engines are ported against an untested genericity claim.
 
-**Gate.** Everything that made the v2 fixtures load-bearing survives verbatim:
-- Assertions run **in both directions** — an absent engine leaks no marker into either
-  prompt, *and* an authored engine actually reaches them. One-directional absence testing
-  passes happily for an engine that was never wired up at all.
-- The absent-engine lists stay **written out in the test**, not derived from the fixture
-  files, so deleting an engine from a fixture fails loudly instead of silently shrinking
-  coverage.
-- New: an unregistered engine name fails at load; `prompt_sections` output is inside each
-  engine's declared budget (§5.4).
+**Corrected while doing it: "three disjoint engine sets" was an overstatement.** `CLAUDE.md`
+and P-6 both ask that each fixture use "a deliberately different subset" of the optional
+modules, not that the subsets be disjoint — `revelations` will legitimately appear in two
+fixtures once it is an engine. Disjointness was never the claim and is not achievable.
 
-**Risk.** Ordering. Doing this after phase 4 means porting four engines against a genericity
-claim nothing has tested. The fixtures are cheap here and expensive later.
+**Also corrected: only one engine exists.** Phase 3 was written as if several did. What
+landed is the machinery plus the one real case, with a standing rule rather than a
+placeholder:
+
+> **Every phase 4 port adds its engine to `EXPECTED_ENGINES` and to at least one fixture in
+> the same commit**, or nothing is guarding P-2 for it.
+
+That keeps the guard growing with the ports, which is what the original ordering wanted.
+Writing three speculative fixture sets now would have tested nothing.
+
+**What shipped.**
+- `EXPECTED_ENGINES` per fixture, **written out in the test**, never derived — same rule as
+  `EXPECTED_ABSENT`, so deleting a declaration fails loudly instead of shrinking coverage.
+- Check (5): the registry binds exactly what a fixture declares.
+- Check (6): an unbound slot contributes no `prompt_sections` entry — P-2 at the registry
+  level, where it is structural rather than a matter of `.get()` discipline.
+- Check (7): every bound engine declares a real `prompt_budget`.
+- P-4 through the registry: the minimal template binds nothing, contributes nothing, and
+  survives the whole turn pipeline without creating an event log.
+- §5.4 became structural in `mechanics.prompt_sections`: an engine that contributes prompt
+  text and declares no budget now **raises**. Leaving `prompt_budget` at 0 and calling it
+  unlimited is how a bounded prompt stops being bounded. `bounded_counter` declares 600
+  against a largest real section of 433.
+
+**Gate.** Met, and verified by deliberately breaking it three ways rather than by assuming:
+- removing `survival`'s `engine` key → fails (`authors stats but 'Stats (' never reached
+  the narration prompt`)
+- giving `regency` an engine it should not have → fails (`expected NOT to author stats`)
+- lying in `EXPECTED_ENGINES` → fails (`binds ['stats'], expected []`)
+
+The third matters on its own: the first two were caught by the pre-existing marker checks,
+so without it the new binding assertion could have been dead code that passed forever.
+
+**Risk.** Was ordering. Discharged — the guard exists before phase 4, and the standing rule
+above is what keeps it honest as engines land.
 
 ---
 
@@ -211,8 +237,11 @@ claim nothing has tested. The fixtures are cheap here and expensive later.
    the engine prices it. `check_and_advance_act` is **not** touched; only
    `check_subplot_status`'s arithmetic moves.
 
-**Gate.** Per-engine tests plus absent-engine tests for each. Field count measured against
-phase 0 after each port, and any increase carries a stated reason in the commit message.
+**Gate.** Per-engine tests plus absent-engine tests for each. **Each port also adds its
+engine to `EXPECTED_ENGINES` and to at least one fixture in the same commit** (phase 3's
+standing rule). Field count measured against phase 0 after each port — and this is the phase
+where it must actually fall, since phase 2 deliberately kept `stat_changes` v2-shaped and
+deferred the reduction here. Any increase carries a stated reason in the commit message.
 Re-measure prompt size here — it is the input to phase 7's go/no-go.
 
 **Also settle §12.5 here.** Once the observation pass is pure classification, run it on

@@ -41,6 +41,7 @@ MINIMAL_TEMPLATE = {
 
 class _Counter(mechanics.MechanicEngine):
     slot, name, resolve_order = "counter", "test_counter", 10
+    prompt_budget = 64
 
     def init_state(self, cfg, ctx):
         return {"value": cfg.get("start", 0)}
@@ -172,9 +173,15 @@ try:
     mechanics.prompt_sections(lined)
     assert False, "expected an over-budget prompt section to raise"
 except ValueError as e:
-    assert "budget" in str(e)
+    assert "over its" in str(e)
 _Counter.prompt_budget = 0
-print("OK: an empty prompt section is omitted, and an over-budget one raises (§5.4)")
+try:
+    mechanics.prompt_sections(lined)
+    assert False, "expected an unbudgeted prompt section to raise"
+except ValueError as e:
+    assert "declares no prompt_budget" in str(e)
+_Counter.prompt_budget = 64
+print("OK: an empty section is omitted; over-budget and unbudgeted sections both raise (§5.4)")
 
 assert mechanics.render_all(lined, "a [[C]] b") == "a rendered b"
 print("OK: render() runs as a deterministic post-narration substitution")

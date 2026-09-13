@@ -68,6 +68,24 @@ EXPECTED_PRESENT = {
     "survival.json": ["stats", "tracked_entity", "failure_conditions", "locations"],
 }
 
+# --- the registry dimension (engine v2 phase 3) ------------------------------------
+# Which mechanic *engines* each fixture binds, i.e. which of its mechanics blocks carry an
+# explicit "engine" key. Written out here rather than derived from the fixture files, for
+# the same reason EXPECTED_ABSENT is: deleting a declaration from a fixture has to fail
+# loudly instead of silently shrinking what is covered.
+#
+# Only `stats` is a ported engine today, so the sets below look lopsided. That is the real
+# state of the port, not a gap in the test - P-6 asks that each fixture use a deliberately
+# *different subset*, not that the subsets be disjoint. **Every phase 4 port must add its
+# engine here and to at least one fixture in the same commit**, or nothing is guarding
+# P-2 for it.
+EXPECTED_ENGINES = {
+    "regency.json": [],
+    "courtroom.json": [],
+    "survival.json": ["stats"],
+}
+ALL_ENGINE_SLOTS = sorted({slot for slot, _ in se.mechanics.registered_engines()})
+
 EMPTY_DIFF = {
     "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
     "items_gained": [], "items_lost": [], "new_characters": [],
@@ -136,7 +154,34 @@ for name in sorted(EXPECTED_ABSENT):
     # (4) one stubbed turn applies cleanly - no KeyError from an absent module's state
     assert ctx["state"]["pacing"]["turn_count"] >= 0
     se.update_progress_from_turn(ctx, "a second action", "more narration")
-    print(f"OK: {name} - loads, no leaked markers either direction, a stubbed turn applies")
+
+    # (5) the registry binds exactly what the fixture declares - both directions again.
+    # An engine that was never wired up would bind nothing and pass a one-directional
+    # absence check happily, which is the failure mode this whole file exists to catch.
+    story_dict = se.state_store.thaw(ctx["story"])
+    bound = sorted(b.slot for b in se.mechanics.bind(story_dict))
+    assert bound == EXPECTED_ENGINES[name], \
+        f"{name}: binds {bound}, expected {EXPECTED_ENGINES[name]}"
+
+    # (6) an unbound slot contributes no prompt section - P-2 at the registry level, where
+    # it is structural rather than a matter of .get() discipline.
+    sections = se.mechanics.prompt_sections(ctx)
+    for slot in ALL_ENGINE_SLOTS:
+        contributed = [k for k in sections if k.startswith(f"{slot}.")]
+        if slot in EXPECTED_ENGINES[name]:
+            continue  # presence is asserted by the marker checks above, which are content-aware
+        assert not contributed, \
+            f"{name}: does not declare a {slot} engine but contributed {contributed}"
+
+    # (7) every section that did reach the prompt is inside its engine's declared budget.
+    # prompt_sections raises on a breach, so reaching here is the assertion; this pins the
+    # budget as a real number rather than an unset one (§5.4).
+    for b in se.mechanics.bind(story_dict):
+        assert b.engine.prompt_budget > 0, \
+            f"{name}: {b.slot} engine declares no prompt_budget"
+
+    print(f"OK: {name} - loads, no leaked markers either direction, a stubbed turn applies, "
+          f"binds exactly {EXPECTED_ENGINES[name] or 'no engines'}")
 
 # --- P-4's minimal template: meta, world.rules, plot.main_thread, plot.opening_scene ---
 # §7's fourth check in its strictest form. Everything else in the schema is optional, so
@@ -157,6 +202,12 @@ for module, marker in NARRATION_MARKERS.items():
     assert marker not in prompt, f"minimal template leaked {marker!r} for absent {module}"
 assert "CONTENT RULES" not in prompt, "absent meta.content_rules must contribute no label"
 assert "GENRE" not in prompt, "absent meta.genre must contribute no label"
+# P-4 through the registry: a template with no mechanics block at all binds nothing,
+# contributes no section, and survives the whole turn pipeline.
+assert se.mechanics.bind(minimal) == [], "the minimal template must bind no engines"
+assert se.mechanics.prompt_sections(ctx) == {}, "the minimal template must contribute no section"
+se.mechanics.run_turn_pipeline(ctx)
+assert "events" not in ctx["state"], "a no-engine turn must not create an event log"
 print(f"OK: P-4 minimal template (meta, world.rules, main_thread, opening_scene) runs - "
       f"{len(prompt)} bytes, no empty modules")
 
