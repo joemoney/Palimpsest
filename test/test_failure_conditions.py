@@ -37,11 +37,17 @@ assert "FAILURE CONDITIONS" not in recorder.prompts[-1]
 print("OK: no mechanics.failure_conditions -> no failure_triggered field, no prompt line")
 
 # --- a configured failure condition is offered, and firing it locks in the ending ---
-with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(failure_conditions=[
-    {"id": "fail_ferry", "trigger": "the player boards the ferry without learning what the "
-     "lighthouse is", "title": "Gone Before You Knew", "ending_prompt": "Close on departure - "
-     "safe, intact, and permanently unsatisfied."},
-]))
+# Phase 4 wrapped the bare list so the block can carry `engine` (ENGINE_V2_SPEC §8.1);
+# everything this file asserts about the effect is unchanged, which is the point - §7.6
+# requires a failure to route into the existing endgame machinery, not a new code path.
+with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(failure_conditions={
+    "engine": "triggered_ending",
+    "conditions": [
+        {"id": "fail_ferry", "trigger": "the player boards the ferry without learning what "
+         "the lighthouse is", "title": "Gone Before You Knew",
+         "ending_prompt": "Close on departure - safe, intact, and permanently unsatisfied."},
+    ],
+}))
 recorder = RecordingLLM(lambda p: {
     "subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],

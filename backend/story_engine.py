@@ -935,15 +935,6 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
     pacing_loop_cfg = ctx["story"].get("mechanics", {}).get("pacing_loop")
     progression_cfg = ctx["story"].get("mechanics", {}).get("progression")
 
-    # 5.7: mechanics.failure_conditions - a story that can end badly without the player
-    # asking to. Evaluated alongside revelations (same authored-trigger shape, different
-    # effect - see _apply_failure_condition). Not offered once the story is already ending,
-    # from either cause - nothing left to fail into.
-    failure_conditions = ctx["story"].get("mechanics", {}).get("failure_conditions", [])
-    if ctx["state"]["plot"]["endgame"]["requested"]:
-        failure_conditions = []
-    failure_triggers = {c["id"]: c["trigger"] for c in failure_conditions}
-
     schema_fields = [
         '  "subplot_progress": {"<subplot_id>": <integer 0-100, progress made this turn - this '
         "is ADDED to the subplot's current progress shown above, and reaching its "
@@ -1019,14 +1010,7 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
             "spent when it has been cashed in and can't be cashed again, or when events "
             'made it worthless. Not merely mentioned or acted on. [] if none>"]'
         )
-    if failure_conditions:
-        schema_fields.append(
-            '  "failure_triggered": "<the exact id of a FAILURE CONDITION below that has now '
-            'been met this turn, or null if none have>"'
-        )
     schema_str = ",\n".join(schema_fields)
-
-    failure_line = f"\nFAILURE CONDITIONS (id: trigger): {json.dumps(failure_triggers)}" if failure_conditions else ""
 
     # Beat definitions are verbatim from the template (spec §5) - never hardcoded, since
     # New Babel and example already use different vocabularies (4 beats vs. 2 - see
@@ -1058,7 +1042,7 @@ ACTIVE SUBPLOTS (id: title - description [progress/threshold]):
 {active_subplot_lines}
 CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}{engine_context}{leverage_line}
 EXISTING CHARACTERS (do not repeat in new_characters): {', '.join(existing_characters) or 'none'}{stats_block}
-CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}{failure_line}{beat_section}
+CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}{beat_section}
 
 PLAYER ACTION: {player_action}
 NARRATION: {ai_response}
@@ -1217,16 +1201,10 @@ is a separate, manual step."""
     # apply blocks that used to live inline here. Each engine reads its own field back out of
     # the diff into typed events (§8.2), the events are appended to the save's log, and every
     # bound engine resolves against the whole stream in `resolve_order` (§6.2). The sequence
-    # that used to be the physical order of statements in this function is declared data now.
+    # that used to be the physical order of statements in this function is declared data now
+    # - including "failure last", which was a comment and a statement position and is now
+    # triggered_ending's resolve_order of 90.
     mechanics.run_observation_pipeline(ctx, diff)
-
-    # 5.7: applied last, after every other effect of this turn has already landed - a
-    # failing turn's subplot progress/flags/items/etc. still get recorded before the ending
-    # machinery takes over.
-    if failure_conditions:
-        condition = next((c for c in failure_conditions if c["id"] == diff.get("failure_triggered")), None)
-        if condition:
-            _apply_failure_condition(ctx, condition)
 
     return diff
 
@@ -1524,21 +1502,26 @@ Respond with ONLY a JSON object, no other text:
     return final_arc
 
 
-def _apply_failure_condition(ctx: dict, condition: dict):
-    """5.7: a mechanics.failure_conditions entry firing is evaluated in the state-update
-    pass alongside revelations (same authored-trigger shape, different effect) - routes
-    into the same endgame machinery handle_end_story_request uses, just entered
-    automatically rather than by player request, and with no LLM call needed since the
-    closing description is the condition's own authored ending_prompt rather than
-    something to generate. No-ops if the story is already ending (whichever condition or
-    request got there first wins)."""
+def _apply_failure_effect(ctx: dict, effect):
+    """Applies the triggered_ending engine's `failure.trigger` effect (phase 4).
+
+    Registered from here rather than from backend/mechanics/failure.py, and that seam is
+    deliberate: §7.6 requires a failure to route into the *existing* endgame machinery
+    rather than a new code path, that machinery is _begin_endgame (shared with the player's
+    own end-the-story request), and duplicating it inside the engine to keep the module
+    self-contained would trade a real invariant - one ending path - for a cosmetic one.
+    The engine decides that the story ends and supplies the authored arc; this decides
+    nothing and only routes.
+
+    No LLM call: the closing description is the condition's own authored ending_prompt.
+    No-ops if the story is already ending, so whichever condition or request got there
+    first wins."""
     if ctx["state"]["plot"]["endgame"]["requested"]:
         return
-    final_arc = {
-        "title": condition.get("title") or "The Ending",
-        "description": condition["ending_prompt"],
-    }
-    _begin_endgame(ctx, final_arc, cause=condition["id"])
+    _begin_endgame(ctx, effect.payload["final_arc"], cause=effect.payload["cause"])
+
+
+mechanics.register_effect("failure.trigger", _apply_failure_effect)
 
 
 def check_and_advance_act(ctx: dict):

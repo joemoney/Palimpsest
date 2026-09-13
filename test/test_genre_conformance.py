@@ -93,8 +93,8 @@ EXPECTED_PRESENT = {
 # same commit**, or nothing is guarding P-2 for it.
 EXPECTED_ENGINES = {
     "regency.json": ["relationships", "revelations"],
-    "courtroom.json": ["revelations"],
-    "survival.json": ["inventory", "stats"],
+    "courtroom.json": ["failure_conditions", "revelations"],
+    "survival.json": ["failure_conditions", "inventory", "stats"],
 }
 ALL_ENGINE_SLOTS = sorted({slot for slot, _ in se.mechanics.registered_engines()})
 
@@ -188,9 +188,21 @@ for name in sorted(EXPECTED_ABSENT):
     # (7) every section that did reach the prompt is inside its engine's declared budget.
     # prompt_sections raises on a breach, so reaching here is the assertion; this pins the
     # budget as a real number rather than an unset one (§5.4).
+    #
+    # Phase 4 note: `prompt_budget = 0` is legitimate for an engine contributing no
+    # narration text at all - triggered_ending is one, since an ending is entered through
+    # the endgame machinery, which writes its own act. So the assertion is the *pairing*,
+    # both ways: text implies a budget, no budget implies no text. Asserting "> 0"
+    # unconditionally would force a made-up number onto an engine that spends nothing,
+    # which is how a budget stops meaning anything.
     for b in se.mechanics.bind(story_dict):
-        assert b.engine.prompt_budget > 0, \
-            f"{name}: {b.slot} engine declares no prompt_budget"
+        contributed = [k for k in sections if k.startswith(f"{b.slot}.")]
+        if contributed:
+            assert b.engine.prompt_budget > 0, \
+                f"{name}: {b.slot} contributed {contributed} but declares no prompt_budget"
+        elif not b.engine.prompt_budget:
+            assert not b.engine.prompt_sections(b.cfg, ctx), \
+                f"{name}: {b.slot} declares no prompt_budget but returned prompt text"
 
     print(f"OK: {name} - loads, no leaked markers either direction, a stubbed turn applies, "
           f"binds exactly {EXPECTED_ENGINES[name] or 'no engines'}")

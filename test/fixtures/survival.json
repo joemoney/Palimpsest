@@ -94,20 +94,23 @@
       "description": "Something keeps pace at the edge of the headlamp's throw. It has never closed, and it has never fallen behind.",
       "pacing_note": "Appears rarely and never fully. It is a shape, a distance, or a sound with nothing to have made it. Never let it resolve, never let it attack directly, and never let any character explain it."
     },
-    "failure_conditions": [
-      {
-        "id": "fail_cold",
-        "trigger": "The protagonist spends a scene at WARMTH -10 without shelter or fire.",
-        "title": "Windward",
-        "ending_prompt": "Close on the cold winning. Not dramatic. The decisions simply get worse until there are none."
-      },
-      {
-        "id": "fail_dark",
-        "trigger": "The protagonist's last light source fails on the open shelf.",
-        "title": "No Fixed Point",
-        "ending_prompt": "Close in the dark, still walking, no longer certain of the direction."
-      }
-    ]
+    "failure_conditions": {
+      "engine": "triggered_ending",
+      "conditions": [
+        {
+          "id": "fail_cold",
+          "trigger": "The protagonist spends a scene at WARMTH -10 without shelter or fire.",
+          "title": "Windward",
+          "ending_prompt": "Close on the cold winning. Not dramatic. The decisions simply get worse until there are none."
+        },
+        {
+          "id": "fail_dark",
+          "trigger": "The protagonist's last light source fails on the open shelf.",
+          "title": "No Fixed Point",
+          "ending_prompt": "Close in the dark, still walking, no longer certain of the direction."
+        }
+      ]
+    }
   },
   "plot": {
     "main_thread": {

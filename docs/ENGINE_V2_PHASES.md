@@ -11,7 +11,7 @@ Primary sources, in priority order when they conflict:
 3. `docs/SCHEMA_V2_SPEC.md` — P-1…P-7, all still binding.
 4. This file.
 
-**Status: phases 0–3 complete. Phase 4 is in progress — steps 1–3 of 5 landed.**
+**Status: phases 0–3 complete. Phase 4 is in progress — steps 1–4 of 5 landed.**
 
 ---
 
@@ -233,8 +233,9 @@ above is what keeps it honest as engines land.
    match goes away.~~ **Done** — `backend/mechanics/items.py`; see *Step 2* below.
 3. ~~`revelation` / `triggered_reveal` (§7.5).~~ **Done** — `backend/mechanics/reveal.py`;
    see *Step 3* below.
-4. `failure` / `triggered_ending` (§7.6) — effect unchanged: set `endgame.requested`, build
-   `final_arc` from `ending_prompt`, route into the existing endgame machinery.
+4. ~~`failure` / `triggered_ending` (§7.6) — effect unchanged: set `endgame.requested`, build
+   `final_arc` from `ending_prompt`, route into the existing endgame machinery.~~ **Done** —
+   `backend/mechanics/failure.py`; see *Step 4* below.
 5. Subplot progress (§2.1) — the model classifies how materially a beat advanced a thread,
    the engine prices it. `check_and_advance_act` is **not** touched; only
    `check_subplot_status`'s arithmetic moves.
@@ -411,6 +412,44 @@ asserted on `revelations_eligible` by name. Phase 5's gate is that that file pas
 about the revelation field's name, not about pacing behaviour, and every pacing assertion in
 the file is untouched. If phase 5 wants its gate read strictly, this is the one prior edit to
 account for.
+
+### Step 4 — `failure_conditions` / `triggered_ending` *(done)*
+
+**What shipped.** `backend/mechanics/failure.py`. The engine owns which conditions are
+askable and which one fired. §7.6 requires the *effect* to be unchanged, so
+`test_failure_conditions.py` passing on the same assertions is most of this port's gate.
+
+**The handler lives in `story_engine`, and that seam is the point.** §7.6 says a failure
+routes into the *existing* endgame machinery rather than a new code path. That machinery is
+`_begin_endgame`, shared with the player's own "end the story" request. Duplicating it inside
+the engine to make the module self-contained would trade a real invariant — one ending path —
+for a cosmetic one, so the engine emits `Effect("failure.trigger", ...)` and `story_engine`
+registers what applies it. The engine decides *that* the story ends; it does not own *how*.
+Same shape as §7.4's refusal rule, one layer down.
+
+**`resolve_order = 90` replaced "it is the last block in the function".** v2 applied failure
+conditions after everything else, deliberately, so a failing turn's items, standing and
+progress all landed first — encoded as a comment plus a statement position. That is exactly
+what §6.2 exists to turn into declared data, and this is the first port where the declaration
+does real work rather than restating an ordering nothing depended on. There is now a test
+that fails if the ordering regresses, which v2 had no way to write.
+
+**Its cadence is a decision, not a caller convention.** v2 emptied the condition list at the
+call site before building the prompt; the engine now reads `endgame.requested` itself. §7.6
+also wants it to ask only about *reachable* conditions, and reachability is a predicate over
+engine state — `gate`'s evaluator, phase 6. Same split as `triggered_reveal`.
+
+**`prompt_budget = 0` turned out to be legitimate, and check (7) was wrong about it.** The
+conformance fixture asserted every bound engine declares a positive budget, which held only
+while every engine happened to contribute narration text. `triggered_ending` contributes
+none — an ending is entered through the endgame machinery, which writes its own act. The
+check is now the pairing in both directions: text implies a budget, no budget implies no
+text. Asserting `> 0` unconditionally would force a made-up number onto an engine that spends
+nothing, which is how a budget stops meaning anything.
+
+**Gate.** Suite green; `equivalence_probe.py` identical. Field counts flat at 10/6/6/8 — a
+1-for-1 port, as expected. Observation prompts down slightly again for the two fixtures that
+carry conditions (`courtroom` 3,102 → 3,092, `survival` 3,795 → 3,785).
 
 ---
 
