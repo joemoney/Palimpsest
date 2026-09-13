@@ -90,6 +90,9 @@
     "starting_inventory": []
   },
   "mechanics": {
+    "subplots": {
+      "engine": "weighted_threads"
+    },
     "inventory": {
       "engine": "tagged_items",
       "tags": [

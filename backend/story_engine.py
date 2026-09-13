@@ -696,35 +696,13 @@ def _suppress_predicate(name: str, ctx: dict, rule_id: str, fired_last_turn: str
     return False
 
 
-def _subplot_view(ctx: dict, sid: str) -> dict:
-    """Merged view of one subplot: a seeded subplot resolves title/description/priority/
-    ties_to_main_plot/completion_threshold/span from the template; a generated one (no
-    template counterpart) carries all of that on its own runtime entry instead, since
-    there's nothing to resolve it against. If a seeded subplot's template entry has since
-    been removed by an author (SCHEMA_V2_SPEC.md §2.3 reconciliation), falls back to a
-    placeholder rather than raising - the runtime copy stays in place either way."""
-    seed = ctx["story"]["plot"]["subplots"].get(sid, {})
-    runtime = ctx["state"]["plot"]["subplots"].get(sid, {})
-    return {
-        "id": sid,
-        "title": runtime.get("title") or seed.get("title") or f"(removed from template: {sid})",
-        "description": runtime.get("description", seed.get("description", "")),
-        "priority": runtime.get("priority", seed.get("priority", "medium")),
-        "ties_to_main_plot": runtime.get("ties_to_main_plot", seed.get("ties_to_main_plot", "")),
-        "completion_threshold": runtime.get("completion_threshold", seed.get("completion_threshold", 100)),
-        "span": runtime.get("span", seed.get("span", "single_act")),
-        "progress": runtime.get("progress", 0),
-        "status": runtime.get("status", "not_started"),
-        "active": runtime.get("active", False),
-    }
-
-
-def _all_subplots(ctx: dict) -> dict:
-    """{id: merged view} for every subplot that currently exists - ctx["state"]["plot"]
-    ["subplots"] is the authoritative id set (every template-seeded subplot is
-    instantiated into it at save creation, and every generated one is added to it
-    directly), so iterating its keys covers both kinds."""
-    return {sid: _subplot_view(ctx, sid) for sid in ctx["state"]["plot"]["subplots"]}
+# Phase 4 moved the merge itself into backend/mechanics/threads.py, next to the engine that
+# prices progress against it - but it stayed a module function there rather than becoming an
+# engine method, precisely so these keep working for a story that declares no subplot engine.
+# check_subplot_status, generate_new_subplot, act advancement and subplot_manager all need
+# the view, and none of them may go dark over a missing declaration.
+_subplot_view = mechanics.threads.subplot_view
+_all_subplots = mechanics.threads.all_subplots
 
 
 def _authored_character(ctx: dict, name: str) -> dict:
@@ -888,14 +866,6 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
     """Separate LLM pass (kept apart from narration) that extracts a state diff from the
     turn just narrated: subplot progress, flags, revealed memory fragments, entity contact,
     scene, and - through the bound mechanic engines - inventory, relationships and stats."""
-    subplots_view = _all_subplots(ctx)
-    # CR-08: previously just {id: title}, giving the model a delta to report with no idea
-    # where the subplot currently stands - it couldn't tell "this beat should finish the
-    # thread" from "this nudges it." Progress/threshold let it calibrate the delta instead.
-    active_subplot_lines = "\n".join(
-        f"  {sid}: {sp['title']} - {sp['description']} [{sp['progress']}/{sp['completion_threshold']}]"
-        for sid, sp in subplots_view.items() if sp["active"]
-    ) or "  none"
     characters = ctx["state"]["characters"]
     # Phase 4: relationships are the `scored_axis` engine's now (backend/mechanics/
     # social.py) - the scale, the price list, the tiers, the cap and the eviction rule all
@@ -936,9 +906,6 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
     progression_cfg = ctx["story"].get("mechanics", {}).get("progression")
 
     schema_fields = [
-        '  "subplot_progress": {"<subplot_id>": <integer 0-100, progress made this turn - this '
-        "is ADDED to the subplot's current progress shown above, and reaching its "
-        'completion_threshold completes the thread>}',
         '  "flags_set": {"<flag_name>": {"value": true, "pinned": <true if this is a '
         'foundational fact that should never be forgotten, e.g. a core revelation or '
         "identity; false if it's situational and safe to eventually forget once it's no "
@@ -1037,10 +1004,8 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         )
 
     prompt = f"""Given this turn of an interactive story, report what changed in the world state.
-
-ACTIVE SUBPLOTS (id: title - description [progress/threshold]):
-{active_subplot_lines}
-CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}{engine_context}{leverage_line}
+{engine_context}
+CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}{leverage_line}
 EXISTING CHARACTERS (do not repeat in new_characters): {', '.join(existing_characters) or 'none'}{stats_block}
 CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}{beat_section}
 
@@ -1051,9 +1016,9 @@ Respond with ONLY a JSON object, no other text, in this exact shape:
 {{
 {schema_str}
 }}
-Only include subplot ids, flags, fragment ids, items, character names, and stats that actually
-changed this turn. Use {{}}/[] for nothing changed. Omit scene_update entirely if the
-protagonist's location and situation are unchanged from CURRENT SCENE above.
+Only include flags, ids, items, character names and stats that actually changed this turn.
+Use {{}}/[] for nothing changed. Omit scene_update entirely if the protagonist's location
+and situation are unchanged from CURRENT SCENE above.
 {engine_instructions}Only add an entry to new_characters when a character is given an actual proper name for the
 first time this turn (e.g. "Marlowe", "Elena Cho") AND isn't already in EXISTING CHARACTERS -
 never for a generic/descriptive handle (e.g. "the guard", "the advocate", "the woman at the
@@ -1064,13 +1029,6 @@ is a separate, manual step."""
         diff = _timed("state_update", lambda: call_llm_json(prompt), model=TIER_C_MODEL)
     except (json.JSONDecodeError, ValueError):
         return {}
-
-    subplots_state = ctx["state"]["plot"]["subplots"]
-    for subplot_id, delta in diff.get("subplot_progress", {}).items():
-        if subplot_id in subplots_state and subplots_state[subplot_id].get("active"):
-            sp = subplots_state[subplot_id]
-            threshold = _subplot_view(ctx, subplot_id)["completion_threshold"]
-            sp["progress"] = max(0, min(threshold, sp.get("progress", 0) + int(delta)))
 
     turn_count = ctx["state"]["pacing"]["turn_count"]
     flags = ctx["state"]["protagonist"]["flags"]

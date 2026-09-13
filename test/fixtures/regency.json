@@ -53,6 +53,9 @@
     ]
   },
   "mechanics": {
+    "subplots": {
+      "engine": "weighted_threads"
+    },
     "relationships": {
       "engine": "scored_axis",
       "scale": {

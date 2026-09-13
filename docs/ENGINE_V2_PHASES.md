@@ -11,7 +11,9 @@ Primary sources, in priority order when they conflict:
 3. `docs/SCHEMA_V2_SPEC.md` — P-1…P-7, all still binding.
 4. This file.
 
-**Status: phases 0–3 complete. Phase 4 is in progress — steps 1–4 of 5 landed.**
+**Status: phases 0–4 complete** — all five ports landed; see the phase 4 gate below for
+what it measured and the two items it did not close. Phase 5 (relocate `pacing_loop` and
+`progression`) is next.
 
 ---
 
@@ -236,9 +238,10 @@ above is what keeps it honest as engines land.
 4. ~~`failure` / `triggered_ending` (§7.6) — effect unchanged: set `endgame.requested`, build
    `final_arc` from `ending_prompt`, route into the existing endgame machinery.~~ **Done** —
    `backend/mechanics/failure.py`; see *Step 4* below.
-5. Subplot progress (§2.1) — the model classifies how materially a beat advanced a thread,
-   the engine prices it. `check_and_advance_act` is **not** touched; only
-   `check_subplot_status`'s arithmetic moves.
+5. ~~Subplot progress (§2.1) — the model classifies how materially a beat advanced a thread,
+   the engine prices it.~~ **Done** — `backend/mechanics/threads.py`; see *Step 5* below.
+   `check_and_advance_act` was not touched, and neither was `check_subplot_status` itself —
+   only the progress arithmetic moved. See the step note for why the rest stayed.
 
 **Gate.** Per-engine tests plus absent-engine tests for each. **Each port also adds its
 engine to `EXPECTED_ENGINES` and to at least one fixture in the same commit** (phase 3's
@@ -450,6 +453,107 @@ nothing, which is how a budget stops meaning anything.
 **Gate.** Suite green; `equivalence_probe.py` identical. Field counts flat at 10/6/6/8 — a
 1-for-1 port, as expected. Observation prompts down slightly again for the two fixtures that
 carry conditions (`courtroom` 3,102 → 3,092, `survival` 3,795 → 3,785).
+
+### Step 5 — `subplots` / `weighted_threads` *(done)*
+
+**What shipped.** `backend/mechanics/threads.py`. `subplot_progress: {id: <integer 0-100>}`
+became `subplot_beats: {id: "touched" | "advanced" | "decisive" | "resolved"}`, and the
+engine prices the classification. This is the port §2.1 spends a page *refusing* to make an
+exception for, so the reasoning is worth having to hand: act advancement keeps its verdict
+with the model because "has this act resolved" has no ground truth for `resolve()` to
+compute, while `subplot_progress` was arithmetic performed by the model — the same shape as
+`stat_changes` and `relationship_changes`.
+
+**`resolved` is priced structurally rather than from the table.** It completes the thread,
+whatever its threshold and wherever it had got to. It is the one classification the model
+cannot express as a number without doing the engine's arithmetic for it.
+
+**Weights are absolute, which is what keeps `span: multi_act` meaningful.** A `multi_act`
+thread's threshold is 250 rather than 100 and a decisive beat is worth the same in both, so
+the longer thread genuinely takes more beats. Scaling the weights to the threshold would have
+quietly undone the only lever that distinguishes the spans.
+
+**CR-08's mechanism went; its concern stayed.** CR-08 added `[progress/threshold]` to the
+prompt so the model could tell a nudge from a finishing blow. Showing a running total to a
+model that is no longer allowed to add is an invitation to start again, so it now sees a band
+— *just begun*, *under way*, *close to resolution*. `test_subplot_progress_prompt.py` is
+still CR-08's test; it asserts the band instead of the numbers.
+
+**Unlike `scored_axis`, this engine ships a default ladder.** The difference is real and
+worth stating, because "required vs defaulted config" has now gone both ways in one phase: a
+register price list is a story's social physics and therefore P-3 creative, while "how much
+of a thread does a decisive beat settle" is structural pacing that reads the same in every
+genre. A story overrides `weights` if it disagrees; none has to invent one to get a working
+mechanic.
+
+**The third unconditional field.** `subplot_progress` was asked of every story every turn,
+including `courtroom`, which authors no threads at all and is the deliberately single-thread
+fixture. That is `items_gained`/`items_lost` again, and it goes the same way.
+
+**What deliberately stayed.** `check_subplot_status` is still `story_engine`'s: completion
+detection is called from the turn loop *and* from `subplot_manager`'s manual path, and it
+drives act advancement, regeneration and `completed_subplots`. §2.1 scopes this port to the
+progress arithmetic. The merged seed+runtime subplot view did move into `threads.py`, but as
+a **module function** rather than an engine method, with `story_engine._subplot_view`
+delegating to it — because `check_subplot_status`, `generate_new_subplot`, act advancement
+and `subplot_manager` all need that view, and none of them may go dark because a story did
+not declare an engine.
+
+---
+
+## Phase 4 gate
+
+**Met on the field count, which is the one §5.4 actually budgets.** Measured with
+`scripts/measure_baseline.py`, against phase 0:
+
+| | `example` | `courtroom` | `regency` | `survival` |
+|---|---|---|---|---|
+| Observation fields | 11 → **10** | 8 → **5** | 8 → **6** | 9 → **8** |
+| Observation prompt (chars) | 7,053 → 7,979 | 3,494 → **2,794** | 4,263 → 4,286 | 3,356 → 3,992 |
+| Narration prompt (chars) | 5,434 → 5,416 | 3,055 → 3,034 | 3,396 → 3,330 | 3,700 → 3,680 |
+
+**Where the reduction came from is not where §7 predicted.** The catalogue expected merges —
+two inventory fields into one, two revelation fields into one. Those happened, but the larger
+saving was that three fields were *unconditional*: `items_gained`, `items_lost` and
+`subplot_progress` were asked of every story every turn, including a courtroom drama with no
+inventory and no threads. P-2 had no way to catch that, because none of the three had a
+module to be absent from. Declare-to-bind gave them one.
+
+**Prompt size moved both ways, and the shape of that is the real finding.** `courtroom` — the
+fixture that sheds the most modules — fell 20%. `example` rose 13%, and that is E-3's price
+stated plainly: a model that classifies into a vocabulary must be shown the vocabulary, and
+`example` now carries four (registers, item tags, subplot beats, and its pre-existing pacing
+beats). Broken down, its engine fields cost 2,455 chars of the 7,979: `social` 1,224,
+`subplot_beats` 633, `inventory` 598. Every instruction block was tightened once after
+measurement, which recovered ~400 chars across the three.
+
+**This is the input to phase 7's go/no-go, and it argues for keeping phase 7 conditional
+rather than scheduling it.** §5.4's threshold is `core + 7` = ten fields, and the most
+loaded available story sits at ten exactly — at the line, not over it. But the two flagship
+stories are in the private submodule and could not be measured from this working copy, and
+phase 0 recorded them at 14–15 fields. **Phase 7's decision needs those two numbers re-run
+before it can be made**; nothing in the four public targets settles it either way.
+
+**What the gate did not close, and neither item is hidden:**
+
+- **§12.5 (is Tier C still right for the observation pass?) is not settled.** The phase asked
+  for the ported pass to be run on Tier C and Tier AB over the same held-out turns and the
+  misclassification rates compared. That needs live API calls against real turns; the whole
+  test suite here is offline by design and this working copy has no key. The pass now exists
+  in the form the experiment needs, which was the blocker — the measurement is schedulable
+  work, not design work. **Tier C stands until the numbers say otherwise**, per §5.5.
+- **`stat_changes` → event vocabulary is still v2-shaped.** Phase 2 deferred "the field-count
+  reduction" here and this phase delivered it from the other four ports; the `stat_changes`
+  conversion itself needs authored `costs` tables (§8.1) in every story with stats plus a
+  shared `effort` event (§7.1), which is content work for a mechanic that is already ported.
+  Tracked as its own item above rather than folded into a port it does not belong to.
+
+**Also worth recording: four of the five ports found something the design did not
+anticipate.** `Relationships: {}` had been a zeroed header since the module existed;
+eviction's ordering relative to scoring was load-bearing and unstated; capacity and §6.2's
+declared order genuinely conflict and needed a third pass to satisfy both; and
+`prompt_budget = 0` turned out to be legitimate, which the conformance fixture's check (7)
+had assumed away. None of those were visible before the mechanic had a module.
 
 ---
 

@@ -21,7 +21,7 @@ from _llm_stubs import RecordingLLM, CannedResponses, load_story_engine  # noqa:
 se = load_story_engine()
 
 BASE_DIFF = {
-    "subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    "subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 }
 

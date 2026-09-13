@@ -24,7 +24,7 @@ se.call_llm = CannedResponses([
     "OPTIONS:\n1. a || a\n2. b || b\n3. c || c",
 ])
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []}},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []}},
 ])
 se.take_turn("do something")
 
@@ -46,7 +46,7 @@ se.call_llm = CannedResponses([
     "Still no valid options here.",
 ])
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []}},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []}},
 ])
 se.take_turn("do something else")
 

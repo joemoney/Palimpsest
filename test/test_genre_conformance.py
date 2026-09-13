@@ -57,6 +57,7 @@ STATE_UPDATE_MARKERS = {
     "stats": "stat_changes",
     "relationships": '"social"',
     "inventory": '"inventory"',
+    "subplots": '"subplot_beats"',
     "failure_conditions": "failure_triggered",
     "progression": "leverage_gained",
     "pacing_loop": "beat_type",
@@ -70,15 +71,16 @@ EXPECTED_ABSENT = {
     "regency.json": ["locations", "factions", "stats", "tracked_entity",
                      "failure_conditions", "progression", "pacing_loop", "inventory"],
     "courtroom.json": ["locations", "factions", "tracked_entity", "stats",
-                       "relationships", "progression", "pacing_loop", "inventory"],
+                       "relationships", "progression", "pacing_loop", "inventory",
+                       "subplots"],
     "survival.json": ["relationships", "characters", "revelations",
                       "progression", "pacing_loop"],
 }
 EXPECTED_PRESENT = {
-    "regency.json": ["relationships", "characters", "revelations"],
+    "regency.json": ["relationships", "characters", "revelations", "subplots"],
     "courtroom.json": ["characters", "revelations", "failure_conditions"],
     "survival.json": ["stats", "tracked_entity", "failure_conditions", "locations",
-                      "inventory"],
+                      "inventory", "subplots"],
 }
 
 # --- the registry dimension (engine v2 phase 3) ------------------------------------
@@ -92,14 +94,16 @@ EXPECTED_PRESENT = {
 # **Every phase 4 port must add its engine to this table and to at least one fixture in the
 # same commit**, or nothing is guarding P-2 for it.
 EXPECTED_ENGINES = {
-    "regency.json": ["relationships", "revelations"],
+    "regency.json": ["relationships", "revelations", "subplots"],
+    # courtroom authors no plot.subplots at all - it is the deliberately single-thread
+    # fixture, and the reason the subplot field stopped being unconditional (P-2).
     "courtroom.json": ["failure_conditions", "revelations"],
-    "survival.json": ["failure_conditions", "inventory", "stats"],
+    "survival.json": ["failure_conditions", "inventory", "stats", "subplots"],
 }
 ALL_ENGINE_SLOTS = sorted({slot for slot, _ in se.mechanics.registered_engines()})
 
 EMPTY_DIFF = {
-    "subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    "subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
     "inventory": {"gained": [], "used": []}, "new_characters": [],
     "scene_update": {"location": "", "summary": "unchanged", "present_npcs": []},
 }

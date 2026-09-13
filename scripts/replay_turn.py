@@ -215,9 +215,14 @@ def main():
             print(f"\nLLM UNAVAILABLE: {e}", file=sys.stderr)
             return 3
 
-        revealed = diff.get("memory_fragments_revealed", [])
+        # Phase 4: the two revelation fields merged into one `revelations` object owned by
+        # the triggered_reveal engine. Only the `revealed` half counts as fired here -
+        # `eligible` is a reveal waiting to be placed, which is the opposite of the thing
+        # this script exists to check.
+        block = diff.get("revelations")
+        revealed = block.get("revealed", []) if isinstance(block, dict) else []
         fired.update(revealed)
-        print(f"\nmemory_fragments_revealed: {revealed or '[]  <-- nothing fired'}")
+        print(f"\nrevelations.revealed: {revealed or '[]  <-- nothing fired'}")
         print(f"full diff: {json.dumps(diff, indent=2)[:1500]}")
 
     if args.expect:

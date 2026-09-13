@@ -73,6 +73,9 @@
     }
   },
   "mechanics": {
+    "subplots": {
+      "engine": "weighted_threads"
+    },
     "inventory": {
       "engine": "tagged_items",
       "capacity": 4,

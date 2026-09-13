@@ -15,7 +15,7 @@ se = load_story_engine()
 
 responses = CannedResponses([
     # 1) update_progress_from_turn: push subplot_001 to completion
-    {"subplot_progress": {"subplot_001": 100}, "flags_set": {"learned_basic_computation": True},
+    {"subplot_beats": {"subplot_001": "resolved"}, "flags_set": {"learned_basic_computation": True},
      "revelations": {"revealed": ["frag_0001"], "eligible": []}},
     # 2) generate_new_subplot (replacement for subplot_001)
     {"title": "Test New Subplot", "description": "A freshly invented thread.",

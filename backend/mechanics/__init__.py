@@ -212,6 +212,14 @@ def validate(story):
         print("WARNING: this story seeds protagonist.starting_inventory but declares no "
               "mechanics.inventory.engine - the items will be inert (no prompt line, no way "
               "to gain or spend one). Add \"engine\": \"tagged_items\" to use them.")
+    # Same shape again for subplots. This one is the most damaging of the three to get
+    # wrong: the threads still exist, still reach the narration prompt through the act and
+    # pacing machinery, and simply never progress - so the story looks fine and quietly
+    # never resolves a thread.
+    if story.get("plot", {}).get("subplots") and "subplots" not in declared:
+        print("WARNING: this story authors plot.subplots but declares no "
+              "mechanics.subplots.engine - the threads will never progress (no subplot_beats "
+              "field, so nothing ever completes). Add \"engine\": \"weighted_threads\".")
 
     for slot, cfg in _declared(story):
         if (slot, cfg["engine"]) not in _REGISTRY:
@@ -371,4 +379,4 @@ def run_observation_pipeline(ctx, diff):
 
 # Engines register by being imported. At the bottom, because each one imports names from
 # this module - the package is the contract, the modules are the implementations.
-from . import failure, items, resource, reveal, social  # noqa: E402,F401
+from . import failure, items, resource, reveal, social, threads  # noqa: E402,F401

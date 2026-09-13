@@ -48,7 +48,7 @@ print("OK: no revealed fragments -> no REVEALED MEMORIES header")
 # only ever sees unrevealed triggers, never revealed content ---
 ctx["state"]["pacing"]["turn_count"] = 5
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {},
+    {"subplot_beats": {}, "flags_set": {},
      "revelations": {"revealed": ["frag_1"], "eligible": []},
      "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
@@ -65,7 +65,7 @@ print("OK: revealing a fragment records its turn and surfaces its content, not t
 
 # --- the state-update prompt continues to see only unrevealed triggers, never revealed content ---
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
      "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 captured = {}
@@ -103,7 +103,7 @@ print(f"OK: revealed-fragment block capped to {LIMIT}, most recent kept")
 
 # --- with unrevealed fragments present, the state-update prompt instructs evaluation ---
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
      "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 captured = {}
@@ -130,7 +130,7 @@ all_revealed_story["mechanics"]["revelations"] = revelations(
 all_revealed_ctx["story"] = se.state_store.freeze(all_revealed_story)
 all_revealed_ctx["state"]["plot"]["revelations_revealed"] = {"frag_1": {"turn": 1}}
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
      "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 captured = {}
@@ -147,7 +147,7 @@ no_rev_story = se.state_store.thaw(no_rev_ctx["story"])
 no_rev_story["mechanics"].pop("revelations", None)
 no_rev_ctx["story"] = se.state_store.freeze(no_rev_story)
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
      "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 captured = {}

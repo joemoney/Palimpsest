@@ -23,7 +23,7 @@ mechanics = se.mechanics
 ENGINE = mechanics.items.ENGINE
 
 EMPTY_DIFF = {
-    "subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    "subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
     "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 }
 

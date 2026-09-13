@@ -17,7 +17,7 @@ assert ctx["state"]["scene"]["location"] == "loc_dock"
 
 # --- a valid location id, summary, and present_npcs all round-trip ---
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
      "scene_update": {
          "location": "loc_inn", "summary": "Now warming up by the fire at the Harborlight.",
          "present_npcs": ["Mrs. Abbott"],
@@ -33,7 +33,7 @@ print("OK: a valid scene_update writes location, summary, and present")
 
 # --- an unknown/invalid location id is rejected; the previous value survives ---
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
      "scene_update": {"location": "loc_not_a_real_place", "summary": "Should still apply.",
                        "present_npcs": []},
      "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
@@ -46,7 +46,7 @@ print("OK: an invalid location id is rejected, keeping the previous value, while
 
 # --- an empty/missing summary keeps the previous value instead of blanking it ---
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
      "scene_update": {"location": "loc_inn", "summary": "", "present_npcs": []},
      "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
@@ -58,7 +58,7 @@ print("OK: an empty summary is a no-op, not a blank-out")
 # --- a missing scene_update key entirely is a no-op, not a crash ---
 before = dict(ctx["state"]["scene"])
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
      "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
 ])
 se.update_progress_from_turn(ctx, "do nothing in particular", "narration text")
@@ -71,7 +71,7 @@ story_dict = se.state_store.thaw(free_ctx["story"])
 story_dict["world"]["locations"] = {}
 free_ctx["story"] = se.state_store.freeze(story_dict)
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
      "scene_update": {"location": "the rooftop, somewhere improvised", "summary": "s",
                        "present_npcs": []},
      "inventory": {"gained": [], "used": []}, "social": [], "new_characters": []},
