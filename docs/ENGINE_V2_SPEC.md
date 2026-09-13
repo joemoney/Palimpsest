@@ -208,6 +208,87 @@ is not a bound engine, contributes no observation field, and is not reached thro
 `resolve()`. It keeps its own `_timed("act_advancement_check", ...)` call site and its
 existing `STATUS_LABELS`/`DEFAULT_STEP_ESTIMATE_SECONDS` entries, unchanged.
 
+### 2.2 Act completion preconditions
+
+§2.1 gives the model the verdict. It does not have to give it the *whole* verdict. The
+condition splits cleanly:
+
+- **Necessary conditions → engine.** An authored `requires` predicate over engine state,
+  evaluated before the director is called at all. Unmet means no LLM call, no verdict to
+  validate, and no advancement.
+- **Sufficiency → model.** With the predicates met, the director is still asked whether the
+  act *feels* resolved, and can still say no. §2.1 is intact: the model can always refuse,
+  it just cannot approve prematurely.
+
+```jsonc
+{ "act_number": 1, "title": "Arrival",
+  "requires": { "all": [ { "revelation": "rev_001" },
+                         { "flag": "warned_off_lighthouse" } ] },
+  "completion_signals": [ "..." ] }
+```
+
+An absent `requires` is today's pure-judgement behaviour, which keeps P-4: the minimal
+template still runs, and an author who wants none writes none. Authored, it gives an act a
+floor the model cannot talk its way under.
+
+The evaluator is the `gate` engine's (§7.4) pointed at act advancement rather than at a
+door — the same predicate code, a different target. §7.9's "act advancement is not an
+engine" is unaffected: an engine supplies the evaluator, and still does not own the verdict.
+
+**What a predicate may point at.** Two independent conditions. The referent must be
+**enumerable when the predicate is written**, and the predicate must **latch** — once true,
+stay true. A completion condition that can un-satisfy itself is worse than no condition.
+
+| Referent | Enumerable when written | Latching | Usable |
+|---|---|---|---|
+| Revelation id | Yes — authored, finite, stable ids | Yes — `revelations_revealed` is written at one site and deleted at none | **Yes** |
+| Stat threshold | Yes — axes are fixed at save creation and the model can never add one | No — stats move both ways | Needs a high-water mark |
+| Authored character's tier | Yes — authored characters are never evicted | No — scores move | Needs a high-water mark |
+| Authored location visited | Yes | No state exists — `scene.location` is current-only | Needs new state |
+| Flag | Only if authored ahead of time; runtime flag names are model-invented | Yes, *if evaluated correctly* — see below | **Yes, with care** |
+| Discovered character | No | No — evicted closest-to-neutral at `RELATIONSHIPS_LIMIT` | No |
+| Subplot id | No — the subplot does not exist yet | Ids are stable once created | No |
+
+**Flag predicates must read `flags.active ∪ flags.archive`.** This is not a preference.
+`archive_stale_flags` retires any unpinned flag out of `active` once its setting turn falls
+outside `RECENT_TURN_LIMIT` (10), and `act_check_frequency` defaults to 12 — so a predicate
+reading `active` alone would be consulted on a cadence *longer than the flag's own lifetime
+there*, and would be reliably false at exactly the moment it is checked. `archive` is
+written at two sites and popped at none, which makes `active ∪ archive` monotonic and gives
+the "did this ever happen" semantics completion actually wants.
+
+**Generated acts carry no `requires`.** This is a deliberate asymmetry, and it is the whole
+reason the feature is authored-only:
+
+> An authored predicate may be hard because a human verified it is satisfiable.
+> A generated predicate may not be, because nothing did.
+
+The engine cannot check satisfiability. `{"revelation": "rev_005"}` is unsatisfiable if
+rev_005's own trigger requires a location the act never visits, and no static check sees
+that. The failure that produces is a save whose main thread **can never advance** — with
+`generate_pacing_nudge` still steering toward an act that cannot end. Weigh that against
+what act advancement gets wrong today, which is landing a turn early or late. By E-7's own
+test the first is a broken promise and the second is a wobble, so **E-7 argues against
+generated predicates**, the same test that put the verdict on the model's side in §2.1.
+
+There is a second reason: a model that may *declare* a referent rather than select one
+creates a name-coordination problem across calls, where a narration-time pass turns later
+must emit a byte-identical string. That is the exact fragility
+`relationships[name]["npc_id"]` exists to fix.
+
+**If it is ever revisited** (§12.5), the shape that would work is recorded here so the
+analysis is not redone: the engine builds a menu of live, monotonic referents at generation
+time and the model **selects** from it rather than writing a predicate — the same
+constrained-selection pattern as `VALID LOCATION IDS` and as `stat_changes` only moving
+axes that already exist; unknown referents are dropped silently on write rather than
+failing the act (the `CR-04 dangling connected_to id skipped silently` precedent); and a
+generated predicate **expires**, blocking at most a fixed number of act checks before
+degrading to advisory. Expiry is a correctness requirement, not a nicety — it is what turns
+a possible hard-lock into a bounded delay. Note where that lands: a floor that decays to
+nothing is judgement-only with a delay, which is most of the way back to carrying no
+`requires` at all. That is the argument for not building it until a real playtest shows
+acts advancing too early.
+
 ---
 
 ## 3. The mechanic engine contract
@@ -560,7 +641,9 @@ them, the registry is wrong.
 
 `check_and_advance_act` stays outside the registry, per §2.1. It is listed here so that a
 later reader looking for "the act engine" finds the reasoning instead of concluding it was
-an oversight. `check_subplot_status`'s progress arithmetic *does* come inside, as part of
+an oversight. The `gate` engine supplies the predicate evaluator that §2.2's
+authored `requires` runs on, which does not make act advancement an engine — supplying an
+evaluator is not owning the verdict. `check_subplot_status`'s progress arithmetic *does* come inside, as part of
 phase 4.
 
 ---
@@ -692,24 +775,24 @@ needs `wait_for_idle(...)` before reading save state, exactly as now.
 
 ## 10. Implementation phases
 
-Each phase ends green, and nothing after phase 1 is obliged to be started.
+Summary only. **`docs/ENGINE_V2_PHASES.md` is the working plan** — per-phase work items,
+acceptance gates, risks, and the story-content interleave.
 
-1. **Registry and pipeline, no behaviour change.** Bound engines on `ctx`, effect
-   application, resolve ordering, event log written but only by ported engines. Nothing is
-   ported yet; the two LLM calls are unchanged.
-2. **Port `resource`** (v2's `stats`). First for three reasons: it has the most existing
-   coverage (`test_stat_bounds`, `test_stat_readout`, `test_stat_visibility`), the `render()`
-   slot already exists as `apply_stat_readouts`, and it is the mechanic with a documented
-   real-world failure to point at. If the registry cannot host it cleanly, stop here.
-3. **Rewrite the three conformance fixtures** against the registry, both directions (§9).
-4. **Port `relationship`, `inventory`, `revelation`, `failure`, and subplot progress**
-   (§2.1 — the model classifies how materially a beat advanced a thread, the engine prices
-   it). Each port must not grow the observation field count without a stated reason (§5.1).
-5. **Relocate `pacing_loop` and `progression`** behind the registry, deliberately unchanged.
-6. **`gate`**, including the pre-action check and the refusal path.
-7. **Observation sharding** (§5.3) — only once field count actually demands it. Premature
-   sharding buys latency risk and a `STATUS_LABELS` complication for no gain.
-8. **`check`**, minimal, and only if a story wants it.
+| Phase | Work | Gate |
+|---|---|---|
+| 0 | Baseline measurement: observation field count, prompt sizes, per-call p50s | Numbers recorded; §5.1 and §12.4 have something to compare against |
+| 1 | Registry, `Effect`, resolve ordering, event log plumbing. No mechanic ported | Full suite green; assembled prompts byte-identical for all three stories and all three fixtures |
+| 2 | Port `resource` (v2's `stats`). **Schema v3 cutover** | Stat tests pass unmodified; readout still deterministic. **Stop-gate — see below** |
+| 3 | Rewrite the three conformance fixtures against the registry | Both directions, three disjoint engine sets, absent-lists still written out in the test |
+| 4 | Port `relationship`, `inventory`, `revelation`, `failure`, subplot progress | Per-engine tests; absent-engine tests; field count not grown against phase 0 |
+| 5 | Relocate `pacing_loop` and `progression`, deliberately unchanged | `test_pacing_loop.py` passes unmodified |
+| 6 | `gate`: pre-action check, refusal path, and §2.2's authored act `requires` | Refusal path test; predicate latching test; no reachable deadlock |
+| 7 | Observation sharding (§5.3) — only if phase 4's measurement demands it | Concurrency; `test_status_labels.py` mirror intact |
+| 8 | `check` (§7.7) — minimal, on demand only | A story actually wants it |
+
+**Phase 2 is the stop-gate.** `resource` is the best-covered, least-surprising mechanic in
+the system. If the registry cannot host it without distorting it, the registry is wrong and
+the right move is to stop rather than port a second engine onto a bad seam.
 
 ---
 
@@ -750,3 +833,6 @@ than a guideline.
    P-3 means it belongs in the template.
 4. **The sharding threshold.** §5.4 proposes six fields per shard as the split point. That
    number is a guess and should be set from a real measurement once phase 4 lands.
+5. **Should a generated act ever carry a `requires`?** Deferred, not rejected — §2.2 records
+   the design that would work and the reason not to build it yet. Revisit only if playtesting
+   shows acts advancing too early, and only after `gate` has landed.
