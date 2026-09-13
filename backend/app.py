@@ -236,7 +236,7 @@ def _story_save_stats(user_id: str, story_slug: str) -> dict | None:
         "turn_count": ctx["state"]["pacing"]["turn_count"],
         "act_title": current_act["title"] if current_act else None,
         # compressed_summary is sized for LLM prompt context (SUMMARY_MAX_WORDS = 2000
-        # words, see CLAUDE.md) - display-truncated here, not at the source, since a stats
+        # words, see docs/ARCHITECTURE.md) - display-truncated here, not at the source, since a stats
         # blurb needs a couple sentences, not the full rolling summary.
         "summary": _truncate_words(summary, SUMMARY_STAT_WORD_LIMIT),
     }
@@ -556,7 +556,7 @@ def plot_manager_view(story_slug):
             # well under the Cloudflare tunnel's ~100-125s cutoff - so this stays inline
             # like every other command on this route, unlike take_turn/regenerate_turn's
             # background-thread + poll handoff (see "Asynchronous turn-taking" in
-            # CLAUDE.md), which exists specifically for the much longer full turn chain.
+            # docs/ARCHITECTURE.md), which exists specifically for the much longer full turn chain.
             plot_manager.stage_steering_seed(ctx, request.form.get("note", ""))
         elif command == "seed-apply":
             overrides = {}

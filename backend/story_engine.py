@@ -41,7 +41,7 @@ MEMORY_FRAGMENT_PROMPT_LIMIT = 12
 # RETAINED rather than pruned on spend - they're cheap, they enable callbacks, and
 # history.compressed_summary is already lossy, so a spent-but-retained entry may end up the
 # only surviving record that something was ever gained. This is the roster cap that keeps
-# that from growing forever (CLAUDE.md, "Keeping LLM Context Bounded"): over the cap, evict
+# that from growing forever (docs/ARCHITECTURE.md, "Keeping LLM Context Bounded"): over the cap, evict
 # spent entries oldest-first and NEVER an unspent one - if unspent entries alone exceed the
 # limit, allow the overflow rather than dropping a live asset. Note only unspent entries
 # ever reach a prompt, so this bounds disk growth and the eviction order, not per-entry cost.
@@ -87,7 +87,7 @@ STEER_WARNING = (
 )
 
 # --- LLM tier configuration ---
-# Three tiers, matched to what each call site actually needs (see CLAUDE.md's "Backend /
+# Three tiers, matched to what each call site actually needs (see docs/ARCHITECTURE.md's "Backend /
 # Model Notes" for the full picture and the reasoning behind each choice):
 #   Tier A - cheap flagship, reasoning OFF. For calls where style/format adherence matters
 #     most and a model's reasoning phase swallowing the final answer (see the "reasoning"
@@ -1343,7 +1343,7 @@ is a separate, manual step."""
     # any rule watching one of those counters back to unarmed), and any rule whose watched
     # counter has now crossed its effective threshold (§13) gets armed. Lazy-init
     # throughout: a save from before this module existed has none of these keys yet, and
-    # per CLAUDE.md's "Keeping LLM Context Bounded" this project never writes a migration
+    # per docs/ARCHITECTURE.md's "Keeping LLM Context Bounded" this project never writes a migration
     # for that - .setdefault/.get instead, same as every other lazily-added field.
     if pacing_loop_cfg:
         beat_type = diff.get("beat_type")
@@ -2448,7 +2448,7 @@ def split_turn_entry(entry: str):
 def all_turns(ctx: dict) -> list:
     """The complete chronological turn sequence for a save, oldest first - full_transcript
     (unbounded, disk-only, only populated once turns roll out of recent_turns) followed by
-    recent_turns (the live window). See CLAUDE.md's 'Keeping LLM Context Bounded' section."""
+    recent_turns (the live window). See docs/ARCHITECTURE.md's 'Keeping LLM Context Bounded' section."""
     return ctx["state"]["history"].get("full_transcript", []) + ctx["state"]["history"]["recent_turns"]
 
 
@@ -2676,7 +2676,7 @@ def handle_steer_command(
     an emergent direction, etc.) without leaving the session. Reuses plot_manager.py
     as-is rather than duplicating its command parsing - it already loads/saves the same
     save file (via --user/--story), so the next turn picks up whatever changed
-    immediately. CLI-only: there's no web equivalent (see CLAUDE.md)."""
+    immediately. CLI-only: there's no web equivalent (see docs/ARCHITECTURE.md)."""
     print(STEER_WARNING)
     args = shlex.split(steer_args) if steer_args.strip() else []
     # Absolute path, not a bare "plot_manager.py" - unlike a plain `import`, subprocess argv

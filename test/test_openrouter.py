@@ -1,6 +1,6 @@
 """Regression test for story_engine's OpenRouter call path (_call_llm_openrouter, the
 default provider for both TIER_AB_PROVIDER and TIER_C_PROVIDER in real use - Google is kept
-only for testing/debugging and call_llm's fail-safe, see CLAUDE.md): a successful response
+only for testing/debugging and call_llm's fail-safe, see docs/ARCHITECTURE.md): a successful response
 is parsed correctly, model routing defaults to the right tier per call, and network/HTTP/
 malformed-response failures are all wrapped as the same LLMUnavailableError the Google path
 uses - by way of also exhausting call_llm's Gemini fail-safe (see test_failsafe.py for the

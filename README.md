@@ -12,7 +12,7 @@ This engine is story-agnostic — `stories/<slug>/` holds one story's seed
 content and its own `README.md` with that story's pitch, setting, and design
 rationale. Adding a new story is a content change (drop in
 `stories/<new-slug>/template.json` + `README.md`), not a code change — see
-"Multi-User, Multi-Story Architecture" in `CLAUDE.md`.
+"Multi-User, Multi-Story Architecture" in `docs/ARCHITECTURE.md`.
 
 ### Public vs. private stories
 
@@ -65,7 +65,7 @@ flagship model, reasoning on; Tier C: fastest available model) —
 `TIER_AB_MODEL`/`TIER_C_MODEL` are freely swappable via `.env` if you want
 to try a different OpenRouter model for either one — the Gemini fail-safe
 means an unreachable or misconfigured experiment won't take the whole app
-down. See `CLAUDE.md`'s "Backend / Model Notes" for the full
+down. See `docs/ARCHITECTURE.md`'s "Backend / Model Notes" for the full
 `TIER_AB_PROVIDER`/`TIER_AB_MODEL`/`TIER_C_PROVIDER`/`TIER_C_MODEL` picture.
 Boots straight into `stories/example/`'s opening with no flags needed — the
 CLI defaults to a local single-player save against the public example story

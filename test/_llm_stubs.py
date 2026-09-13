@@ -126,7 +126,7 @@ def load_story_engine():
     os.environ.setdefault("GOOGLE_API_KEY", "test-key")
     # story_engine.py's real tiers (TIER_AB_PROVIDER/TIER_C_PROVIDER) default to "openrouter",
     # but Google is the provider kept around specifically for testing/debugging (see
-    # CLAUDE.md) - it's the one with a stubbable SDK (google.generativeai, below), so the
+    # docs/ARCHITECTURE.md) - it's the one with a stubbable SDK (google.generativeai, below), so the
     # offline suite forces TESTING_FORCE_GOOGLE here rather than needing a fake
     # OPENROUTER_API_KEY plus a requests.post stub for every test file that merely imports
     # story_engine.
