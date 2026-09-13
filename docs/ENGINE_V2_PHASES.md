@@ -11,7 +11,7 @@ Primary sources, in priority order when they conflict:
 3. `docs/SCHEMA_V2_SPEC.md` — P-1…P-7, all still binding.
 4. This file.
 
-**Status: phases 0–3 complete.** Phase 4 (port the remaining state-carrying engines) is next.
+**Status: phases 0–3 complete. Phase 4 is in progress — step 1 of 5 landed.**
 
 ---
 
@@ -227,7 +227,8 @@ above is what keeps it honest as engines land.
 **Goal.** The observation pass stops being a state diff.
 
 **Work.** In this order, each landing green before the next:
-1. `relationship` / `scored_axis` (§7.2) — and the scale stops being hardcoded `±100`.
+1. ~~`relationship` / `scored_axis` (§7.2) — and the scale stops being hardcoded `±100`.~~
+   **Done** — `backend/mechanics/social.py`; see *Step 1* below.
 2. `inventory` / `tagged_items` (§7.3) — items become records; `items_lost`'s exact-string
    match goes away.
 3. `revelation` / `triggered_reveal` (§7.5).
@@ -253,6 +254,70 @@ exists to measure. Tier C stands until the numbers say otherwise.
 **Risk.** The highest-volume phase and the one where P-2 regressions hide. An engine that is
 absent must leak nothing; the phase 3 fixtures are what catch it, which is why they come
 first.
+
+### A sixth item the gate implies and the work list did not name
+
+Phase 2 recorded that "the field-count reduction belongs to phase 4" because it kept
+`stat_changes` v2-shaped. Read strictly, that means converting `stat_changes` into the E-3
+event vocabulary of §5.1 — and that is **not** one of the five ports above, because it is not
+a port at all. `stats` is already an engine. What is missing is authored `costs` tables
+(§8.1's `axes.*.costs`) in every story that has stats, plus a shared `effort` event (§7.1),
+and until those exist the conversion would delete a working mechanic rather than move it.
+
+Tracked here rather than smuggled into a port: **the five ports are the phase, and
+`stat_changes` → events is its own item, to be scheduled once the ports show what the field
+count actually does.** Phase 4's gate is met by the ports falling, not by this one.
+
+### Step 1 — `relationships` / `scored_axis` *(done)*
+
+**What shipped.** `backend/mechanics/social.py`. The scale, the price list, the tiers, the
+per-window cap and the eviction rule all moved out of `story_engine`; `relationship_changes`
+became `social`, and three hand-written copies of `-100 hostile to +100 devoted` became one
+`axis_hint()`.
+
+**The slot stays `relationships`, not §8.1's `relationship`** — the same call phase 2 made
+for `stats` over `resource`, and for the same reason.
+
+**The observation contract became real, which is the part that outlives this port.** Phase 2
+let `bounded_counter` reach the prompt through a bespoke `schema_field()` that `story_engine`
+called by name. That does not survive a second engine, so `ObservationField` (schema line,
+context line, instruction paragraph) and `MechanicEngine.events()` now exist, `bounded_counter`
+was moved onto them, and `update_progress_from_turn`'s hand-sequenced per-mechanic apply
+blocks collapsed into one `mechanics.run_observation_pipeline(ctx, diff)` at the end.
+§6.2's "order is declared, not incidental" is true of the code now and was not before.
+
+**`registers` is required, not defaulted.** A story declaring `scored_axis` with no price
+list raises. A default table would be the engine authoring the story's social physics, which
+is exactly what §7.1's implicit `STAT_FLOOR = 0` turned out to be.
+
+**Gate.**
+- Suite green (39 files, same two pre-existing environment failures noted below).
+- `scripts/equivalence_probe.py`: byte-identical on every target, i.e. moving
+  `bounded_counter` onto the new contract changed no stat behaviour at all.
+- Field count unchanged everywhere — 11/8/8/9, exactly phase 0. Correct for this step:
+  `relationship_changes` → `social` is one field for one field. The reduction is step 2's
+  (`items_gained` + `items_lost` → one), and the gate is measured at the end of the phase,
+  not after each step.
+- **Observation prompt grew, and that is the honest number**: `example` 7,053 → 7,587 chars
+  (+7.6%), `regency` 4,263 → 4,680. The cost is the register vocabulary itself — E-3 cannot
+  ask the model to classify into a vocabulary without showing it the vocabulary. `courtroom`
+  and `survival`, which author no relationships, are byte-identical, which is the P-2
+  evidence that the growth is confined to stories that bought something with it.
+  Narration prompts are flat to within ~20 chars.
+
+**What the step found.** Two things, neither in the design:
+
+- **An empty roster used to render `Relationships: {}`.** v2 gated the PLAYER-line fragment
+  on the *template* authoring the module, so a story with relationships and no discovered
+  characters yet — every story, for its first turns — sent a zeroed header every turn. That
+  is precisely what P-2 forbids, and it had been doing it since the module existed. The
+  engine omits the section instead, which is why `test_genre_conformance`'s narration marker
+  for this module had to move from `"Relationships:"` to the KNOWN CHARACTERS scale clause.
+- **Eviction had to move inside `resolve()` to stay correct.** v2 applied deltas, then
+  evicted; both were statements in one function and their order was load-bearing but
+  unstated. As an engine it has to be explicit, because a newcomer scored this turn is not
+  yet in the roster when the roster is measured — get it backwards and a strong new bond is
+  dropped on arrival. There is now a test that fails if the two are reordered.
 
 ---
 

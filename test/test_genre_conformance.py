@@ -39,12 +39,18 @@ NARRATION_MARKERS = {
     "characters": "KNOWN CHARACTERS",
     "tracked_entity": "TRACKED ENTITY",
     "stats": "Stats (",
-    "relationships": "Relationships:",
+    # Phase 4: "Relationships:" was the v2 marker, but the PLAYER line now omits the
+    # fragment entirely while the roster is empty rather than rendering "Relationships: {}"
+    # - a zeroed header is exactly what P-2 forbids, and a fixture at turn 0 has no
+    # discovered characters yet. The scale clause on the KNOWN CHARACTERS header is the
+    # stable signal: it appears iff the scored_axis engine is bound and the story has a
+    # roster to state it over.
+    "relationships": "standing is",
 }
 STATE_UPDATE_MARKERS = {
     "tracked_entity": "entity_interaction",
     "stats": "stat_changes",
-    "relationships": "relationship_changes",
+    "relationships": '"social"',
     "failure_conditions": "failure_triggered",
     "progression": "leverage_gained",
     "pacing_loop": "beat_type",
@@ -74,13 +80,12 @@ EXPECTED_PRESENT = {
 # the same reason EXPECTED_ABSENT is: deleting a declaration from a fixture has to fail
 # loudly instead of silently shrinking what is covered.
 #
-# Only `stats` is a ported engine today, so the sets below look lopsided. That is the real
-# state of the port, not a gap in the test - P-6 asks that each fixture use a deliberately
-# *different subset*, not that the subsets be disjoint. **Every phase 4 port must add its
-# engine here and to at least one fixture in the same commit**, or nothing is guarding
-# P-2 for it.
+# P-6 asks that each fixture use a deliberately *different subset*, not that the subsets be
+# disjoint, so an engine legitimately appearing in two fixtures is not a defect here.
+# **Every phase 4 port must add its engine to this table and to at least one fixture in the
+# same commit**, or nothing is guarding P-2 for it.
 EXPECTED_ENGINES = {
-    "regency.json": [],
+    "regency.json": ["relationships"],
     "courtroom.json": [],
     "survival.json": ["stats"],
 }

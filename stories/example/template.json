@@ -91,11 +91,48 @@
   },
   "mechanics": {
     "relationships": {
+      "engine": "scored_axis",
+      "scale": {
+        "min": -100,
+        "max": 100
+      },
       "axis": {
         "negative": "hostile",
         "positive": "devoted",
         "description": "trust and warmth built"
       },
+      "registers": {
+        "kindness_shown": 4,
+        "confided_in_them": 9,
+        "kept_their_confidence": 7,
+        "took_their_side": 8,
+        "shared_a_meal_or_hearth": 3,
+        "pressed_them_on_a_contradiction": -5,
+        "went_behind_their_back": -9,
+        "named_the_wrongness_aloud": -6,
+        "broke_their_confidence": -14
+      },
+      "unreciprocated_factor": 0.5,
+      "tiers": [
+        {
+          "at": 55,
+          "label": "confiding",
+          "narration": "will say the thing Millbrook does not say out loud, if asked alone."
+        },
+        {
+          "at": 25,
+          "label": "warm"
+        },
+        {
+          "at": -25,
+          "label": "guarded"
+        },
+        {
+          "at": -55,
+          "label": "closed",
+          "narration": "answers politely and tells you nothing; will warn others you asked."
+        }
+      ],
       "limit": 20
     },
     "pacing_loop": {

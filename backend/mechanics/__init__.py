@@ -59,6 +59,32 @@ class Effect:
         return f"Effect({self.kind!r}, reason={self.reason!r}{args})"
 
 
+class ObservationField:
+    """One typed question an engine puts to the observation pass (§3.1, §5.4).
+
+    Phase 2 let `bounded_counter` reach the observation prompt through a bespoke
+    `schema_field()` that `story_engine` called by name. That does not scale past one
+    engine, and phase 4 ports four more, so the contract becomes real here: an engine
+    returns these and never knows where in the prompt they land.
+
+    Three parts because the v2 prompt already has three places a mechanic speaks:
+      `schema`      - the line inside the JSON shape the model must answer in.
+      `context`     - a line of current state above it ("CURRENT RELATIONSHIPS: ...").
+      `instruction` - a paragraph of how to answer, below the shape.
+
+    `name` is the JSON key, and it is what §5.4's field budget counts. One per engine per
+    turn: an engine needing two is two engines, or one field with a richer type."""
+
+    __slots__ = ("name", "schema", "context", "instruction")
+
+    def __init__(self, name: str, schema: str, context: str = "", instruction: str = ""):
+        self.name, self.schema = name, schema
+        self.context, self.instruction = context, instruction
+
+    def __repr__(self):
+        return f"ObservationField({self.name!r})"
+
+
 class MechanicEngine:
     """Base contract (§3.1). Every method except `resolve` has a do-nothing default, so a
     stateless engine that only prices events implements exactly one of them."""
@@ -76,6 +102,16 @@ class MechanicEngine:
         """Typed questions for the observation pass, or None to ask nothing this turn.
         None is the normal case for a gated engine (§5.2), not an error."""
         return None
+
+    def events(self, cfg, ctx, diff) -> list:
+        """This engine's own observation field, as it came back from the model, turned into
+        the typed events of §8.2. Only the engine that asked the question knows how to read
+        the answer, so the translation lives here rather than in a central parser.
+
+        Returns raw event dicts, not Effects: an event is what was observed, an Effect is
+        what an engine decided to do about it, and the log records the first so the second
+        stays replayable (§8.2)."""
+        return []
 
     def prompt_sections(self, cfg, ctx) -> dict:
         """Named fragments for the narration prompt. An omitted key is an omitted section,
@@ -188,14 +224,36 @@ def bind(story) -> list:
 
 
 def observation_fields(ctx) -> list:
-    """Every bound engine's observation field for this turn, skipping engines that return
-    None because they have nothing to ask (§5.2)."""
+    """Every bound engine's observation field for this turn, in resolve order, skipping
+    engines that return None because they have nothing to ask (§5.2).
+
+    Order is `bind`'s, i.e. `resolve_order` then slot name, so the assembled observation
+    prompt is deterministic for a given story - the same property `_existing_character_names`
+    had to be fixed for at phase 1's gate, and for the same reason: a prompt whose bytes
+    vary run to run defeats caching and cannot be regression-tested."""
     fields = []
     for b in bind(ctx["story"]):
         field = b.engine.observations(b.cfg, ctx)
         if field:
             fields.extend(field if isinstance(field, list) else [field])
     return fields
+
+
+def observation_field_count(ctx) -> int:
+    """§5.4's budget, measured rather than asserted. Counts only what engines contribute;
+    the three core fields (`flags_set`, `scene_update`, `new_characters`) belong to no
+    engine and porting removes none of them, which is why the budget is stated as
+    `core + 7` rather than as a flat total."""
+    return len(observation_fields(ctx))
+
+
+def events_from_diff(ctx, diff) -> list:
+    """The turn's typed event stream (§8.2), assembled from each bound engine reading back
+    its own observation field. An engine that asked nothing this turn contributes nothing."""
+    events = []
+    for b in bind(ctx["story"]):
+        events.extend(b.engine.events(b.cfg, ctx, diff) or [])
+    return events
 
 
 def prompt_sections(ctx) -> dict:
@@ -288,6 +346,21 @@ def run_turn_pipeline(ctx, observations=None):
     apply_effects(ctx, resolve_all(ctx, observations))
 
 
+def run_observation_pipeline(ctx, diff):
+    """`run_turn_pipeline` starting one step earlier, from the raw observation-pass diff:
+    each engine reads back its own field, the resulting events are logged, and every engine
+    resolves against the whole stream.
+
+    Why every engine sees every event rather than only its own: pricing is cross-cutting by
+    design (§7.1 - the resource engine prices a `travel` event the movement vocabulary
+    produced). E-3's independence claim is about the *questions* being answerable
+    separately, which is what makes sharding safe, not about an engine being blind to what
+    the others asked."""
+    events = events_from_diff(ctx, diff)
+    run_turn_pipeline(ctx, events)
+    return events
+
+
 # Engines register by being imported. At the bottom, because each one imports names from
 # this module - the package is the contract, the modules are the implementations.
-from . import resource  # noqa: E402,F401
+from . import resource, social  # noqa: E402,F401

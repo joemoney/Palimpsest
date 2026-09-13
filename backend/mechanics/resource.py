@@ -16,14 +16,17 @@ Moving the sheet into `state.mechanics.stats` would buy nothing and would break 
 existing save for no reason - see phase 2's note in ENGINE_V2_PHASES.md on why the schema
 cutover is deferred to the first phase that genuinely relocates save state.
 
-**What is deliberately still v2-shaped.** `observations()` returns None and the state-update
-pass still asks for a `stat_changes` delta map through `schema_field()`. Converting that to
-an E-3 event vocabulary ("travel, long" priced by the engine) changes the prompt, and phase
-2's gate is that no observable behaviour changes. Phase 4 is where that conversion belongs.
+**What is deliberately still v2-shaped.** The state-update pass still asks for a
+`stat_changes` delta map - a number the model chooses. Phase 4 moved the field onto the
+real `observations()` contract alongside the engines ported beside it, but did not convert
+it to the E-3 event vocabulary §5.1 wants ("travel, long", priced by the engine): that needs
+a per-axis `costs` table (§8.1) authored in every story that has stats, which is content
+work for a mechanic that is already ported. See ENGINE_V2_PHASES.md phase 4 for why it is
+tracked as its own item rather than folded into one of the five ports.
 """
 import re
 
-from . import Effect, MechanicEngine, register, register_effect
+from . import Effect, MechanicEngine, ObservationField, register, register_effect
 
 # Only used when a bound story omits `floor` - not a global default any more, since an
 # unbound story has no floor at all rather than falling back to one.
@@ -63,18 +66,38 @@ class BoundedCounter(MechanicEngine):
 
     # --- observation ---------------------------------------------------------------
 
-    def schema_field(self, cfg, ctx):
-        """The `stat_changes` line for the state-update schema, or None when the story has
-        no stats seeded yet (P-2: no stats, no field). The axis list is interpolated so the
-        model can never introduce an axis outside the fixed, story-authored set."""
+    def observations(self, cfg, ctx):
+        """The `stat_changes` field, or None when the story has no stats seeded yet (P-2:
+        no stats, no field). The axis list is interpolated so the model can never introduce
+        an axis outside the fixed, story-authored set.
+
+        Phase 4 moved this off the bespoke `schema_field()` story_engine used to call by
+        name and onto the real §3.1 contract, alongside the four engines ported beside it.
+        The field itself is still v2-shaped - a delta map the model chooses the numbers for,
+        not the event vocabulary §5.1 wants it to become. Converting it needs per-axis
+        `costs` tables (§8.1) in every story that has stats, which is content work with no
+        engine ported behind it; see ENGINE_V2_PHASES.md phase 4 for why it is called out
+        separately rather than smuggled in here.
+
+        Its context line (CURRENT STATS) stays where it is: unlike the other engines',
+        it is interpolated into the prompt body rather than appended, and moving it would
+        change the observation prompt for no gain this phase."""
         stats = self.current(ctx)
         if not stats:
             return None
-        return (
+        schema = (
             f'  "stat_changes": {{"<stat name, must be one of: {", ".join(stats)}>": <integer '
             "delta this turn, positive or negative - only stats the turn's events actually "
             "moved, never a stat name outside that fixed list>}"
         )
+        return [ObservationField("stat_changes", schema)]
+
+    def events(self, cfg, ctx, diff):
+        """One event carrying the whole delta map. `resolve` already reads this shape - it
+        is what story_engine hand-built at the phase 2 call site - so the port is the
+        translation moving into the engine that owns the field, not a change of format."""
+        changes = diff.get("stat_changes")
+        return [{"type": "stat_changes", "changes": changes}] if changes else []
 
     # --- resolution ----------------------------------------------------------------
 

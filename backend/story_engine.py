@@ -33,7 +33,6 @@ ROLLOVER_BATCH_TURNS = 10
 SUMMARY_MAX_WORDS = 2000
 SUBPLOT_TITLE_HISTORY_LIMIT = 15
 FLAGS_ACTIVE_LIMIT = 25
-RELATIONSHIPS_LIMIT = 20
 # CR-03: revealed memory fragments accumulate for the whole game, same shape of problem as
 # SUBPLOT_TITLE_HISTORY_LIMIT - bound how many of them reach the narration prompt, keyed off
 # revealed_turn so the most recently revealed ones are the ones that survive the cap.
@@ -916,15 +915,12 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         rev["id"]: rev["trigger"] for rev in revelations if rev["id"] not in revealed_ids
     }
     characters = ctx["state"]["characters"]
-    # 5.3: mechanics.relationships.axis replaces the hardcoded "-100 hostile to +100
-    # devoted" / "trust/warmth built" instruction text - interpolated into both the
-    # CURRENT RELATIONSHIPS line and the relationship_changes schema field below. Absent
-    # block means the story tracks no relationship scores at all: no CURRENT RELATIONSHIPS
-    # line, no relationship_changes field. Character discovery (new_characters) is a
-    # separate, unconditional mechanism - a story can track who's been met without scoring
-    # how they feel about the player.
-    relationships_cfg = ctx["story"].get("mechanics", {}).get("relationships")
-    relationship_scores = {name: entry.get("relationship", 0) for name, entry in characters.items()}
+    # Phase 4: relationships are the `scored_axis` engine's now (backend/mechanics/
+    # social.py) - the scale, the price list, the tiers, the cap and the eviction rule all
+    # moved there, and so did the CURRENT STANDING line and the `social` field that replaced
+    # `relationship_changes`. Nothing about them is read here any more. Character discovery
+    # (new_characters) stays a separate, unconditional mechanism: a story can track who's
+    # been met without scoring how they feel about the player.
     existing_characters = _existing_character_names(ctx)
     stats = ctx["state"]["protagonist"].get("stats", {})
     stats_block = f'\nCURRENT STATS ({", ".join(stats)}): {json.dumps(stats)}' if stats else ""
@@ -1007,27 +1003,21 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         '  "items_gained": ["<short item description>", "..."]',
         '  "items_lost": ["<item description, matching an existing inventory entry exactly>", "..."]',
     ]
-    if relationships_cfg:
-        axis = relationships_cfg["axis"]
-        schema_fields.append(
-            '  "relationship_changes": {"<character name>": <integer delta this turn, typically '
-            f'-10 to +10, positive for {axis["description"]}, negative for damage done - only named '
-            'characters the player actually interacted with or was meaningfully affected by this turn>}'
-        )
     schema_fields.append(
         '  "new_characters": [{"name": "<full name>", "description": "<who they are, appearance, '
         'personality>", "role": "<their narrative role>", "relationship_to_player": "<their '
         'initial stance toward the player>", "hook": "<a concrete way they could naturally '
         'reappear or matter going forward>"}]'
     )
-    # Phase 2: the stats mechanic is an engine now (backend/mechanics/resource.py). The
-    # field it contributes is unchanged - converting it to an E-3 event vocabulary is
-    # phase 4's job, and would change the prompt, which phase 2's gate forbids.
-    stats_engine = mechanics.bound_for(ctx["story"], "stats")
-    if stats_engine:
-        stat_field = stats_engine.engine.schema_field(stats_engine.cfg, ctx)
-        if stat_field:
-            schema_fields.append(stat_field)
+    # Phase 4: every ported mechanic now reaches this prompt through the §3.1 contract
+    # rather than a hook story_engine calls by name. An engine contributes at most one
+    # field per turn (§5.4), in `bind` order, and may contribute none at all on a turn it
+    # has nothing to ask (§5.2) - which is what makes the field count a real budget rather
+    # than a running total of everything the schema could ever contain.
+    engine_fields = mechanics.observation_fields(ctx)
+    schema_fields += [field.schema for field in engine_fields]
+    engine_context = "".join(field.context for field in engine_fields)
+    engine_instructions = "".join(field.instruction for field in engine_fields)
     if pacing_loop_cfg:
         beat_names = list(pacing_loop_cfg["beats"].keys())
         schema_fields.append(
@@ -1075,27 +1065,6 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
             'been met this turn, or null if none have>"'
         )
     schema_str = ",\n".join(schema_fields)
-    relationships_line = ""
-    exact_name_instruction = ""
-    generic_label_instruction = ""
-    if relationships_cfg:
-        axis = relationships_cfg["axis"]
-        relationships_line = (
-            f"\nCURRENT RELATIONSHIPS (name: score from -100 {axis['negative']} to +100 "
-            f"{axis['positive']}, 0 neutral/unknown): {json.dumps(relationship_scores)}"
-        )
-        exact_name_instruction = (
-            "If a relationship_changes entry refers to someone already listed in EXISTING "
-            "CHARACTERS, its key must be that exact string, copied verbatim - never a "
-            "shortened, reordered, or paraphrased version of it (e.g. if EXISTING CHARACTERS "
-            'lists "Salome Vence (the Advocate)", use that exact string, not "Salome Vence" or '
-            '"the advocate"). This is what lets the relationship stay linked to that character\'s '
-            "record instead of silently forking into an unlinked, seemingly-new name.\n"
-        )
-        generic_label_instruction = (
-            " A generic-label character should still get a relationship_changes entry as usual,"
-            " just not a new_characters one."
-        )
 
     # A trigger is authored as a description of an event ("the first time the protagonist
     # attempts a non-trivial computational proof"), but narration never echoes that wording -
@@ -1161,7 +1130,7 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
 ACTIVE SUBPLOTS (id: title - description [progress/threshold]):
 {active_subplot_lines}
 {fragments_line}CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}
-CURRENT INVENTORY: {json.dumps(ctx["state"]["protagonist"]["inventory"])}{relationships_line}{leverage_line}
+CURRENT INVENTORY: {json.dumps(ctx["state"]["protagonist"]["inventory"])}{engine_context}{leverage_line}
 EXISTING CHARACTERS (do not repeat in new_characters): {', '.join(existing_characters) or 'none'}{stats_block}
 CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}{failure_line}{beat_section}
 
@@ -1175,10 +1144,10 @@ Respond with ONLY a JSON object, no other text, in this exact shape:
 Only include subplot ids, flags, fragment ids, items, character names, and stats that actually
 changed this turn. Use {{}}/[] for nothing changed. Omit scene_update entirely if the
 protagonist's location and situation are unchanged from CURRENT SCENE above.
-{fragment_instruction}{exact_name_instruction}Only add an entry to new_characters when a character is given an actual proper name for the
+{fragment_instruction}{engine_instructions}Only add an entry to new_characters when a character is given an actual proper name for the
 first time this turn (e.g. "Marlowe", "Elena Cho") AND isn't already in EXISTING CHARACTERS -
 never for a generic/descriptive handle (e.g. "the guard", "the advocate", "the woman at the
-terminal").{generic_label_instruction} Promoting a generic-label character to a full one later
+terminal"). Promoting a generic-label character to a full one later
 is a separate, manual step."""
 
     try:
@@ -1270,8 +1239,8 @@ is a separate, manual step."""
 
     # New, properly-named characters the narration introduced this turn (see the
     # new_characters prompt instruction above) get a real record immediately and are
-    # ready to be linked to a relationship_changes entry in the very same diff (see
-    # below) - this is the direct fix for a character that only ever existed as a bare
+    # ready to be scored by a `social` entry in the very same diff (the engine pipeline
+    # runs below) - this is the direct fix for a character that only ever existed as a bare
     # relationship name with nothing behind it. Deliberately gated on the model having
     # actually named them (see the prompt) rather than every incidental relationship, to
     # avoid spinning up records for generic background figures.
@@ -1290,47 +1259,6 @@ is a separate, manual step."""
             origin="narration",
         )
         known_names.add(name)
-
-    # Gated on relationships_cfg like the schema field above - a story that opted out of
-    # score tracking shouldn't start accumulating scores just because a stray key showed up.
-    if relationships_cfg:
-        for char_name, delta in diff.get("relationship_changes", {}).items():
-            if not char_name:
-                continue
-            entry = characters.setdefault(char_name, {"relationship": 0, "first_seen_turn": turn_count})
-            entry["relationship"] = max(-100, min(100, entry.get("relationship", 0) + int(delta)))
-            # Meeting an authored or previously-seeded character in play (a relationship_changes
-            # entry for them means the model narrated an actual interaction this turn) is what
-            # flips them off generate_pacing_nudge's "CHARACTERS TO WEAVE IN" line - name-keying
-            # makes this a direct write, no separate id-matching scan needed (unlike v1's
-            # npc_id-linking pass, which only had a name to go on the first time).
-            entry["introduced"] = True
-
-    # Bounded like flags_active: if a story accumulates more named/discovered characters
-    # than this, drop the least narratively significant ones first (closest to neutral),
-    # not the oldest - a strongly-loved or strongly-hated character should never be the one
-    # that gets evicted. An authored character (present in ctx["story"]["world"]
-    # ["characters"]) is never evicted, regardless of score - CR-06's "authored: true"
-    # flag is no longer needed for this; presence in the template *is* the flag.
-    # 5.3: mechanics.relationships.limit is the real per-story dial now; RELATIONSHIPS_LIMIT
-    # is just what a story without mechanics.relationships (or without an explicit limit)
-    # degrades to.
-    limit = (relationships_cfg or {}).get("limit", RELATIONSHIPS_LIMIT)
-    authored_names = set(ctx["story"]["world"].get("characters", {}).keys())
-    if len(characters) > limit:
-        removable = sorted(
-            (n for n in characters if n not in authored_names),
-            key=lambda n: abs(characters[n].get("relationship", 0)),
-        )
-        for name in removable[:len(characters) - limit]:
-            del characters[name]
-
-    # Phase 2: bounds, clamping and the "never a new axis" invariant all live in the
-    # bounded_counter engine now. The engine returns effects; the registry applies them.
-    if stats_engine:
-        mechanics.apply_effects(ctx, stats_engine.engine.resolve(
-            stats_engine.cfg, ctx,
-            [{"type": "stat_changes", "changes": diff.get("stat_changes", {})}], []))
 
     # Phase 6 steps 3-4 (docs/PHASE_6_HANDOFF.md §3/§4, spec §9 steps 3-4): store the raw
     # beat classification as pacing.last_beat, then run the counter arithmetic - the beat's
@@ -1400,6 +1328,13 @@ is a separate, manual step."""
                     break
 
         _evict_spent_leverage(leverage)
+
+    # Phase 4: one call for every ported mechanic, replacing the hand-sequenced per-mechanic
+    # apply blocks that used to live inline here. Each engine reads its own field back out of
+    # the diff into typed events (§8.2), the events are appended to the save's log, and every
+    # bound engine resolves against the whole stream in `resolve_order` (§6.2). The sequence
+    # that used to be the physical order of statements in this function is declared data now.
+    mechanics.run_observation_pipeline(ctx, diff)
 
     # 5.7: applied last, after every other effect of this turn has already landed - a
     # failing turn's subplot progress/flags/items/etc. still get recorded before the ending
@@ -1587,6 +1522,12 @@ def generate_character_from_relationship(ctx: dict, name: str):
     if entry is None:
         return None
     score = entry.get("relationship", 0)
+    # The scale comes from the engine for the same reason _section_characters' does - this
+    # was a third hardcoded copy of "-100 hostile to +100 devoted", handed to the model as
+    # the frame for a character's whole stance toward the player while a story that authored
+    # a -50..50 confiding/wary axis got the wrong one.
+    bound = mechanics.bound_for(ctx["story"], "relationships")
+    score_scale = bound.engine.axis_hint(bound.cfg).lstrip("; ") if bound else "standing"
     summary = ctx["state"]["history"]["compressed_summary"] or "The story has just begun."
     recent = "\n".join(ctx["state"]["history"]["recent_turns"][-RECENT_TURN_LIMIT:])
 
@@ -1602,7 +1543,7 @@ RECENT EXCHANGES:
 {recent}
 
 CHARACTER NAME/LABEL: {name}
-CURRENT RELATIONSHIP SCORE (-100 hostile to +100 devoted, 0 neutral): {score}
+CURRENT RELATIONSHIP SCORE ({score_scale}, 0 neutral): {score}
 
 Respond with ONLY a JSON object, no other text:
 {{
@@ -1979,17 +1920,18 @@ def _section_roster(ctx: dict) -> str | None:
     space (see _character_record) - this section is what actually surfaces the merged
     result to the narrator. A bare relationship-only stub (no description, not authored) is
     left out - it has no identity worth restating beyond the name the model itself chose.
-    Bounded implicitly by RELATIONSHIPS_LIMIT/mechanics.relationships.limit, since
-    ctx["state"]["characters"] is already capped there at write time (see
-    update_progress_from_turn) - no separate cap needed here."""
-    relationships_cfg = ctx["story"].get("mechanics", {}).get("relationships")
+    Bounded implicitly by the scored_axis engine's `limit`, since ctx["state"]["characters"]
+    is already capped there at write time - no separate cap needed here. A story with no
+    relationship engine bound has no scores to show, so names and descriptions are all this
+    renders."""
+    bound = mechanics.bound_for(ctx["story"], "relationships")
     lines = []
     for name in sorted(_all_character_names(ctx)):
         record = _character_record(ctx, name)
         if not record["description"] and not record["authored"]:
             continue
         score_part = ""
-        if relationships_cfg and record["relationship"] is not None:
+        if bound and record["relationship"] is not None:
             score_part = f" ({record['relationship']:+d})"
         line = f"- {name}{score_part}"
         if record["description"]:
@@ -1997,10 +1939,10 @@ def _section_roster(ctx: dict) -> str | None:
         lines.append(line)
     if not lines:
         return None
-    axis_hint = ""
-    if relationships_cfg:
-        axis = relationships_cfg["axis"]
-        axis_hint = f"; standing is -100 {axis['negative']} to +100 {axis['positive']}"
+    # The scale is the engine's to state, not this function's: it is the same authored
+    # scale the observation pass and the PLAYER line quote, and three hand-written copies of
+    # "-100 hostile to +100 devoted" is how they would drift apart.
+    axis_hint = bound.engine.axis_hint(bound.cfg) if bound else ""
     return f"KNOWN CHARACTERS (use these exact names{axis_hint}):\n" + "\n".join(lines)
 
 
@@ -2212,14 +2154,13 @@ def _section_protagonist(ctx: dict) -> str:
     # so a story without them gets no irrelevant instruction clutter.
     # 5.4/phase 2: the visible dial and both wordings belong to the bounded_counter engine;
     # this only places the fragment it returns. An unbound story contributes nothing.
-    stats_str = mechanics.prompt_sections(ctx).get("stats.player_line", "")
-    # 5.3: absent mechanics.relationships means the story tracks no relationship scores at
-    # all - omitted here rather than shown as an always-empty dict, matching how it vanishes
-    # from the state-update schema (update_progress_from_turn).
-    relationships_part = ""
-    if story.get("mechanics", {}).get("relationships"):
-        relationships_str = {name: entry.get("relationship", 0) for name, entry in ctx["state"]["characters"].items()}
-        relationships_part = f" | Relationships: {relationships_str}"
+    # Phase 4: both engine-owned fragments come from one lookup. An unbound story
+    # contributes neither, and a bound one whose roster is still empty contributes no
+    # relationships part - omitted rather than shown as an always-empty dict, matching how
+    # it vanishes from the observation schema (update_progress_from_turn).
+    sections = mechanics.prompt_sections(ctx)
+    stats_str = sections.get("stats.player_line", "")
+    relationships_part = sections.get("relationships.player_line", "")
     return (
         f"PLAYER: {protagonist['name']}{creation_str} | Traits: {', '.join(protagonist['traits'])}"
         f"{stats_str} | Inventory: {', '.join(protagonist['inventory']) or 'nothing'}"
@@ -2312,7 +2253,12 @@ def _section_footer(ctx: dict) -> str:
     option_count = narration_cfg.get("option_count", 3)
     # 5.4/phase 2: all three wordings - opaque, visible, and the P-7 readout token - belong
     # to the bounded_counter engine now (see its _footer). This keeps only the placement.
-    stats_instruction = mechanics.prompt_sections(ctx).get("stats.footer", "")
+    # Phase 4 adds the scored_axis tier block on the same footing: what a standing entitles
+    # a character to do is a rule the narrator has to be handed, and it belongs beside the
+    # other engine-owned instructions rather than inside the roster listing.
+    sections = mechanics.prompt_sections(ctx)
+    stats_instruction = sections.get("stats.footer", "")
+    standing_instruction = sections.get("relationships.tiers", "")
 
     if endgame["requested"]:
         instruction_footer = (
@@ -2326,7 +2272,7 @@ def _section_footer(ctx: dict) -> str:
             f"{_options_block_instruction(option_count, option_pov)}"
         )
 
-    return f"""Stay strictly within the established world, tone, and rules above.{stats_instruction}
+    return f"""Stay strictly within the established world, tone, and rules above.{stats_instruction}{standing_instruction}
 You may lightly mark up emphasis in your prose using exactly these three markers, used
 sparingly (most sentences should have none): **text** for bold, *text* for italic
 (e.g. internal thought or stressed words), __text__ for underline. Do not nest them,

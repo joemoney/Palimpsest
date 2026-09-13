@@ -61,7 +61,7 @@ print("OK: an empty characters roster (no authored, no discovered) produces no b
 full_ctx = se.state_store.load_state("rostertest3", se.state_store.DEFAULT_STORY_SLUG)
 full_ctx["state"]["characters"] = {
     f"Discovered {i}": {"relationship": 0, "first_seen_turn": 0, "introduced": False, "description": f"person {i}"}
-    for i in range(1, se.RELATIONSHIPS_LIMIT + 3)
+    for i in range(1, se.mechanics.social.DEFAULT_LIMIT + 3)
 }
 prompt = se.build_system_prompt(full_ctx)
 assert "Mrs. Abbott" in prompt, "the authored character must still render regardless of how many discovered ones exist"

@@ -57,11 +57,37 @@
   },
   "mechanics": {
     "relationships": {
+      "engine": "scored_axis",
+      "scale": {
+        "min": -50,
+        "max": 50
+      },
       "axis": {
         "negative": "disregard",
         "positive": "devotion",
         "description": "regard and attachment"
       },
+      "registers": {
+        "danced_together": 4,
+        "defended_their_name": 9,
+        "wrote_to_them": 3,
+        "cut_them_publicly": -12,
+        "repeated_a_rumour": -7
+      },
+      "cap_per_window": {
+        "delta": 12,
+        "turns": 3
+      },
+      "tiers": [
+        {
+          "at": 25,
+          "label": "attached"
+        },
+        {
+          "at": -25,
+          "label": "cool"
+        }
+      ],
       "limit": 12
     },
     "revelations": [
