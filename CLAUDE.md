@@ -421,10 +421,21 @@ truth once a link exists.
   and ask. A stat can
   only ever be adjusted turn-to-turn (via `update_progress_from_turn`'s
   `stat_changes`, same delta-then-clamp pattern as `relationship_changes`)
-  **if it's already in `player.stats`** - the model can't introduce a new
-  stat axis outside whatever the story's own steps seeded. Only a floor
-  (`STAT_FLOOR = 0`) is enforced generically; no fixed ceiling, since each
-  story's own options imply their effective scale. `build_system_prompt`
+  **if it's already in `player.stats`** - the model can never introduce a new
+  stat axis. That constraint stands; what changed is that creation steps are no
+  longer the only way to seed one. `protagonist.stats` in the template is the
+  baseline, merged into the save at creation, and a chosen step's
+  `starting_stats` merges on top of it - so a story wanting a stat scale but no
+  class picker (survival, horror) can have one, and a story using both is
+  unchanged. Bounds are per-story via `mechanics.stats.floor`/`.ceiling`
+  (global across that story's stats, not per-stat; `ceiling` absent means
+  unbounded), which replaced the old global `STAT_FLOOR = 0`.
+  `mechanics.stats.visible` (default `false`) decides whether the narrator may
+  quote a stat's raw number to the player: false keeps the original behaviour
+  of reflecting it narratively as strain or risk, true is for a story whose
+  premise is an in-world system reporting the player's own figures back at
+  them, and it flips both the `PLAYER:` line label and the prompt footer
+  instruction together - a prompt carrying one of each contradicts itself. `build_system_prompt`
   builds the `PLAYER:` line's per-step "Label: chosen option name" segments
   generically off `character_creation` + `creation_choices` - a new step type
   needs no engine changes, just a new entry in the story's step list. Those
@@ -688,6 +699,25 @@ failing when `flask` isn't importable. Run the whole suite with
 LLM, follow the existing pattern: accept the prompt-building/parsing as
 something `call_llm`/`call_llm_json` can be monkeypatched around, so it stays
 testable without a real API key.
+
+`test/fixtures/` holds three genre-conformance templates (`regency.json`,
+`courtroom.json`, `survival.json`), exercised by `test_genre_conformance.py`.
+They are the executable form of `docs/SCHEMA_V2_SPEC.md`'s P-6 - the claim that
+an author can write a wholly different genre without touching Python - and each
+uses a deliberately different subset of the optional `mechanics` modules. They
+live outside `stories/` on purpose: anything under `stories/<slug>/` is picked
+up by `state_store.list_stories()` and becomes startable by a real player, so
+the test loads them through `freeze`/`new_save_state` directly.
+
+Two things about them are easy to weaken by accident. The assertions run **in
+both directions** - an absent module must leak no marker into either prompt,
+*and* an authored module must actually reach them; one-directional absence
+testing passes happily for a module that was never wired up at all. And the
+per-fixture "modules absent" lists are written out in the test rather than
+derived from the fixture files, so deleting a module from a fixture fails
+loudly instead of silently shrinking what's covered. If a new optional module
+is added to the schema, it needs a marker entry and a fixture that omits it,
+or nothing is guarding P-2 for it.
 
 Tests that load `se.state_store.load_template(se.state_store.DEFAULT_STORY_SLUG)`
 should derive their expectations from whatever that template actually

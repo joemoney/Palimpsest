@@ -1,8 +1,14 @@
 # Story Schema v2 — Specification
 
-**Status:** Approved for implementation. This spec supersedes the implicit v1 schema
-documented across `README.md`, `CLAUDE.md`, and `docs/Narrative_Engine_Spec.md`. This
-document resolves every open design question — see §10.
+**Status:** Implemented through phase 6. The conformance fixtures of §7 are built and
+green, which is the gate this spec set for itself; §9 records what remains (phase 7 docs,
+and the P-5 write-only register). This spec supersedes the implicit v1 schema documented
+across `README.md`, `CLAUDE.md`, and `docs/Narrative_Engine_Spec.md`, and resolves every
+open design question — see §10.
+
+Sections amended after implementation, where what shipped differs from what was
+specified: §3.2 (optional `meta` fields), §3.5 (`protagonist.stats`), §3.6 (`stats`
+sourcing and `visible`), §7 (fixtures, and the six violations building them exposed).
 
 **Motivation.** Two reviews found the same underlying problem from different angles.
 The prompt-coverage audit found two problems: a third of the schema never reaches a
@@ -222,6 +228,10 @@ This block stays unchanged from v1, except that `pov` moves to `narration`. `syn
 remains story-picker copy. The engine does not prompt it. P-5 lists this omission as
 intentional.
 
+Only `title` is required. `genre`, `tone` and `content_rules` are each optional and an
+absent one contributes no segment to the identity block at all — P-2's "no empty headers"
+applied at field level rather than block level.
+
 `content_rules` are out-of-character safety and rating boundaries.
 `world.rules` are in-fiction physics. The separation between them is deliberate. The
 author must document this separation.
@@ -296,11 +306,19 @@ Authored seed only. Runtime protagonist state lives in the save.
 "protagonist": {
   "default_name": "Traveller",
   "traits": ["observant", "slow to trust"],
-  "starting_inventory": ["a letter, twice-folded"]
+  "starting_inventory": ["a letter, twice-folded"],
+  "stats": { "warmth": 4, "supplies": 6 }
 }
 ```
 
 `default_name` replaces the hardcoded `"Subject Zero"` in `apply_opening_name`.
+
+`stats` is the **baseline** stat block, seeded into the save at creation. It exists
+because stats were previously seedable only through `character_creation`, which made one
+optional module depend on an unrelated one and left no way to author a stat scale for a
+story with no class picker (§7.1). A chosen `character_creation` option's
+`starting_stats` still merges *on top* of this, so a story using both is unchanged. The
+whole block is optional, as is every key in it.
 
 v2 deletes the `player.origin` wrapper. It existed solely to hold `memory_fragments`,
 which moves to `mechanics.revelations` (§3.6).
@@ -337,10 +355,24 @@ no prompt section, no field in the state-update schema, and no UI control.
 }
 ```
 
-**`stats`** — replaces the global `STAT_FLOOR = 0`. Per-story bounds; `null` for
-unbounded. Unblocks negative scales (±3 modifiers, debt, temperature, a sanity meter
-that can go below zero). Stat *names* continue to come only from
-`character_creation` starting stats. This constraint is correct, and it stays.
+**`stats`** — replaces the global `STAT_FLOOR = 0`. Per-story bounds (`floor`,
+`ceiling`; `null` for unbounded), applied globally across the story's stats rather than
+per-stat. Unblocks negative scales (±3 modifiers, debt, temperature, a sanity meter that
+can go below zero).
+
+Stat *names* are fixed at save creation and the state-update pass can never introduce a
+new one — that constraint is correct and it stays. What changed is **where the names come
+from**: `protagonist.stats` (§3.5) is the baseline, with `character_creation`
+`starting_stats` merging on top. Previously `character_creation` was the only source,
+which coupled two independent optional modules (§7.1).
+
+`visible` (default `false`) decides whether the narrator may state a stat's raw number to
+the player. False keeps the v1 behaviour — numbers are for the engine's reasoning only,
+reflected narratively as strain or risk. True is for a story whose premise is an in-world
+system reporting the player's own figures back to them, and flips both the `PLAYER:`
+line's label and the prompt footer's instruction together, since a prompt carrying one of
+each is self-contradictory. This field exists because the "never quote a number"
+instruction was hardcoded for all of v1 — a P-3 violation; see §7.2.
 
 **This spec documents time and deadlines as an intended use of `stats`, not as a
 separate mechanic.** An author can write a heist countdown, a disaster timer, a shift
@@ -569,10 +601,18 @@ header. Ordering rules:
   `Narrative_Engine_Spec.md`. Recency measurably helps constraint adherence on smaller
   models. This matters if a local fine-tune takes over narration.
 
-The state-update prompt receives the same treatment. Its schema already builds the field
-list conditionally for `stats`. The team must extend the same pattern to
-`relationships`, `revelations`, `tracked_entity`, `failure_conditions`, and
-`scene_update`.
+The state-update prompt receives the same treatment. **Done:** its schema now builds the
+field list conditionally for `stats`, `relationships`, `tracked_entity`,
+`failure_conditions`, `progression` and `pacing_loop`, and — since §7.1 —
+`revelations`, which had kept `memory_fragments_revealed` in the unconditional base list
+and emitted an always-empty `UNREVEALED MEMORY FRAGMENT TRIGGERS: {}` line.
+
+`scene_update` is the deliberate exception and stays unconditional. It is not an optional
+module: every story has a current scene, and the location/summary/present_npcs diff is how
+that scene advances at all. What *is* conditional inside it is the `VALID LOCATION IDS`
+constraint line, which appears only when the story authors `world.locations` — a story
+with no spatial model (see `courtroom.json`) has `scene_update.location` accepted as free
+text instead.
 
 ---
 
@@ -590,7 +630,7 @@ list conditionally for `stats`. The team must extend the same pattern to
 | `main_thread.emergent_directions` | **Kept** — human staging area for manual promotion |
 | `main_thread.plot_notes` | **Kept** — author's note, `plot_manager` display only |
 | `subplots[].ties_to_main_plot` | **Kept, now prompted** — CR-13 |
-| `subplots[].completion_threshold` | **Kept** — always 100 in practice, but a legitimate per-subplot dial |
+| `subplots[].completion_threshold` | **Kept** — no longer always 100: a `span: "multi_act"` subplot is authored at `MULTI_ACT_SUBPLOT_THRESHOLD` (250), so the per-subplot dial is now load-bearing rather than theoretical |
 | `meta.synopsis` | **Kept** — story-picker copy, intentionally unprompted |
 
 The schema keeps `thread_steering` but moves it wholly to the save. Nothing in it is
@@ -600,23 +640,62 @@ authored content.
 
 ## 7. Genre conformance fixtures
 
-Three minimal templates live under `test/fixtures/`. Each one exercises a different
-subset of optional modules. These fixtures are the executable form of P-6. They exist to
-fail loudly when someone reintroduces a genre assumption.
+**Status: landed.** Three minimal templates live under `test/fixtures/`, exercised by
+`test/test_genre_conformance.py`. Each uses a different subset of optional modules, and
+none resembles a story that ships. They are the executable form of P-6 and exist to fail
+loudly when someone reintroduces a genre assumption.
 
 | Fixture | Modules used | Modules absent | What it proves |
 |---|---|---|---|
-| `regency.json` | relationships (axis: *disregard → devotion*), characters, revelations | locations, factions, stats, tracked_entity, failure_conditions, character_creation | Interiority-heavy `narration.style`; no map; no combat; relationship-driven |
-| `courtroom.json` | characters, revelations (as testimony), failure_conditions | locations, factions, tracked_entity | Single setting, no spatial model at all; a real loss condition |
-| `survival.json` | stats (floor `-10`), tracked_entity, failure_conditions, locations | relationships, characters, character_creation | Negative stat scale; entity axis is not warmth; death is an ending |
+| `regency.json` | relationships (axis: *disregard → devotion*), characters, revelations | locations, factions, stats, tracked_entity, failure_conditions, progression, pacing_loop | Interiority-heavy `narration.style`; no map; no combat; relationship-driven |
+| `courtroom.json` | characters, revelations (as testimony), failure_conditions | locations, factions, tracked_entity, stats, relationships, progression, pacing_loop, **subplots** | Single setting, no spatial model at all; a real loss condition; a story with a main thread and nothing else |
+| `survival.json` | stats (floor `-10`), tracked_entity, failure_conditions, locations | relationships, characters, revelations, progression, pacing_loop, character_creation | Negative stat scale; entity axis is not warmth; death is an ending; **stats without a class picker** |
 
-Each fixture needs the following test assertions: the template loads; `build_system_prompt`
-produces no empty headers for absent modules; the state-update schema omits the
-corresponding fields; and one stubbed turn applies cleanly. All of these run against the
-existing `test/_llm_stubs.py` harness. None require a live call.
+The test asserts §7's four checks per fixture — the template loads; `build_system_prompt`
+emits no marker for an absent module; the state-update schema omits the corresponding
+fields; and a stubbed turn applies cleanly — and it asserts them **in both directions**.
+An authored module must also actually *reach* the prompts. One-directional absence
+testing is weaker than it looks: a module that is silently never wired up passes it.
 
-Add a fourth check across all fixtures: **no fixture may require a Python change.** If a
-fixture requires a Python change, the schema is not done.
+It also asserts P-4's minimal template directly — `meta`, `world.rules`,
+`plot.main_thread`, `plot.opening_scene` and nothing else. That case now builds a
+1,839-byte prompt with no empty modules.
+
+### 7.1 What building them caught
+
+The fourth check — *no fixture may require a Python change; if one does, the schema is
+not done* — did its job. Writing the fixtures surfaced six violations of principles this
+spec had already declared. All are fixed.
+
+**P-4 violations.** `plot.pacing` was hard-subscripted at eight sites across
+`story_engine.py`, `app.py` and `subplot_manager.py`. `story["protagonist"]` and
+`story["plot"]["subplots"]` were hard-subscripted in `new_save_state`, and
+`meta["genre"]`/`["tone"]`/`["content_rules"]` in `_section_identity`. The minimal
+template this spec says must run therefore did not run at all. `DEFAULT_NUDGE_FREQUENCY`
+and `DEFAULT_MAX_PARALLEL_SUBPLOTS` were added beside the existing
+`DEFAULT_ACT_CHECK_FREQUENCY` to support the `.get()` defaults.
+
+**P-2 violations.** `memory_fragments_revealed` sat in the unconditional base schema
+list, and `UNREVEALED MEMORY FRAGMENT TRIGGERS: {}` was emitted into the state-update
+prompt for every story authoring no `revelations` — exactly the zeroed header P-2
+forbids. Both now gate on the module.
+
+**A cross-module dependency.** Stats could only be seeded through `character_creation`,
+so an optional module secretly depended on an unrelated one. `survival.json` as specified
+in the table above — stats, no class picker — was literally unbuildable. See §3.5.
+
+### 7.2 The cost of not having had them
+
+`build_system_prompt` carried, for the whole of v1, an unconditional instruction that a
+stat's raw numeric value must never be shown to the player and should be reflected
+narratively instead. That is a P-3 violation — a creative decision living as an engine
+constant — and it went unnoticed until a story needed the inverse, at which point it was
+a blocking bug rather than a cleanup. It is now `mechanics.stats.visible` (§3.6).
+
+A fixture pair asserting "a story with no stats gets no stats instruction, and a story
+with stats gets whatever its own template asked for" would have caught it years earlier.
+This is the argument for §7 in one paragraph: the fixtures are not a testing nicety, they
+are the only thing that makes P-2 through P-4 enforceable rather than aspirational.
 
 ---
 
@@ -661,8 +740,8 @@ what the team must migrate.
 | 3 | Prompt assembly refactor to `SECTIONS` | Prompt for `example` matches byte-for-byte, except for intended additions |
 | 4 | Modules: `narration`, `stats` bounds, `relationships` axis, `revelations`, `tracked_entity` | Per-module tests; absent-module tests |
 | 5 | `failure_conditions` and `endgame.cause` | New capability test |
-| 6 | Conformance fixtures (§7) | All three author-only, no Python changes |
-| 7 | Docs: rewrite the schema sections of `CLAUDE.md`, `README.md`, `Narrative_Engine_Spec.md`; write the P-5 write-only register | — |
+| 6 | Conformance fixtures (§7) | **Landed.** All three author-only. Six schema violations found and fixed in the process — see §7.1 |
+| 7 | Docs: rewrite the schema sections of `CLAUDE.md`, `README.md`, `Narrative_Engine_Spec.md`; write the P-5 write-only register | **In progress.** §3.2, §3.5, §3.6 and §7 updated to match what shipped; `CLAUDE.md` carries the engine-facing notes. The P-5 write-only register is still outstanding |
 
 Phase 2 is the risk point. Write the migrator before the split lands. Test it against a
 real long-running save. Keep a v1 branch playable until phase 6 passes.
