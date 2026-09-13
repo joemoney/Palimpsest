@@ -158,6 +158,12 @@ claim nothing has tested. The fixtures are cheap here and expensive later.
 phase 0 after each port, and any increase carries a stated reason in the commit message.
 Re-measure prompt size here — it is the input to phase 7's go/no-go.
 
+**Also settle §12.5 here.** Once the observation pass is pure classification, run it on
+Tier C and on Tier AB over the same held-out turns and compare misclassification rate
+against the latency and cost delta. §5.5 has the argument in both directions and says
+plainly that it cannot be settled on paper; this is the phase where the ported pass first
+exists to measure. Tier C stands until the numbers say otherwise.
+
 **Risk.** The highest-volume phase and the one where P-2 regressions hide. An engine that is
 absent must leak nothing; the phase 3 fixtures are what catch it, which is why they come
 first.
@@ -219,7 +225,12 @@ risk and a `STATUS_LABELS` complication for nothing. If field count after phase 
 
 **Work.** Groups via `observation_group`, run **concurrently** — the concurrency is what
 preserves `CLAUDE.md`'s "primary-plus-fallback fits inside gunicorn's `--timeout`", since
-sequential shards would multiply the budget that parallel shards leave alone.
+sequential shards would multiply the budget that parallel shards leave alone. Every shard is Tier C (§5.5) —
+sharding splits a call, it does not change what the call is for.
+
+Phase 0 measured `example` at 11 observation fields and `new_babel` at 15, against a §5.4
+budget of ten, so a *fully ported* flagship story is expected to land just inside one shard.
+Read that as the null hypothesis this phase has to disprove, not as a reason to start.
 
 **Gate.**
 - `test_status_labels.py`'s bidirectional mirror passes **without being weakened**. The
@@ -307,17 +318,17 @@ the number that matters for §5.1 — the field count — is exact.
 
 ### What the numbers say
 
-**§5.4's six-fields-per-shard budget is contradicted by the data, and this is a spec
-decision, not a phase 1 detail.** Today's real stories run 11 and 15 fields. Walking the
-port plan through §7's catalogue — `items_gained`/`items_lost` merging into one inventory
-field, `leverage_gained`/`leverage_spent` into one, `beat_type`/`intensity` into one,
-`memory_fragments_revealed`/`revelations_eligible` cadence-gated to usually none —
-a fully ported `new_babel` still lands around 9 or 10. Three of those belong to no engine
-at all: `flags_set`, `scene_update` and `new_characters` are core, and porting nothing
-removes them. So a six-field cap makes sharding mandatory from phase 1 rather than the
-conditional phase 7 the plan assumes. Either the budget is raised to around ten and
-expressed as *core + engines*, or phase 7 moves to the front. **Resolve this before phase 1
-starts**; it changes what phase 1 has to build.
+**§5.4's six-fields-per-shard budget was contradicted by the data. Resolved — the budget
+is now `core + 7` = ten.** Today's real stories run 11 and 15 fields. Walking the port plan
+through §7's catalogue — `items_gained`/`items_lost` merging into one inventory field,
+`leverage_gained`/`leverage_spent` into one, `beat_type`/`intensity` into one,
+`memory_fragments_revealed`/`revelations_eligible` cadence-gated to usually none — a fully
+ported `new_babel` still lands around 9 or 10. Three of those belong to no engine at all:
+`flags_set`, `scene_update` and `new_characters` are core, and porting nothing removes
+them, which is why the budget is expressed as core plus engines rather than a flat total.
+Six would have made sharding mandatory from phase 1 rather than the conditional phase 7
+this plan assumes, for no measured benefit. **Phase 1 is unblocked and phase 7 stays
+conditional.**
 
 **The observation prompt is not the small one.** For `example` it is 7,053 chars against a
 5,434-char narration prompt — 30% larger than the prompt everyone thinks of as the big one.

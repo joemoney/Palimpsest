@@ -459,12 +459,74 @@ Three implementation constraints, all from existing invariants:
 
 ### 5.4 Field budget
 
+The budget is expressed as **core + engines**, because the two grow for different reasons
+and only one of them is the registry's to control.
+
+- **Core fields** belong to no engine and porting removes none of them: `flags_set`,
+  `scene_update`, `new_characters`. Three today. A fourth needs the same justification a
+  new engine would need.
 - **One observation field per engine per turn.** An engine needing two is two engines, or
   one field with a richer type.
-- A shard carrying more than **six** fields must split (§5.3).
+- **A shard splits above `core + 7` — ten fields today** (§5.3).
 - `prompt_sections` output is budgeted per engine in the registry, in characters, and the
   budget is asserted in tests. The disk record may grow forever; what reaches a prompt may
   not, and engine v2 adds a new way for that to go wrong.
+
+**Where ten comes from.** Phase 0 measured the real thing rather than guessing: `example`
+runs 11 observation fields today and `new_babel` runs 15. Walking the §7 catalogue's ports
+through those numbers — inventory's two fields merging into one, leverage's two into one,
+`beat_type`/`intensity` into one, revelations cadence-gated to usually none — a fully
+ported `new_babel` still lands near 9 or 10. An earlier draft of this section proposed six,
+which would have made sharding mandatory from phase 1 rather than the conditional late
+phase the plan assumes, for no measured benefit. Ten is set so that a fully ported flagship
+story fits in one shard and a story reaching for an eighth engine is the thing that
+triggers a split.
+
+The core/engine split is what keeps the number honest. A budget stated as a flat total
+silently charges the registry for three fields it cannot remove, and would have read as
+"engines get three fewer slots than it looks like."
+
+### 5.5 Tier assignment
+
+`CLAUDE.md` fixes the tier structure and engine v2 does not change it: Tier A and Tier B
+are the same model distinguished only by the `reasoning` flag threaded per call site, Tier
+C is its own model, and Google is not a real tier. What follows is where engine v2's calls
+land inside that structure, not a new one.
+
+**The headline is how few calls this adds.** Gate checks, `resolve()`, `render()`, effect
+application and the whole event log cost nothing — that is the point of moving mechanics
+into code. Engine v2 adds exactly two call *classes*:
+
+| New call | Tier | Why |
+|---|---|---|
+| Observation shards (§5.3) | **C** | The same job `state_update` already does, split. Splitting a call does not change what the call is for. |
+| Judgement (§6.4) | **C** | Runs inside the turn path, at most once per turn. Tier B's latency is affordable because Tier B calls are *rare*; a judgement is not rare enough to spend it. |
+
+**Rule for the registry: an engine call is Tier C unless its module records why not.** No
+engine may reach for Tier A or B silently. This is deliberately stricter than the rest of
+the codebase, where the tier is chosen per call site by whoever writes it, because the
+registry makes call sites cheap to add.
+
+**What engine v2 removes is larger than what it adds.** §2.2's authored `requires` skips
+`check_and_advance_act` entirely when a precondition is unmet — a Tier B call with
+reasoning on, and phase 0 measured its p50 at 12.29s, the second most expensive step in the
+turn. Cadence gating (§5.2) does the same for the revelation and failure engines. §5.1's
+deletions shrink the Tier C prompt directly.
+
+**The open question is not about the new calls.** It is whether Tier C is still the right
+home for the observation pass *after* E-3, and the argument cuts both ways. Tier C's
+existing justification is "a closed-vocabulary classification/diff extraction that runs
+every single turn, where speed and cost matter far more than reasoning depth" — and E-3
+makes that description *more* accurate, since the pass stops computing deltas and only
+classifies. That argues for keeping Tier C, or going cheaper.
+
+Against it: **E-3 lowers the difficulty of the task and raises the stakes of getting it
+wrong.** Today a bad `relationship_changes: 8` is one bad number, and it at least reflects
+the model's own holistic read of the scene. Under v3 a bad `register: "public_slight"` is
+priced deterministically at whatever the template says, and may cross a tier threshold that
+gates how an NPC behaves. The same token budget carries more leverage. That is an argument
+for tiering the observation pass *up*, not down, and it is not resolvable from first
+principles — see §12.6 for the experiment that settles it.
 
 ---
 
@@ -516,6 +578,8 @@ predicate**. Conditions, all mandatory:
    the lower `resolve_order` wins and the other waits a turn.
 5. **Monkeypatchable**, per `CLAUDE.md`'s standing rule for new LLM-calling functions, so
    the offline suite covers judgement-using engines without an API key.
+6. **Tier C**, per §5.5 — not Tier B, despite being the judgement-shaped call. Tier B buys
+   reasoning depth at a latency the turn path cannot spend every turn.
 
 `resolve()` is otherwise pure, and E-4 should be read as "pure except for a declared,
 logged, budgeted judgement," which is a narrower hole than it sounds: an engine without
@@ -831,13 +895,13 @@ than a guideline.
 3. **Does the player ever see the rules?** E-7 makes the mechanics honest enough to show. A
    rules readout is newly *possible*; whether it is desirable is a creative decision, which by
    P-3 means it belongs in the template.
-4. **The sharding threshold.** §5.4 proposes six fields per shard as the split point.
-   **Phase 0 measured against it and it does not survive**: real stories run 11 and 15
-   fields today, and a fully ported `new_babel` still lands near 9–10, of which
-   `flags_set`, `scene_update` and `new_characters` belong to no engine at all. Six makes
-   sharding mandatory from phase 1 rather than conditional at phase 7. Raise the budget to
-   roughly ten and express it as *core + engines*, or move phase 7 forward. Open, and it
-   blocks phase 1.
-5. **Should a generated act ever carry a `requires`?** Deferred, not rejected — §2.2 records
+4. ~~**The sharding threshold.**~~ **Closed by phase 0.** Six did not survive measurement;
+   §5.4 is now `core + 7` = ten, expressed as core plus engines. Phase 7 stays conditional
+   and phase 1 is unblocked.
+5. **Is Tier C still right for the observation pass after E-3?** §5.5 has the argument in
+   both directions and cannot settle it on paper. Phase 4 settles it by measurement: run the
+   ported observation pass on Tier C and on Tier AB over the same held-out turns and compare
+   misclassification rates against the latency and cost delta. Until then, Tier C stands.
+6. **Should a generated act ever carry a `requires`?** Deferred, not rejected — §2.2 records
    the design that would work and the reason not to build it yet. Revisit only if playtesting
    shows acts advancing too early, and only after `gate` has landed.
