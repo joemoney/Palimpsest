@@ -2328,12 +2328,26 @@ def _section_footer(ctx: dict) -> str:
     if not protagonist.get("stats"):
         stats_instruction = ""
     elif stats_visible:
-        stats_instruction = (
-            "\nThe PLAYER line's Stats are known to the player in this story and their raw "
-            "numeric values may be stated directly, in the voice and format the story's own "
-            "rules establish for them. Report every change you narrate through stat_changes "
-            "so the numbers you show stay true to the state."
-        )
+        readout_cfg = ctx["story"].get("mechanics", {}).get("stats", {}).get("readout")
+        if readout_cfg and readout_cfg.get("labels"):
+            # The model is deliberately not trusted to transcribe numbers - see
+            # _stat_readout_cfg. It marks the place; the engine fills it in from state.
+            token = readout_cfg.get("token", "[[STATS]]")
+            stats_instruction = (
+                f"\nThis story shows the player their own figures, but you must NEVER write a "
+                f"number for one yourself. Where a line of figures belongs, put {token} alone "
+                f"on its own line and nothing else - no labels, no values, no punctuation. It "
+                f"is replaced with the true current figures after your reply. Writing the "
+                f"numbers out by hand instead will show the player values that are wrong. "
+                f"Report what actually changed through stat_changes as normal."
+            )
+        else:
+            stats_instruction = (
+                "\nThe PLAYER line's Stats are known to the player in this story and their raw "
+                "numeric values may be stated directly, in the voice and format the story's own "
+                "rules establish for them. Report every change you narrate through stat_changes "
+                "so the numbers you show stay true to the state."
+            )
     else:
         stats_instruction = (
             "\nThe PLAYER line's Stats are for your own internal reasoning only - never state a "
@@ -2483,6 +2497,62 @@ def _enforce_word_cap(text: str, max_words: int) -> str:
     return truncated[:cut + 1] if cut > 0 else truncated
 
 
+def _stat_readout_cfg(ctx: dict) -> dict | None:
+    """mechanics.stats.readout - opt-in, per-story, and the mechanism behind the one thing
+    a LitRPG-style story cannot delegate to a prompt: the numbers must be *true*.
+
+    A model asked to transcribe its own stat block drifts. Measured on a real 70-turn save:
+    the displayed SYNC read 26 for four consecutive turns while the save held 34, and the
+    sequence was not even monotonic (28, then 26, 26, 26). A wrong number in a status
+    readout is worse than no number at all.
+
+    So the model never writes one. It emits `token` where a figure line belongs and the
+    engine substitutes the real values afterwards, from state, deterministically. Absent
+    config means no substitution happens at all (P-2) - a story with no status readouts is
+    completely unaffected."""
+    stats_cfg = ctx["story"].get("mechanics", {}).get("stats", {})
+    readout = stats_cfg.get("readout")
+    return readout if readout and readout.get("labels") else None
+
+
+def render_stat_readout(ctx: dict) -> str | None:
+    """The authoritative stat line, built from state. Label order follows the authored
+    `labels` dict, which JSON preserves, so a story controls the ordering without the
+    engine needing an opinion about it. A stat named in `labels` but absent from
+    protagonist.stats is skipped rather than rendered as 0 - it was never seeded."""
+    cfg = _stat_readout_cfg(ctx)
+    if not cfg:
+        return None
+    stats = ctx["state"]["protagonist"].get("stats", {})
+    entry_format = cfg.get("entry_format", "**{label}** {value}")
+    parts = [
+        entry_format.format(label=label, value=stats[key])
+        for key, label in cfg["labels"].items()
+        if key in stats
+    ]
+    return cfg.get("separator", " - ").join(parts) if parts else None
+
+
+def apply_stat_readouts(ctx: dict, text: str) -> str:
+    """Replaces the authored token with the true stat line, and - as a backstop - rewrites
+    any line the model wrote out by hand anyway. The backstop keys on a line carrying two
+    or more of the story's own configured labels each followed by a number, which prose
+    does not accidentally look like. Without it "deterministic" would hold only as long as
+    the model followed the token instruction, which is exactly the assumption this function
+    exists to stop making."""
+    cfg = _stat_readout_cfg(ctx)
+    line = render_stat_readout(ctx)
+    if not cfg or line is None:
+        return text
+    token = cfg.get("token", "[[STATS]]")
+    text = text.replace(token, line)
+
+    labels = [re.escape(l) for l in cfg["labels"].values()]
+    label_hit = r"(?:" + "|".join(labels) + r")\**\s*-?\s*\d+"
+    handwritten = re.compile(rf"^.*?{label_hit}.*?{label_hit}.*$", re.MULTILINE)
+    return handwritten.sub(lambda m: line, text)
+
+
 def update_state_after_turn(
     ctx: dict,
     player_action: str,
@@ -2500,6 +2570,14 @@ def update_state_after_turn(
 
     # Separate state-update pass: subplot progress, flags, memory fragments, entity contact
     update_progress_from_turn(ctx, player_action, ai_response)
+
+    # Stat readouts are substituted *after* the state update, so the figures a scene shows
+    # are the ones it ended on - "the readout is the aftermath", per the story's own rules.
+    # Rewrites the stored turn in place rather than the live ai_response, so scrollback
+    # keeps each scene's historical numbers instead of re-rendering today's.
+    if _stat_readout_cfg(ctx):
+        history_turns = ctx["state"]["history"]["recent_turns"]
+        history_turns[-1] = apply_stat_readouts(ctx, history_turns[-1])
 
     # Retire non-pinned flags that have aged out of the recent-turns window
     archive_stale_flags(ctx)

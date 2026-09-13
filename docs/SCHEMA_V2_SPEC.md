@@ -7,8 +7,9 @@ across `README.md`, `CLAUDE.md`, and `docs/Narrative_Engine_Spec.md`, and resolv
 open design question — see §10.
 
 Sections amended after implementation, where what shipped differs from what was
-specified: §3.2 (optional `meta` fields), §3.5 (`protagonist.stats`), §3.6 (`stats`
-sourcing and `visible`), §7 (fixtures, and the six violations building them exposed).
+specified: §1 (P-7), §3.2 (optional `meta` fields), §3.5 (`protagonist.stats`), §3.6
+(`stats` sourcing, `visible`, `readout`), §7 (fixtures, and the six violations building
+them exposed).
 
 **Motivation.** Two reviews found the same underlying problem from different angles.
 The prompt-coverage audit found two problems: a third of the schema never reaches a
@@ -55,6 +56,28 @@ Anything not on that list is a bug.
 The schema is generic if an author can write a regency romance, a single-room courtroom
 drama, and a survival horror story, each without touching Python. Fixtures enforce this
 — see §7.
+
+**P-7 — Determinism belongs to the engine, never to the prompt.**
+P-3 pushes creative decisions *out* of the engine and into the template. P-7 is its
+complement and bounds it: anything that must be **correct every time** — not merely
+usually right, not right-in-the-common-case — has to be produced by code, not asked for in
+a prompt. A template may declare *that* such a feature is on, and configure how it looks,
+but the guarantee itself is the engine's to keep.
+
+The worked example is `mechanics.stats.readout` (§3.6). A LitRPG-style story shows the
+player their own figures, and a figure that is wrong is worse than a figure that is
+absent. Instructing the model to transcribe the numbers it was given fails in practice:
+on a real 70-turn save the displayed `SYNC` read 26 for four consecutive turns while the
+save held 34, and the displayed sequence was not even monotonic. The fix is not a firmer
+instruction. The model marks the position with a token and the engine substitutes the
+values from state.
+
+The test for P-7 is a question about failure, not about capability: *if the model gets
+this wrong once, is the result a slightly worse scene, or a broken promise to the player?*
+Prose quality, pacing and tone are all "slightly worse" — they belong in the template.
+Numbers, inventory contents, whether a door is locked, and anything the player is invited
+to reason over are broken promises — they belong in code. When a genre needs a new
+guarantee of that kind, the engine grows a module for it and the template opts in.
 
 ---
 
@@ -365,6 +388,19 @@ new one — that constraint is correct and it stays. What changed is **where the
 from**: `protagonist.stats` (§3.5) is the baseline, with `character_creation`
 `starting_stats` merging on top. Previously `character_creation` was the only source,
 which coupled two independent optional modules (§7.1).
+
+`readout` (optional) makes stat rendering deterministic, and is this spec's worked example
+of P-7. It takes `token` (default `[[STATS]]`), a `labels` map from stat key to display
+name whose order is the render order, and optional `entry_format`/`separator`. When
+present, the narration prompt instructs the model to emit the bare token where a figure
+line belongs and never to write a number itself; `apply_stat_readouts` substitutes the real
+values after the state-update pass, so a scene shows the figures it *ended* on. It also
+rewrites any figure line the model wrote out by hand anyway — keying on two or more
+configured labels each followed by a number — because otherwise the guarantee would hold
+only as long as the model cooperated, which is the assumption P-7 exists to remove.
+Substitution happens on the stored turn, so scrollback keeps each scene's historical
+numbers rather than re-rendering today's. Absent config means the engine does not touch
+narration at all.
 
 `visible` (default `false`) decides whether the narrator may state a stat's raw number to
 the player. False keeps the v1 behaviour — numbers are for the engine's reasoning only,

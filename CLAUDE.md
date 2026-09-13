@@ -118,6 +118,13 @@ already gone off the rails.
   throughout; the minimal template must run.
 - **No engine constant may encode a creative decision.** If a novelist would have
   an opinion about it, it belongs in the template.
+- **Determinism belongs to the engine, never to the prompt** (P-7). If a feature
+  must be correct *every* time rather than usually, code produces it; the template
+  only opts in and configures how it looks. The test is what failure costs: a
+  slightly worse scene is a template concern, a broken promise to the player is
+  an engine one. Asking a model to transcribe its own stat block drifted 8 points
+  over a real save, which is why `mechanics.stats.readout` exists — the model
+  emits a token and never a number.
 - `test/fixtures/` + `test_genre_conformance.py` are what make these enforceable
   rather than aspirational. A new optional module needs a fixture that omits it.
 
