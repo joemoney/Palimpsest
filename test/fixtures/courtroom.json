@@ -1,0 +1,101 @@
+{
+  "schema_version": 2,
+  "story_version": "fixture-2",
+  "meta": {
+    "title": "The People v. Ansel Roarke",
+    "genre": "Single-room courtroom drama",
+    "tone": "Airless, procedural, and running out of time.",
+    "content_rules": [
+      "No scene ever leaves the courtroom. Recesses happen off the page."
+    ]
+  },
+  "narration": {
+    "pov": "second-person",
+    "option_pov": "first-person",
+    "scene_length": {
+      "min": 380,
+      "max": 420
+    },
+    "style": [
+      "Every scene is testimony, objection, or the silence between them.",
+      "The room never changes, so specificity comes from people - a witness's hands, a juror's attention wandering.",
+      "Never narrate what happens outside this room. If it matters, someone says it under oath."
+    ]
+  },
+  "world": {
+    "setting_summary": "Courtroom 4B, day six of eight. The prosecution has rested. You have not.",
+    "rules": [
+      "The story never leaves the courtroom. No flashback, no corridor, no chambers.",
+      "The judge's patience is finite and visibly spending itself.",
+      "A witness who has already testified cannot be recalled."
+    ],
+    "characters": {
+      "Judge Imelda Sarris": {
+        "name": "Judge Imelda Sarris",
+        "description": "Thirty years on the bench and a settled contempt for theatre that does not extend to being bored.",
+        "role": "the bench - arbiter and clock",
+        "relationship_to_player": "neutral, and audibly less so each time you push",
+        "hook": "Asking, without raising her voice, where exactly this is going"
+      }
+    }
+  },
+  "protagonist": {
+    "default_name": "Counsel"
+  },
+  "mechanics": {
+    "revelations": [
+      {
+        "id": "test_001",
+        "trigger": "A witness contradicts a detail of their own earlier statement, on the record.",
+        "content": "It is small, and it is fatal, and you are the only person in the room who has both versions in front of them."
+      },
+      {
+        "id": "test_002",
+        "trigger": "The protagonist enters a physical exhibit into evidence.",
+        "content": "The moment it is in your hand you understand why the prosecution never entered it themselves."
+      }
+    ],
+    "failure_conditions": [
+      {
+        "id": "fail_contempt",
+        "trigger": "The protagonist defies a direct ruling from the bench for the third time.",
+        "title": "Removed From the Record",
+        "ending_prompt": "Close in the corridor, disbarred from this room at least, with the trial continuing audibly without you."
+      },
+      {
+        "id": "fail_rest",
+        "trigger": "The protagonist rests the defence without ever impeaching a prosecution witness.",
+        "title": "Nothing Further",
+        "ending_prompt": "Close on the verdict, read into a room that has already stopped listening."
+      }
+    ]
+  },
+  "plot": {
+    "main_thread": {
+      "title": "Reasonable Doubt",
+      "description": "Raise it, in this room, before the bench runs out of patience.",
+      "acts": [
+        {
+          "act_number": 1,
+          "title": "The Defence Opens",
+          "description": "Your first witness. Everything the jury believes for the rest of the trial is decided in the next hour.",
+          "completion_signals": [
+            "A prosecution account has been impeached on the record"
+          ]
+        }
+      ]
+    },
+    "pacing": {
+      "nudge_frequency": 6,
+      "act_check_frequency": 10
+    },
+    "initial_scene": {
+      "location": "Courtroom 4B",
+      "summary": "The prosecution has rested. The judge is waiting for the protagonist to stand."
+    },
+    "opening_scene": {
+      "narration_before_name": "The clerk needs the name for the record, and asks twice, because the first time you did not answer.",
+      "narration_after_name": "\"{player_name}. For the defence.\" The clerk writes it down. Judge Sarris looks at the clock, then at you.\n\nOPTIONS:\n1. Calls the first defence witness || I stand and call the witness I have been saving, and hope she is still willing.\n2. Moves for dismissal before calling anyone || I move to dismiss, knowing it fails, because I want to hear how she says no.\n3. Asks the bench for a short recess || I ask for ten minutes, and let the room see me ask."
+    }
+  }
+}

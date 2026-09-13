@@ -620,14 +620,14 @@ def subplot_manager_view(story_slug):
 
     plot_state = ctx["state"]["plot"]
     pacing_state = ctx["state"]["pacing"]
-    pacing_story = ctx["story"]["plot"]["pacing"]
+    pacing_story = ctx["story"]["plot"].get("pacing", {})
     revelations = ctx["story"].get("mechanics", {}).get("revelations", [])
     revealed_map = plot_state["revelations_revealed"]
     memory_fragments = [dict(r, revealed=(r["id"] in revealed_map)) for r in revelations]
     pacing_view = {
         "turn_count": pacing_state["turn_count"],
         "turns_since_last_pacing_nudge": pacing_state["turns_since_nudge"],
-        "pacing_nudge_frequency": pacing_story["nudge_frequency"],
+        "pacing_nudge_frequency": pacing_story.get("nudge_frequency", story_engine.DEFAULT_NUDGE_FREQUENCY),
         "max_parallel_subplots": pacing_story["max_parallel_subplots"],
         "subplots_completed_this_act": pacing_state["subplots_completed_this_act"],
         "last_pacing_direction": pacing_state["last_direction"],

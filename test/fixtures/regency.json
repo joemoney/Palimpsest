@@ -1,0 +1,120 @@
+{
+  "schema_version": 2,
+  "story_version": "fixture-1",
+  "meta": {
+    "title": "A Season at Thornfield",
+    "genre": "Regency romance of manners",
+    "tone": "Interior, restrained, and alive to everything that cannot be said aloud.",
+    "content_rules": [
+      "Nothing explicit. Desire is conveyed through restraint, not description."
+    ]
+  },
+  "narration": {
+    "pov": "second-person",
+    "option_pov": "first-person",
+    "scene_length": {
+      "min": 400,
+      "max": 430
+    },
+    "style": [
+      "Stay inside the protagonist's reading of the room - what was meant, not what was said.",
+      "A glance held too long is an event. Treat it as one.",
+      "No physical peril of any kind. The stakes are reputation, attachment and time."
+    ]
+  },
+  "world": {
+    "setting_summary": "Thornfield Park, the six weeks of a country season, and the small number of people whose opinion can decide a life.",
+    "rules": [
+      "No character may state a feeling plainly where a circumlocution would serve.",
+      "Reputation is the only currency. It cannot be earned back quickly.",
+      "There is no violence in this story and no journey beyond the parish."
+    ],
+    "characters": {
+      "Miss Harriet Vane": {
+        "name": "Miss Harriet Vane",
+        "description": "Your cousin by marriage, three years your senior, and the only person at Thornfield who says what she means - in private, and never twice.",
+        "role": "confidante and rival for the same attention",
+        "relationship_to_player": "affectionate, competitive, and entirely unwilling to admit the second part",
+        "hook": "Arriving at the breakfast table having already heard whatever you hoped to tell her"
+      },
+      "Mr. Aldous Crane": {
+        "name": "Mr. Aldous Crane",
+        "description": "Newly returned from abroad with an income nobody can account for and manners that are slightly too good.",
+        "role": "the question the season is organised around",
+        "relationship_to_player": "unfailingly correct, which tells you nothing",
+        "hook": "Being seated, by someone's deliberate arrangement, exactly where he can hear you"
+      }
+    }
+  },
+  "protagonist": {
+    "default_name": "Miss Ashby",
+    "traits": [
+      "observant"
+    ],
+    "starting_inventory": [
+      "a letter you have not answered"
+    ]
+  },
+  "mechanics": {
+    "relationships": {
+      "axis": {
+        "negative": "disregard",
+        "positive": "devotion",
+        "description": "regard and attachment"
+      },
+      "limit": 12
+    },
+    "revelations": [
+      {
+        "id": "rev_001",
+        "trigger": "The protagonist overhears their own name in a conversation not meant for them.",
+        "content": "You have been discussed. Recently, and at length, and by someone whose good opinion you had assumed."
+      },
+      {
+        "id": "rev_002",
+        "trigger": "The protagonist reads a letter, note or inscription written by someone else's hand.",
+        "content": "The hand is familiar and the date is wrong. Whatever was arranged, it was arranged before you were told of it."
+      }
+    ]
+  },
+  "plot": {
+    "main_thread": {
+      "title": "The Sixth Week",
+      "description": "Reach the end of the season with your attachments, your reputation and your own judgement intact. You will not manage all three.",
+      "acts": [
+        {
+          "act_number": 1,
+          "title": "Arrivals",
+          "description": "The house fills. Positions are taken before anyone admits there is a contest.",
+          "completion_signals": [
+            "An understanding has been formed or refused in front of witnesses"
+          ]
+        }
+      ]
+    },
+    "subplots": {
+      "subplot_001": {
+        "title": "An Unanswered Letter",
+        "description": "You have owed a reply for eleven days and everyone knows it.",
+        "priority": "medium",
+        "completion_threshold": 100,
+        "ties_to_main_plot": "What you write back settles which side of the house you are on.",
+        "span": "single_act",
+        "starts_active": true
+      }
+    },
+    "pacing": {
+      "nudge_frequency": 8,
+      "act_check_frequency": 12,
+      "max_parallel_subplots": 2
+    },
+    "initial_scene": {
+      "location": "the morning room",
+      "summary": "The protagonist has come down early and found the morning room already occupied."
+    },
+    "opening_scene": {
+      "narration_before_name": "The carriage is unloaded before you are properly awake, and the housekeeper asks, with great politeness, what she is to call you.",
+      "narration_after_name": "\"{player_name},\" she repeats, and writes it in a book, and does not look up again.\n\nOPTIONS:\n1. Goes down to the morning room at once || I will not be found still unpacking when the others come down.\n2. Asks the housekeeper who has already arrived || I ask, lightly, which of the party I have the pleasure of being last to join.\n3. Stays upstairs and reads the letter again || I sit on the edge of the bed with the letter I have owed an answer to for eleven days."
+    }
+  }
+}

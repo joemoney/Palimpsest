@@ -1,0 +1,132 @@
+{
+  "schema_version": 2,
+  "story_version": "fixture-3",
+  "meta": {
+    "title": "Windward",
+    "genre": "Survival horror",
+    "tone": "Cold, depleting, and entirely without reassurance.",
+    "content_rules": [
+      "Death is a real outcome and arrives without narrative warning."
+    ]
+  },
+  "narration": {
+    "pov": "second-person",
+    "option_pov": "first-person",
+    "scene_length": {
+      "min": 380,
+      "max": 420
+    },
+    "style": [
+      "Every scene costs something. Name what it cost.",
+      "No comfort, no reprieve, no one arriving to help.",
+      "The cold is not described. It is the reason for every decision."
+    ]
+  },
+  "world": {
+    "setting_summary": "Nine kilometres of ice shelf between the wreck and the depot, in the dark, in March.",
+    "rules": [
+      "Nobody is coming. There is no rescue in this story and no character may credibly promise one.",
+      "WARMTH below zero is hypothermia and the narration must play it - judgement first, then coordination.",
+      "The thing on the ice is never seen whole and never explained."
+    ],
+    "locations": {
+      "loc_wreck": {
+        "name": "The Wreck",
+        "description": "What is left of the fuselage, and the only windbreak for six kilometres.",
+        "connected_to": [
+          "loc_shelf"
+        ]
+      },
+      "loc_shelf": {
+        "name": "The Open Shelf",
+        "description": "Flat, unmarked, and the same in every direction.",
+        "connected_to": [
+          "loc_wreck",
+          "loc_depot"
+        ]
+      },
+      "loc_depot": {
+        "name": "The Depot",
+        "description": "If it is still standing. Nobody has confirmed it since October.",
+        "connected_to": [
+          "loc_shelf"
+        ]
+      }
+    }
+  },
+  "protagonist": {
+    "default_name": "Kel",
+    "starting_inventory": [
+      "a headlamp with one spare cell"
+    ],
+    "stats": {
+      "warmth": 4,
+      "supplies": 6
+    }
+  },
+  "mechanics": {
+    "stats": {
+      "floor": -10,
+      "ceiling": 10
+    },
+    "tracked_entity": {
+      "name": "The Thing on the Ice",
+      "description": "Something keeps pace at the edge of the headlamp's throw. It has never closed, and it has never fallen behind.",
+      "pacing_note": "Appears rarely and never fully. It is a shape, a distance, or a sound with nothing to have made it. Never let it resolve, never let it attack directly, and never let any character explain it."
+    },
+    "failure_conditions": [
+      {
+        "id": "fail_cold",
+        "trigger": "The protagonist spends a scene at WARMTH -10 without shelter or fire.",
+        "title": "Windward",
+        "ending_prompt": "Close on the cold winning. Not dramatic. The decisions simply get worse until there are none."
+      },
+      {
+        "id": "fail_dark",
+        "trigger": "The protagonist's last light source fails on the open shelf.",
+        "title": "No Fixed Point",
+        "ending_prompt": "Close in the dark, still walking, no longer certain of the direction."
+      }
+    ]
+  },
+  "plot": {
+    "main_thread": {
+      "title": "Nine Kilometres",
+      "description": "Reach the depot before the warmth runs out. There is nothing else to do and nowhere else to go.",
+      "acts": [
+        {
+          "act_number": 1,
+          "title": "Leaving the Wreck",
+          "description": "The wreck is not survivable and the shelf may not be either. Choose what to carry.",
+          "completion_signals": [
+            "The protagonist has committed to the shelf with what they chose to carry"
+          ]
+        }
+      ]
+    },
+    "subplots": {
+      "subplot_001": {
+        "title": "What to Carry",
+        "description": "Everything you take costs warmth to carry and everything you leave is gone for good.",
+        "priority": "high",
+        "completion_threshold": 100,
+        "ties_to_main_plot": "The first irreversible decision of the crossing.",
+        "span": "single_act",
+        "starts_active": true
+      }
+    },
+    "pacing": {
+      "nudge_frequency": 5,
+      "act_check_frequency": 10,
+      "max_parallel_subplots": 2
+    },
+    "initial_scene": {
+      "location": "loc_wreck",
+      "summary": "The protagonist is in the lee of the fuselage with the light going and a decision to make about what to carry."
+    },
+    "opening_scene": {
+      "narration_before_name": "The transponder wants a name for the log it will never transmit.",
+      "narration_after_name": "You key in {player_name} and the screen accepts it and then, a moment later, goes dark for good.\n\nOPTIONS:\n1. Takes the supplies and leaves the shelter kit || I take what I can eat and move now, while I can still work the buckles.\n2. Takes the shelter kit and leaves the supplies || I take what will keep the wind off and gamble that nine kilometres is one push.\n3. Stays in the lee of the wreck until first light || I stay. Six hours of dark against whatever is out there walking my pace."
+    }
+  }
+}

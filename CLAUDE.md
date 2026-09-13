@@ -214,6 +214,25 @@ treatment as these existing ones:
   (every `call_llm_json` call site), not gated behind a specific tier; a
   no-op under the `google` provider, which has no equivalent knob in this
   codebase.
+- **OpenRouter provider routing**: every OpenRouter call sends `"provider":
+  {"sort": "throughput"}` by default — `TIER_C_MODEL` alone is resold through
+  ~29 upstreams with measured throughput from 6-109 tok/s, and a request
+  landing on the slow end once dominated a 132s turn, so the default asks
+  OpenRouter for whichever upstream is fastest right now rather than leaving
+  it to chance. `TIER_AB_OPENROUTER_PROVIDER` (`.env`, unset by default) is an
+  opt-in override of that default, scoped to `TIER_AB_MODEL` only — set it to
+  a specific OpenRouter provider slug (e.g. `baidu/fp8`) to pin routing to one
+  named upstream via `{"order": [slug], "allow_fallbacks": false}` instead of
+  throughput-sorting, a deliberate throughput-for-cost tradeoff made per
+  deployment rather than a new default (verified 2026-09-13: Baidu's
+  `baidu/fp8` endpoint for `deepseek-v4-pro-20260813` priced at
+  $0.00000058/$0.00000173 per prompt/completion token, the cheapest of ~19
+  listed upstreams, next cheapest ~$0.00000066). `allow_fallbacks: false`
+  means a pinned-but-down upstream fails the request outright
+  (`LLMUnavailableError`) rather than silently rerouting to a pricier
+  upstream — the Gemini fail-safe below is what actually recovers that case,
+  same as any other primary-call failure. Never applies to `TIER_C_MODEL`,
+  which always throughput-sorts regardless of this setting.
 - **Gemini fail-safe**: if a tier's primary call raises `LLMUnavailableError`,
   `call_llm` retries once against the operator's own free-tier `GEMINI_MODEL`
   via a direct Google call, before giving up. This IS a genuine runtime

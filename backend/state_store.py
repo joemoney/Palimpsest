@@ -97,7 +97,9 @@ def new_save_state(story: dict, story_slug: str) -> dict:
     ever read back out of `story` again except through the merge-view helpers in
     story_engine.py (e.g. resolving a seeded subplot's title from the template)."""
     subplots = {}
-    for sid, seed in story["plot"]["subplots"].items():
+    # P-4: plot.subplots is optional - a single-thread story (courtroom drama, one-room
+    # horror) has a main thread and nothing else, and must not have to author an empty dict.
+    for sid, seed in story["plot"].get("subplots", {}).items():
         subplots[sid] = {
             "progress": 0,
             "status": "active" if seed.get("starts_active") else "not_started",
@@ -112,11 +114,18 @@ def new_save_state(story: dict, story_slug: str) -> dict:
         "story_slug": story_slug,
         "story_version": story.get("story_version"),
 
+        # P-4: protagonist is itself an optional block - a story that authors no traits,
+        # no starting inventory and no default_name should not have to include an empty one.
         "protagonist": {
             "name": "",
-            "traits": list(story["protagonist"].get("traits", [])),
-            "inventory": list(story["protagonist"].get("starting_inventory", [])),
-            "stats": {},
+            "traits": list(story.get("protagonist", {}).get("traits", [])),
+            "inventory": list(story.get("protagonist", {}).get("starting_inventory", [])),
+            # P-2/P-4: stats used to be seedable only through character_creation, which made
+            # them accidentally dependent on an unrelated optional module - a survival or
+            # horror story wanting a stat scale but no class picker had no way to start one.
+            # protagonist.stats is the baseline; apply_creation_choice still merges a chosen
+            # option's starting_stats on top of it, so stories using both are unchanged.
+            "stats": dict(story.get("protagonist", {}).get("stats", {})),
             "creation_choices": {},
             "flags": {"active": {}, "meta": {}, "archive": {}},
         },

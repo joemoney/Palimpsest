@@ -56,6 +56,10 @@ MULTI_ACT_SUBPLOT_THRESHOLD = 250
 # check_and_advance_act) - every current template authors its own value, same convention as
 # nudge_frequency.
 DEFAULT_ACT_CHECK_FREQUENCY = 12
+# P-4 companions to the above: plot.pacing itself is optional, so every read of it goes
+# through .get() with one of these rather than subscripting the block into existence.
+DEFAULT_NUDGE_FREQUENCY = 8
+DEFAULT_MAX_PARALLEL_SUBPLOTS = 3
 # Fallback floor for a story that doesn't author mechanics.stats.floor at all (see 5.2's
 # use in update_progress_from_turn) - mechanics.stats.floor/.ceiling is the real per-story
 # dial now; this is just what a minimal template without one degrades to.
@@ -107,6 +111,13 @@ TIER_AB_PROVIDER = os.getenv("TIER_AB_PROVIDER", "openrouter")
 TIER_AB_MODEL = os.getenv("TIER_AB_MODEL", "deepseek/deepseek-v4-pro-20260813")
 TIER_C_PROVIDER = os.getenv("TIER_C_PROVIDER", "openrouter")
 TIER_C_MODEL = os.getenv("TIER_C_MODEL", "deepseek/deepseek-v4-flash-0731")
+# Optional pin overriding the default "sort": "throughput" OpenRouter routing (see
+# _call_llm_openrouter) for TIER_AB_MODEL specifically - an explicit tradeoff of throughput
+# for a cheaper upstream, opted into per-deployment rather than a blanket default, since
+# "sort": "throughput" exists precisely because the wrong upstream can be much slower for
+# the same price. Only ever applied to TIER_AB_MODEL, never TIER_C_MODEL's own calls, and
+# unset means unchanged (throughput-sorted) behavior.
+TIER_AB_OPENROUTER_PROVIDER = os.getenv("TIER_AB_OPENROUTER_PROVIDER", "").strip() or None
 for _provider in (TIER_AB_PROVIDER, TIER_C_PROVIDER):
     if _provider not in ("openrouter", "google"):
         raise ValueError(f"Unknown provider {_provider!r} - expected 'openrouter' or 'google'")
@@ -203,19 +214,30 @@ def _trim_to_last_sentence(text: str) -> str:
 
 def _call_llm_openrouter(prompt: str, model: str, reasoning: bool = False, json_mode: bool = False) -> str:
     def do_request():
+        # deepseek-v4-flash-0731 (TIER_C_MODEL) alone is resold through 29 different
+        # OpenRouter providers, with measured throughput ranging 6-109 tok/s and TTFT
+        # 0.42-2.42s depending which one a request lands on - OpenRouter's default
+        # routing doesn't optimize for this, so a real production call landed on the
+        # slow end (see git log: an 83s state-update call was the dominant cost in a
+        # 132s turn). This asks OpenRouter to prefer whichever provider is currently
+        # fastest for the requested model, instead of leaving that to chance - same
+        # model, same price, just routed better. Applies to every OpenRouter call
+        # (every tier) EXCEPT the TIER_AB_OPENROUTER_PROVIDER pin below, since sorting
+        # by throughput can only help absent a deliberate reason to override it.
+        provider_route = {"sort": "throughput"}
+        if model == TIER_AB_MODEL and TIER_AB_OPENROUTER_PROVIDER:
+            # Deliberate opt-in tradeoff (see TIER_AB_OPENROUTER_PROVIDER above): pin
+            # TIER_AB_MODEL to one specific upstream instead of the fastest one, e.g. to
+            # chase a cheaper provider knowing it'll be slower. allow_fallbacks: False
+            # means a request fails outright (LLMUnavailableError, same as any other
+            # OpenRouter failure) rather than silently landing on a different, possibly
+            # pricier upstream if the pinned one is down - call_llm's Gemini fail-safe is
+            # still the safety net for that case, same as for any other primary failure.
+            provider_route = {"order": [TIER_AB_OPENROUTER_PROVIDER], "allow_fallbacks": False}
         body = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
-            # deepseek-v4-flash-0731 (TIER_C_MODEL) alone is resold through 29 different
-            # OpenRouter providers, with measured throughput ranging 6-109 tok/s and TTFT
-            # 0.42-2.42s depending which one a request lands on - OpenRouter's default
-            # routing doesn't optimize for this, so a real production call landed on the
-            # slow end (see git log: an 83s state-update call was the dominant cost in a
-            # 132s turn). This asks OpenRouter to prefer whichever provider is currently
-            # fastest for the requested model, instead of leaving that to chance - same
-            # model, same price, just routed better. Applies to every OpenRouter call
-            # (every tier), since it can only help.
-            "provider": {"sort": "throughput"},
+            "provider": provider_route,
             # A reasoning-capable model (observed with deepseek-v4-pro) can finish
             # normally (finish_reason "stop") while leaving message.content null and
             # putting the entire finished reply - including a correctly-formatted OPTIONS
@@ -835,7 +857,7 @@ def insert_subplot(ctx: dict, title: str, description: str, priority: str = "med
     new_id = _next_subplot_id(subplots)
 
     active_count = sum(1 for sid in subplots if _subplot_view(ctx, sid)["active"])
-    max_parallel = ctx["story"]["plot"]["pacing"]["max_parallel_subplots"]
+    max_parallel = ctx["story"]["plot"].get("pacing", {}).get("max_parallel_subplots", DEFAULT_MAX_PARALLEL_SUBPLOTS)
     make_active = active_count < max_parallel
 
     subplots[new_id] = {
@@ -948,9 +970,15 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         'foundational fact that should never be forgotten, e.g. a core revelation or '
         "identity; false if it's situational and safe to eventually forget once it's no "
         'longer recent>}}',
-        '  "memory_fragments_revealed": ["<the exact id of every UNREVEALED MEMORY FRAGMENT '
-        'TRIGGER below that the narration satisfies this turn, or [] if none>"]',
     ]
+    # P-2: mechanics.revelations is an optional module, so neither its schema field nor its
+    # context line may appear for a story that doesn't author one - an always-empty
+    # "UNREVEALED MEMORY FRAGMENT TRIGGERS: {}" is exactly the zeroed header P-2 forbids.
+    if revelations:
+        schema_fields.append(
+            '  "memory_fragments_revealed": ["<the exact id of every UNREVEALED MEMORY FRAGMENT '
+            'TRIGGER below that the narration satisfies this turn, or [] if none>"]'
+        )
     if tracked_entity:
         schema_fields.append(
             f'  "entity_interaction": <true if {tracked_entity["name"]} appeared or acted this '
@@ -1118,12 +1146,15 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
             f"verbatim from here for leverage_spent): {json.dumps(unspent_labels)}"
         )
 
+    fragments_line = (
+        f"UNREVEALED MEMORY FRAGMENT TRIGGERS: {json.dumps(unrevealed_fragments)}\n"
+        if revelations else ""
+    )
     prompt = f"""Given this turn of an interactive story, report what changed in the world state.
 
 ACTIVE SUBPLOTS (id: title - description [progress/threshold]):
 {active_subplot_lines}
-UNREVEALED MEMORY FRAGMENT TRIGGERS: {json.dumps(unrevealed_fragments)}
-CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}
+{fragments_line}CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}
 CURRENT INVENTORY: {json.dumps(ctx["state"]["protagonist"]["inventory"])}{relationships_line}{leverage_line}
 EXISTING CHARACTERS (do not repeat in new_characters): {', '.join(existing_characters) or 'none'}{stats_block}
 CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}{failure_line}{beat_section}
@@ -1423,7 +1454,7 @@ def generate_new_subplot(ctx: dict):
         return None
 
     subplots_view = _all_subplots(ctx)
-    max_parallel = ctx["story"]["plot"]["pacing"]["max_parallel_subplots"]
+    max_parallel = ctx["story"]["plot"].get("pacing", {}).get("max_parallel_subplots", DEFAULT_MAX_PARALLEL_SUBPLOTS)
     live_count = sum(1 for sp in subplots_view.values() if sp["status"] != "completed")
     if live_count >= max_parallel:
         return None
@@ -1709,7 +1740,7 @@ def check_and_advance_act(ctx: dict):
 
     pacing_state = ctx["state"]["pacing"]
     completed_recently = pacing_state["subplots_completed_this_act"] >= 1
-    act_check_frequency = ctx["story"]["plot"]["pacing"].get("act_check_frequency", DEFAULT_ACT_CHECK_FREQUENCY)
+    act_check_frequency = ctx["story"]["plot"].get("pacing", {}).get("act_check_frequency", DEFAULT_ACT_CHECK_FREQUENCY)
     due_for_check = pacing_state.get("turns_since_act_check", 0) >= act_check_frequency
     if not completed_recently and not due_for_check:
         return None
@@ -1841,7 +1872,7 @@ def generate_pacing_nudge(ctx: dict) -> str:
             ]
             nudge_parts.append(f"BACKGROUND SUBPLOTS: {', '.join(other_titles)}")
 
-    max_parallel = ctx["story"]["plot"]["pacing"]["max_parallel_subplots"]
+    max_parallel = ctx["story"]["plot"].get("pacing", {}).get("max_parallel_subplots", DEFAULT_MAX_PARALLEL_SUBPLOTS)
     if len(active_subplots) < max_parallel:
         inactive_subplots = [(sid, sp) for sid, sp in subplots_view.items() if sp["status"] == "not_started"]
         if inactive_subplots:
@@ -1908,10 +1939,16 @@ def _section_identity(ctx: dict) -> str:
     # narrator - it only held because the hand-authored opening scene establishes the voice
     # and RECENT EXCHANGES sustains it from there.
     pov_str = f" | POV: {narration_cfg['pov']}" if narration_cfg.get("pov") else ""
-    return (
-        f"TITLE: {meta['title']} | GENRE: {meta['genre']} | TONE: {meta['tone']}{pov_str}\n"
-        f"CONTENT RULES: {', '.join(meta['content_rules'])}"
-    )
+    # P-4: genre/tone/content_rules are each optional. An absent one contributes no segment
+    # at all rather than an empty label - P-2's "no empty headers" applied at field level.
+    head = f"TITLE: {meta['title']}"
+    for label, key in (("GENRE", "genre"), ("TONE", "tone")):
+        if meta.get(key):
+            head += f" | {label}: {meta[key]}"
+    head += pov_str
+    if meta.get("content_rules"):
+        head += f"\nCONTENT RULES: {', '.join(meta['content_rules'])}"
+    return head
 
 
 def _section_world_rules(ctx: dict) -> str:
@@ -2034,7 +2071,7 @@ def _section_pacing_or_endgame(ctx: dict) -> str | None:
             '"THE END" on\nits own line. Do not include an "OPTIONS:" block or numbered choices.'
         )
     pacing_state = ctx["state"]["pacing"]
-    nudge_frequency = ctx["story"]["plot"]["pacing"]["nudge_frequency"]
+    nudge_frequency = ctx["story"]["plot"].get("pacing", {}).get("nudge_frequency", DEFAULT_NUDGE_FREQUENCY)
     if pacing_state["turns_since_nudge"] >= nudge_frequency:
         pacing_state["turns_since_nudge"] = 0
         return generate_pacing_nudge(ctx)

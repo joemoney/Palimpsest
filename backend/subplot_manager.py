@@ -22,7 +22,7 @@ def show_status(ctx):
     """Display current plot and subplot status."""
     plot_state = ctx["state"]["plot"]
     pacing_state = ctx["state"]["pacing"]
-    pacing_story = ctx["story"]["plot"]["pacing"]
+    pacing_story = ctx["story"]["plot"].get("pacing", {})
     current_act = story_engine._current_act(ctx)
 
     print("\n" + "=" * 60)
@@ -124,7 +124,7 @@ def activate_subplot(ctx, subplot_id):
 
     all_subplots = story_engine._all_subplots(ctx)
     active_count = sum(1 for sp in all_subplots.values() if sp["active"])
-    max_parallel = ctx["story"]["plot"]["pacing"]["max_parallel_subplots"]
+    max_parallel = ctx["story"]["plot"].get("pacing", {}).get("max_parallel_subplots", story_engine.DEFAULT_MAX_PARALLEL_SUBPLOTS)
 
     if active_count >= max_parallel:
         print(f"Warning: Already at max parallel subplots ({max_parallel})")
