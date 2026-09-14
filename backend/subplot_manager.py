@@ -5,6 +5,7 @@ Manually inspect and adjust subplot progress, main plot advancement, and pacing 
 """
 import sys
 
+import mechanics
 import state_store
 import story_engine
 
@@ -37,7 +38,8 @@ def show_status(ctx):
         if current_act.get("completion_signals"):
             print(f"Signals this act was built around: {', '.join(current_act['completion_signals'])}")
     print(f"Subplots completed this act: {pacing_state['subplots_completed_this_act']}")
-    revelations = ctx["story"].get("mechanics", {}).get("revelations", [])
+    bound = mechanics.bound_for(ctx["story"], "revelations")
+    revelations = bound.engine.entries(bound.cfg) if bound else []
     revealed = len(plot_state["revelations_revealed"])
     if revelations:
         print(f"Memory fragments revealed: {revealed}/{len(revelations)}")
@@ -189,7 +191,8 @@ def advance_act(ctx):
 
 def reveal_memory_fragment(ctx, fragment_id):
     """Reveal a memory fragment (mechanics.revelations entry)."""
-    revelations = ctx["story"].get("mechanics", {}).get("revelations", [])
+    bound = mechanics.bound_for(ctx["story"], "revelations")
+    revelations = bound.engine.entries(bound.cfg) if bound else []
     fragment = next((r for r in revelations if r["id"] == fragment_id), None)
     if fragment is None:
         print(f"Error: Fragment '{fragment_id}' not found")

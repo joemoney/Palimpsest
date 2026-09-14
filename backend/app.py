@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from flask import Flask, Response, redirect, render_template, request, session, url_for
 
 import label_sheet
+import mechanics
 import plot_manager
 import state_store
 import story_engine
@@ -621,7 +622,8 @@ def subplot_manager_view(story_slug):
     plot_state = ctx["state"]["plot"]
     pacing_state = ctx["state"]["pacing"]
     pacing_story = ctx["story"]["plot"].get("pacing", {})
-    revelations = ctx["story"].get("mechanics", {}).get("revelations", [])
+    bound = mechanics.bound_for(ctx["story"], "revelations")
+    revelations = bound.engine.entries(bound.cfg) if bound else []
     revealed_map = plot_state["revelations_revealed"]
     memory_fragments = [dict(r, revealed=(r["id"] in revealed_map)) for r in revelations]
     pacing_view = {

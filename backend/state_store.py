@@ -267,7 +267,9 @@ def _reconcile(state: dict, story: dict) -> dict:
       silently, since there's nothing left to have revealed.
     - a stat name absent from character_creation -> no action; the value is kept.
     """
-    valid_revelation_ids = {r["id"] for r in story.get("mechanics", {}).get("revelations", [])}
+    bound = mechanics.bound_for(story, "revelations")
+    entries = bound.engine.entries(bound.cfg) if bound else []
+    valid_revelation_ids = {r["id"] for r in entries}
     revealed = state["plot"].get("revelations_revealed", {})
     for rev_id in list(revealed):
         if rev_id not in valid_revelation_ids:
