@@ -1,6 +1,6 @@
 """`inventory` / `tagged_items` - engine v2 phase 4, port 2.
 
-docs/ENGINE_V2_SPEC.md §7.3, docs/ENGINE_V2_PHASES.md phase 4 step 2. Owns items as
+docs/ENGINE_V2_SPEC.md §7.3, docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md phase 4 step 2. Owns items as
 records rather than free strings, acquisition, consumption and capacity.
 
 **This is where §5.1's field-count reduction actually comes from, and not for the reason

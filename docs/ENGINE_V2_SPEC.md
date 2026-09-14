@@ -868,16 +868,16 @@ needs `wait_for_idle(...)` before reading save state, exactly as now.
 
 ## 10. Implementation phases
 
-Summary only. **`docs/ENGINE_V2_PHASES.md` is the working plan** — per-phase work items,
+Summary only. **`docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md` is the working plan** — per-phase work items,
 acceptance gates, risks, and the story-content interleave.
 
 | Phase | Work | Gate |
 |---|---|---|
-| 0 | Baseline measurement: observation field count, prompt sizes, per-call p50s | **Done** — `scripts/measure_baseline.py`; numbers and findings in `ENGINE_V2_PHASES.md` |
+| 0 | Baseline measurement: observation field count, prompt sizes, per-call p50s | **Done** — `scripts/measure_baseline.py`; numbers and findings in `docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md` |
 | 1 | Registry, `Effect`, resolve ordering, event log plumbing. No mechanic ported | Full suite green; assembled prompts byte-identical for all three stories and all three fixtures |
 | 2 | Port `stats` → `bounded_counter`, declare-to-bind. **No schema cutover** (§8.3) | **Done.** Equivalence harness identical on 8 targets incl. 3 live saves; all 12 prompts byte-identical |
 | 3 | Registry dimension in the conformance fixtures | **Done.** Both directions, `EXPECTED_ENGINES` written out, budget rule made structural |
-| 4 | Port `relationship`, `inventory`, `revelation`, `failure`, subplot progress | **Done.** Field count down on all four measurable targets (11→10, 8→5, 8→6, 9→8); §12.5 and the `stat_changes` conversion left open, see `ENGINE_V2_PHASES.md`'s phase 4 gate |
+| 4 | Port `relationship`, `inventory`, `revelation`, `failure`, subplot progress | **Done.** Field count down on all four measurable targets (11→10, 8→5, 8→6, 9→8); §12.5 and the `stat_changes` conversion left open, see `docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md`'s phase 4 gate |
 | 5 | Relocate `pacing_loop` and `progression`, deliberately unchanged | `test_pacing_loop.py` passes unmodified |
 | 6 | `gate`: pre-action check, refusal path, and §2.2's authored act `requires` | Refusal path test; predicate latching test; no reachable deadlock |
 | 7 | Observation sharding (§5.3) — only if phase 4's measurement demands it | Concurrency; `test_status_labels.py` mirror intact |

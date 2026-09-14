@@ -1,6 +1,6 @@
 # Phase 0 fix plan — prerequisites for Phase 6
 
-**Source:** `docs/PHASE_0_GATE_REPORT.md`
+**Source:** `docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md`
 **Purpose:** clear the two blocking defects, one spec inconsistency, and one prompt-tuning
 change that gate 0.2 and Phase 6.2/6.3 depend on. Nothing here implements the pacing loop.
 
@@ -60,7 +60,7 @@ Find the conditional-instruction block that builds `exact_name_instruction` and
     # attempts a non-trivial computational proof"), but narration never echoes that wording -
     # it renders the event. Without this, the model treats the trigger list as context rather
     # than as something to evaluate, and fires nothing: 0 of 2 across a 24-turn playthrough
-    # whose turns 18 and 23 both plainly satisfied one (docs/PHASE_0_GATE_REPORT.md §4).
+    # whose turns 18 and 23 both plainly satisfied one (docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md §4).
     fragment_instruction = ""
     if unrevealed_fragments:
         fragment_instruction = (
@@ -126,7 +126,7 @@ containing the rollover block, ~line 1980):
 ```python
 def _enforce_word_cap(text: str, max_words: int) -> str:
     """SUMMARY_MAX_WORDS is an instruction the model overshoots - 2,912 words against a
-    2,000 cap after 24 turns (docs/PHASE_0_GATE_REPORT.md §1). Truncating here is what makes
+    2,000 cap after 24 turns (docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md §1). Truncating here is what makes
     the documented bound real rather than aspirational. The trim back to a sentence boundary
     matters because this text is fed verbatim into every later prompt and into the next
     rollover's CURRENT SUMMARY, where a mid-clause cut would compound."""

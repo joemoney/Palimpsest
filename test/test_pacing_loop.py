@@ -1,4 +1,4 @@
-"""Regression test for Phase 6 steps 3-5 (docs/PHASE_6_HANDOFF.md §3/§4):
+"""Regression test for Phase 6 steps 3-5 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §3/§4):
 
 - Step 3: beat_type/intensity and leverage_gained extend update_progress_from_turn's
   schema, conditional on the story authoring mechanics.pacing_loop / mechanics.progression
@@ -145,7 +145,7 @@ assert ctx["state"]["protagonist"].get("leverage", []) == []
 print("OK: a leverage_gained entry with an unrecognized kind or empty label is dropped")
 
 # ===========================================================================
-# Phase 6 step 4 (docs/PHASE_6_HANDOFF.md §4): counter arithmetic and arming.
+# Phase 6 step 4 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §4): counter arithmetic and arming.
 # example's one authored rule (force_complication) watches "stasis", fed by the "comfort"
 # beat and reset by "disquiet" - threshold 5, max_deferrals 3, suppress_when ["just_fired"].
 # ===========================================================================
@@ -178,7 +178,7 @@ assert "force_complication" not in ctx["state"]["pacing"]["armed"]
 print("OK: resetting an armed rule's watched counter clears its armed entry")
 
 # ===========================================================================
-# Phase 6 step 5 (docs/PHASE_6_HANDOFF.md §4): eligibility, deferral ceiling, and the
+# Phase 6 step 5 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §4): eligibility, deferral ceiling, and the
 # SECTIONS directive builder (_section_pacing_directive).
 # ===========================================================================
 
@@ -285,7 +285,7 @@ assert "WARNING" in stderr.getvalue() and "2 rules" in stderr.getvalue()
 print("OK: a template declaring more than one rule logs a warning and uses only the first")
 
 # ===========================================================================
-# Gap 1 (docs/PHASE_6_HANDOFF.md §1, spec §7): leverage is *spent*, not just gained, and
+# Gap 1 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §1, spec §7): leverage is *spent*, not just gained, and
 # the ledger is bounded by LEVERAGE_LIMIT with spent entries evicted oldest-first.
 # ===========================================================================
 ctx = se.state_store.load_state("pacingtest14", se.state_store.DEFAULT_STORY_SLUG)
@@ -362,7 +362,7 @@ print("OK: a ledger of only unspent entries is allowed to exceed the limit rathe
       "dropping a live asset")
 
 # ===========================================================================
-# Gap 2 (docs/PHASE_6_HANDOFF.md §1, spec §12): reveal placement. `example` authors no
+# Gap 2 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §1, spec §12): reveal placement. `example` authors no
 # mechanics.revelations, so this uses a story patched to carry one - which also checks the
 # field is gated on the story actually having unrevealed fragments.
 # ===========================================================================

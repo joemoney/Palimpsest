@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Behavioural fingerprint of the stat/resource mechanic - the engine v2 phase 2 gate.
 
-docs/ENGINE_V2_PHASES.md phase 2. The gate was originally "the three stat test files pass
+docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md phase 2. The gate was originally "the three stat test files pass
 unmodified", which turned out to be unachievable for any port that moves where
 configuration lives: all three author `mechanics.stats` with no engine key, and one of them
 asserts the no-block fallback outright. That clause was buying "no silent behaviour

@@ -582,7 +582,7 @@ but isn't otherwise enforced.
 ### Beat-labelling worksheets (operator tool, off by default)
 `backend/label_sheet.py` + `/labels/<sheet>` + the inline row under the play page's
 choices exist to run the pacing spec's classifier-agreement gates (see
-`docs/PHASE_0_GATE_REPORT.md`), not as a player feature. The worksheet markdown
+`docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md`), not as a player feature. The worksheet markdown
 file under `data/` is the single artifact `scripts/gate_02.py` scores, and three
 callers write it - `scripts/make_label_sheet.py`, the standalone page, and the
 inline row - so the block format lives in `label_sheet.py` and a save patches

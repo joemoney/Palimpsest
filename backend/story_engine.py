@@ -895,13 +895,13 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
     # asked about when the story actually configures one.
     tracked_entity = ctx["story"].get("mechanics", {}).get("tracked_entity")
 
-    # Phase 6 step 3 (docs/PHASE_6_HANDOFF.md §3, spec §5/§6.1/§7): beat_type/intensity and
+    # Phase 6 step 3 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §3, spec §5/§6.1/§7): beat_type/intensity and
     # leverage_gained ride along in this same call - "one extra field, no extra request"
     # (spec §9). Both gated on their own mechanics block, same conditional pattern as
     # stats/relationships_cfg above. Beat names/definitions come from the template, never a
     # constant - New Babel and example already use different vocabularies. This step only
     # extracts and stores the raw diff (last_beat, appended leverage entries); counter
-    # arithmetic, arming, and spending are docs/PHASE_6_HANDOFF.md §4's job, not this one's.
+    # arithmetic, arming, and spending are docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §4's job, not this one's.
     pacing_loop_cfg = ctx["story"].get("mechanics", {}).get("pacing_loop")
     progression_cfg = ctx["story"].get("mechanics", {}).get("progression")
 
@@ -981,7 +981,7 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
 
     # Beat definitions are verbatim from the template (spec §5) - never hardcoded, since
     # New Babel and example already use different vocabularies (4 beats vs. 2 - see
-    # docs/PHASE_6_HANDOFF.md §2 on why the spec's 4-beat default didn't survive validation).
+    # docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §2 on why the spec's 4-beat default didn't survive validation).
     beat_section = ""
     if pacing_loop_cfg:
         beat_lines = "\n".join(
@@ -1086,7 +1086,7 @@ is a separate, manual step."""
         )
         known_names.add(name)
 
-    # Phase 6 steps 3-4 (docs/PHASE_6_HANDOFF.md §3/§4, spec §9 steps 3-4): store the raw
+    # Phase 6 steps 3-4 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §3/§4, spec §9 steps 3-4): store the raw
     # beat classification as pacing.last_beat, then run the counter arithmetic - the beat's
     # feeds counter accumulates intensity, every counter in its resets goes to 0 (clearing
     # any rule watching one of those counters back to unarmed), and any rule whose watched
@@ -1841,7 +1841,7 @@ def _section_pacing_or_endgame(ctx: dict) -> str | None:
 
 
 def _section_pacing_directive(ctx: dict) -> str | None:
-    """Phase 6 step 5 (docs/PHASE_6_HANDOFF.md §4; spec §9 step 5, §10, §11): fires at most
+    """Phase 6 step 5 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §4; spec §9 step 5, §10, §11): fires at most
     one pacing directive per turn, for whichever rule step 4's counter update (see
     update_progress_from_turn) armed. A single-turn addition like _section_pacing_or_endgame
     above - placed with the other volatile sections, never the cacheable prefix (spec §9) -
@@ -2202,7 +2202,7 @@ def export_narrative(ctx: dict, include_actions: bool = False) -> str:
 
 def _enforce_word_cap(text: str, max_words: int) -> str:
     """SUMMARY_MAX_WORDS is an instruction the model overshoots - 2,912 words against a
-    2,000 cap after 24 turns (docs/PHASE_0_GATE_REPORT.md §1). Truncating here is what makes
+    2,000 cap after 24 turns (docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md §1). Truncating here is what makes
     the documented bound real rather than aspirational. The trim back to a sentence boundary
     matters because this text is fed verbatim into every later prompt and into the next
     rollover's CURRENT SUMMARY, where a mid-clause cut would compound."""

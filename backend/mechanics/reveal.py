@@ -1,6 +1,6 @@
 """`revelations` / `triggered_reveal` - engine v2 phase 4, port 3.
 
-docs/ENGINE_V2_SPEC.md §7.5, docs/ENGINE_V2_PHASES.md phase 4 step 3. Owns v2's
+docs/ENGINE_V2_SPEC.md §7.5, docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md phase 4 step 3. Owns v2's
 `mechanics.revelations` wholesale: which entries are live, which have fired, the ordering
 constraints between them, the placement queue spec §12 added, and both ends of the pipe -
 the unrevealed triggers the observation pass is shown, and the revealed content the narrator
@@ -135,7 +135,7 @@ class TriggeredReveal(MechanicEngine):
         # event rather than echoing the wording. Without this the model reads the list as
         # context rather than as something to evaluate and fires nothing: 0 of 2 across a
         # 24-turn playthrough whose turns 18 and 23 both plainly satisfied one
-        # (docs/PHASE_0_GATE_REPORT.md §4).
+        # (docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md §4).
         instruction = (
             "Check the NARRATION against each LIVE TRIGGER and list the id of every one it "
             "satisfies this turn. Judge by what happens in the scene, not by whether the "

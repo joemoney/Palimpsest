@@ -1,6 +1,6 @@
 """`stats` / `bounded_counter` - the first ported mechanic (engine v2 phase 2).
 
-docs/ENGINE_V2_SPEC.md §7.1, docs/ENGINE_V2_PHASES.md phase 2. Owns every decision the
+docs/ENGINE_V2_SPEC.md §7.1, docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md phase 2. Owns every decision the
 engine used to spread across story_engine: the bounds and their defaults, the clamp, the
 visibility dial, and the deterministic readout that P-7 exists for.
 
@@ -13,7 +13,7 @@ A story that wants a floor of 0 now says so.
 
 **Stats stay at `state.protagonist.stats`.** The engine owns the rules, not the storage.
 Moving the sheet into `state.mechanics.stats` would buy nothing and would break every
-existing save for no reason - see phase 2's note in ENGINE_V2_PHASES.md on why the schema
+existing save for no reason - see phase 2's note in docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md on why the schema
 cutover is deferred to the first phase that genuinely relocates save state.
 
 **What is deliberately still v2-shaped.** The state-update pass still asks for a
@@ -21,7 +21,7 @@ cutover is deferred to the first phase that genuinely relocates save state.
 real `observations()` contract alongside the engines ported beside it, but did not convert
 it to the E-3 event vocabulary §5.1 wants ("travel, long", priced by the engine): that needs
 a per-axis `costs` table (§8.1) authored in every story that has stats, which is content
-work for a mechanic that is already ported. See ENGINE_V2_PHASES.md phase 4 for why it is
+work for a mechanic that is already ported. See docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md phase 4 for why it is
 tracked as its own item rather than folded into one of the five ports.
 """
 import re
@@ -76,7 +76,7 @@ class BoundedCounter(MechanicEngine):
         The field itself is still v2-shaped - a delta map the model chooses the numbers for,
         not the event vocabulary §5.1 wants it to become. Converting it needs per-axis
         `costs` tables (§8.1) in every story that has stats, which is content work with no
-        engine ported behind it; see ENGINE_V2_PHASES.md phase 4 for why it is called out
+        engine ported behind it; see docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md phase 4 for why it is called out
         separately rather than smuggled in here.
 
         Its context line (CURRENT STATS) stays where it is: unlike the other engines',

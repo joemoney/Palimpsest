@@ -1,7 +1,7 @@
 """`subplots` / `weighted_threads` - engine v2 phase 4, port 5.
 
 docs/ENGINE_V2_SPEC.md §2.1 (the paragraph that ends "that makes subplot progress ordinary
-registry work"), docs/ENGINE_V2_PHASES.md phase 4 step 5.
+registry work"), docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md phase 4 step 5.
 
 **This is the port §2.1 spent a page refusing to make an exception for.** Act advancement
 keeps its verdict with the model, on E-7's test: nobody was shown a number and the engine has

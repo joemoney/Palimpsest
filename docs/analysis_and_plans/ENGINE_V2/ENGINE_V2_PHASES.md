@@ -700,7 +700,7 @@ states is still the rule.
 mounted at `stories/private/` (it was `stories/new_babel/`, a submodule of the same repo
 whose content sat at its root). That restructure is committed **in the submodule and not
 pushed**, so this branch deliberately carries the gitlink at the old commit with an
-unstaged pointer bump — the same intentional state `PHASE_6_HANDOFF.md` §1 describes, for
+unstaged pointer bump — the same intentional state `docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md` §1 describes, for
 the same reason. Until the owner runs `git -C stories/private push` and bumps the pointer,
 a fresh clone that initialises the submodule gets the *old* layout, where no
 `stories/private/<slug>/template.json` exists and the private catalog is simply empty.

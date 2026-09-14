@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generates a blank beat-labelling worksheet from a played save, for pacing gate 0.2
-(docs/PHASE_0_GATE_REPORT.md, docs/Narrative_Pacing_Loop_Spec_v4.md §0).
+(docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md, docs/Narrative_Pacing_Loop_Spec_v4.md §0).
 
 Gate 0.2 measures agreement between a human's labels and the classifier prompt's. That only
 means anything if the human labels FIRST and INDEPENDENTLY, so this sheet deliberately ships

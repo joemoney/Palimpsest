@@ -1,6 +1,6 @@
 """`relationships` / `scored_axis` - engine v2 phase 4, port 1.
 
-docs/ENGINE_V2_SPEC.md §7.2, docs/ENGINE_V2_PHASES.md phase 4 step 1. Owns per-character
+docs/ENGINE_V2_SPEC.md §7.2, docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md phase 4 step 1. Owns per-character
 scores, the scale, tier thresholds and their labels, per-character-per-window delta caps,
 and eviction.
 

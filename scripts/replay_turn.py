@@ -3,9 +3,9 @@
 prompt change can be judged on the exact narration that previously mishandled it instead of
 by playing another long session and hoping the situation recurs.
 
-Built for Phase 0's Task 1 (docs/PHASE_0_FIX_PLAN.md): turns 18 and 23 of the 24-turn
+Built for Phase 0's Task 1 (docs/analysis_and_plans/SCHEMA_V2/PHASE_0_FIX_PLAN.md): turns 18 and 23 of the 24-turn
 new_babel playthrough both plainly satisfied revelation trigger frag_0001 and neither fired
-(docs/PHASE_0_GATE_REPORT.md §4). Those two turns are a fixed, known-answer regression
+(docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md §4). Those two turns are a fixed, known-answer regression
 sample - replaying them costs two LLM calls and answers "did the fix work" directly, where
 a fresh playthrough costs hours and only answers it if the player happens to attempt a
 computation again.
@@ -113,7 +113,7 @@ def use_tier_b(ctx: dict, action: str, narration: str) -> dict:
     it and Tier C does not, the trigger is satisfiable and the cheap model is the limit, which
     is a tier decision. If neither fires it, the model is not the variable - the trigger is
     authored in terms the narration never matches, which is a content fix and no amount of tier
-    money solves it. See docs/PHASE_0_GATE_REPORT.md §4.1."""
+    money solves it. See docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md §4.1."""
     real = story_engine.call_llm_json
     story_engine.call_llm_json = lambda prompt, **kw: real(
         prompt,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Engine v2 phase 0: the baseline every later phase is measured against.
 
-docs/ENGINE_V2_PHASES.md phase 0. Two claims in docs/ENGINE_V2_SPEC.md are only
+docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md phase 0. Two claims in docs/ENGINE_V2_SPEC.md are only
 checkable if this runs before anything is ported:
 
   §5.1  porting a mechanic should *shrink* the observation schema, because an engine

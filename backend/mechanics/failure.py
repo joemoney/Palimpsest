@@ -1,6 +1,6 @@
 """`failure_conditions` / `triggered_ending` - engine v2 phase 4, port 4.
 
-docs/ENGINE_V2_SPEC.md §7.6, docs/ENGINE_V2_PHASES.md phase 4 step 4. Owns which conditions
+docs/ENGINE_V2_SPEC.md §7.6, docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md phase 4 step 4. Owns which conditions
 are currently askable and which one fired; owns nothing about what an ending *is*.
 
 **The effect is deliberately unchanged, and the handler deliberately lives elsewhere.** §7.6

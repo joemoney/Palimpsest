@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measures the classifier's agreement with ITSELF over repeated runs on the same scenes.
 
-Every kappa in docs/PHASE_0_GATE_REPORT.md is human-vs-classifier, measured from a single
+Every kappa in docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md is human-vs-classifier, measured from a single
 classification pass. Re-scoring an unchanged set of 17 scenes moved kappa from 0.549 to 0.433
 with nothing changed but the LLM call, which means those figures carry run-to-run variance on
 top of sampling variance and none of them state it.

@@ -1,5 +1,5 @@
 """The mechanic-engine registry - engine v2 phase 1 (docs/ENGINE_V2_SPEC.md §3/§6/§8.2,
-docs/ENGINE_V2_PHASES.md phase 1).
+docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md phase 1).
 
 Phase 1 ports no mechanic, so the headline assertion is a negative one: every template
 that ships today binds zero engines and the turn pipeline is a no-op. The rest pins the

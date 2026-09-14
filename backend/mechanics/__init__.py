@@ -1,7 +1,7 @@
 """The mechanic-engine registry - engine v2 phase 1.
 
 See docs/ENGINE_V2_SPEC.md (§3 the contract, §6 effects and resolution, §8.2 the event
-log) and docs/ENGINE_V2_PHASES.md phase 1. Phase 1 builds the architecture and ports
+log) and docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md phase 1. Phase 1 builds the architecture and ports
 nothing, so on every story that ships today this module resolves to zero bound engines and
 the whole pipeline is a no-op. That is the phase gate, not an accident: assembled prompts
 must stay byte-identical until phase 2 ports `resource`.
