@@ -554,7 +554,8 @@ one, which lands a fully-ported flagship at **11 against a budget of 10** — ov
 and only on the two flagships. So **phase 7 is indicated rather than merely conditional, and
 it is not urgent**: one field over budget on two stories does not justify concurrent
 sharding before phase 5 has actually produced that number. Re-measure after phase 5 and
-decide there.
+decide there. *(Decided: 5b produced 11, folding `entity_interaction` into `scene_update`
+produced 10, and phase 7 is skipped — see phase 7.)*
 
 **Phase 0's "around 9 or 10 fully ported" projection was optimistic by one to two, and it is
 worth knowing why**, because the same reasoning would mislead again. It assumed revelations
@@ -677,8 +678,9 @@ the schema line recovered all of it. A merge that buys a field reduction with pr
 is a poor trade and an easy one to make without noticing, since §5.4 budgets fields and nothing
 was watching the other number.
 
-**Phase 7's go/no-go, decidable now and still not urgent.** One field over budget, on two
-stories, with every other target inside it. §5.1 wants sharding when the observation pass is
+**Phase 7's go/no-go, decidable now and still not urgent.** *(Resolved: phase 7 is skipped —
+`entity_interaction` was folded into `scene_update` and every target is now inside budget.)*
+One field over budget, on two stories, with every other target inside it. §5.1 wants sharding when the observation pass is
 carrying more questions than one call should hold; 11 is not that, and the remaining overage is
 a single field. The two candidates for closing it are both real and neither is sharding:
 `entity_interaction` belongs to no §7 catalogue entry and has never been ported, and
@@ -846,6 +848,38 @@ latching rule are what they will need when they do.
 ---
 
 ## Phase 7 — Observation sharding *(conditional)*
+
+**Status: skipped, on its own entry condition.** "If field count after phase 4 is inside
+§5.4's budget, skip the phase and say so." It is. Every target is now at or under ten,
+flagships included, so sharding would buy a threading complication and a latency risk for
+nothing. **This is a skip with a measurement behind it, not a deferral** — if a later phase
+adds a field, re-measure and the decision reopens on its own.
+
+| target | phase 0 | after 5b | now |
+|---|---|---|---|
+| `new_babel` (post-creation) | 15 | 11 | **10** |
+| `the_missing_core` | not tabled | 11 | **10** |
+| `example` | 11 | 8 | **8** |
+| `survival` / `regency` / `courtroom` | — | 9 / 7 / 5 | **8** / 7 / 5 |
+
+**What closed the last field was not a port.** `entity_interaction` now rides inside
+`scene_update` instead of standing beside it, exactly as `threat_present` already did — both
+ask what was true of the scene that just ended, and neither earns a top-level key. One
+conditional fragment, no new engine, and it took the flagships from one over budget to exactly
+at it.
+
+**That field was invisible to the plan twice over.** It belongs to no §7 catalogue entry, so
+the phase 4 port list never reached it, and the phase 4 gate already recorded why: *a
+projection made by walking the port list misses every field the port list does not mention*.
+It then went unmeasured a second time because every test asserting on it checked prompt
+**text** — and `"entity_interaction"` appears in the prompt whether it is nested or not, so the
+counter increment had no test at all until the fold went looking. Both misses have the same
+shape: the thing nobody owns is the thing nobody checks.
+
+**The 5b prediction held exactly.** That gate named `entity_interaction` and the `stat_changes`
+conversion as the two candidates, said either would land the flagships at 10 with no
+concurrency work, and said to run the cheaper one first. It was the cheaper one, and
+`stat_changes` is still v2-shaped and no longer needs to move for budget reasons.
 
 **Goal.** Keep the observation prompt bounded once several engines contribute to it.
 

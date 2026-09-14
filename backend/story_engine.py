@@ -843,11 +843,16 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         "identity; false if it's situational and safe to eventually forget once it's no "
         'longer recent>}}',
     ]
-    if tracked_entity:
-        schema_fields.append(
-            f'  "entity_interaction": <true if {tracked_entity["name"]} appeared or acted this '
-            'turn, else false>'
-        )
+    # §5.4: one field, not two, for two questions about the same scene. `entity_interaction`
+    # rides inside scene_update rather than standing alone for exactly the reason
+    # `threat_present` already does below - both ask "what was true of the scene that just
+    # ended", and neither is worth a top-level key of its own. It belonged to no §7 catalogue
+    # entry, which is why the port list never reached it: a projection made by walking the
+    # catalogue misses every field the catalogue does not mention.
+    entity_interaction_field = (
+        f', "entity_interaction": <true if {tracked_entity["name"]} appeared or acted this '
+        'turn, else false>' if tracked_entity else ""
+    )
     # spec §8: scene.threat_present is scene state, not a pacing_loop field itself, but the
     # only thing that ever reads it back is a suppress_when: ["threat_present"] rule (§10),
     # so it's only worth asking for when a story actually has the module - gating it here
@@ -861,7 +866,8 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         '  "scene_update": {"location": "<location id from VALID LOCATION IDS above, or the '
         'same id if the protagonist has not moved>", "summary": "<1-2 sentences: where the '
         'protagonist is now and the immediate situation, as of the end of this turn>", '
-        f'"present_npcs": ["<character name>", "..."]{threat_present_field}}}'
+        f'"present_npcs": ["<character name>", "..."]'
+        f'{entity_interaction_field}{threat_present_field}}}'
     )
     schema_fields.append(
         '  "new_characters": [{"name": "<full name>", "description": "<who they are, appearance, '
@@ -920,7 +926,7 @@ is a separate, manual step."""
         flags["active"][flag_name] = value
         flags["meta"][flag_name] = {"turn_set": turn_count, "pinned": pinned}
 
-    if diff.get("entity_interaction"):
+    if (diff.get("scene_update") or {}).get("entity_interaction"):
         ctx["state"]["plot"]["entity_contact_count"] += 1
 
     # CR-01: apply rules per the schema instruction above - an invalid/unknown location is
