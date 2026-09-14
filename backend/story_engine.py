@@ -2389,7 +2389,7 @@ def detect_gate_refusal(ctx: dict, player_action: str) -> dict | None:
     # system identifier that happens to be a noun phrase, so instructing the model not to use
     # it is weaker than never showing it one.
     gate_lines = "\n".join(
-        f"{n}. {g.get('target', 'something')} - tone for the refusal: "
+        f"{n}. {bound.engine.target_name(g, ctx)} - tone for the refusal: "
         f"{g.get('refusal_hint', 'it simply does not work')}"
         for n, g in enumerate(unmet, 1)
     )

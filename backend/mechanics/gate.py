@@ -213,6 +213,26 @@ class Precondition(MechanicEngine):
                 return g
         return None
 
+    @staticmethod
+    def target_name(gate, ctx) -> str:
+        """What to call this gate's target when a model is going to read it.
+
+        `target` is a location id, because that is what `blocking()` matches
+        `scene_update.location` against - but an id is a system identifier that happens to look
+        like a noun phrase, and 45aa6b0 already had to stop the model writing one into
+        player-facing prose. Resolving it through `world.locations` costs nothing, needs no
+        second authored field, and is also what the detector needs: a gate is recognised most
+        reliably when its name reads the way the fiction refers to the place
+        (docs/analysis_and_plans/ENGINE_V2/GATE_DETECTION_MEASUREMENT.md).
+
+        Falls back to the raw target, so a gate on something that is not a location - a topic,
+        a person - still renders as whatever the author wrote."""
+        target = gate.get("target", "")
+        location = (ctx["story"].get("world", {}).get("locations", {}) or {}).get(target)
+        if isinstance(location, dict) and location.get("name"):
+            return location["name"]
+        return target or "somewhere"
+
     def prompt_sections(self, cfg, ctx) -> dict:
         """Tell the narrator what is shut, so the prose agrees with the rail.
 
@@ -223,7 +243,7 @@ class Precondition(MechanicEngine):
         if not unmet:
             return {}
         lines = "\n".join(
-            f"- {g.get('target', 'somewhere')}: {g.get('refusal_hint', 'it does not open')}"
+            f"- {self.target_name(g, ctx)}: {g.get('refusal_hint', 'it does not open')}"
             for g in unmet
         )
         return {"closed": (
