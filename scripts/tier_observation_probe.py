@@ -82,6 +82,16 @@ def categorical(diff):
         # at all" is a classification and does.
         "n_items_gained": len(inventory.get("gained") or []),
         "n_social": len(diff.get("social") or []),
+        # stat_changes is the last v2-shaped field: a delta map whose NUMBERS the model
+        # chooses, which is what P-7 exists to prevent. Compared exactly, because "does the
+        # model reproduce its own arithmetic" is the whole question about it.
+        "stat_changes": tuple(sorted((diff.get("stat_changes") or {}).items())),
+        # and the same question with the magnitudes thrown away: did it at least agree on
+        # which axes moved and in which direction?
+        "stat_axes_moved": tuple(sorted(
+            (k, (v > 0) - (v < 0)) for k, v in (diff.get("stat_changes") or {}).items()
+            if isinstance(v, (int, float))
+        )),
     }
     return out
 
