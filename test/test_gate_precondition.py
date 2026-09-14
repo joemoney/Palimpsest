@@ -141,28 +141,29 @@ assert se.detect_gate_refusal({"story": se.state_store.freeze({"mechanics": {}})
                                "state": ctx["state"]}, "anything") is None
 print("OK: a story authoring no gate block makes no call at all")
 
-recorder = RecordingLLM(lambda p: {"gate_id": "locked", "sentence": "The door does not move."})
+recorder = RecordingLLM(lambda p: {"blocked": 1, "sentence": "The door does not move."})
 se.call_llm_json = recorder
 refusal = se.detect_gate_refusal(ctx, "I try the vault door")
 assert refusal == {"gate": "locked", "sentence": "The door does not move."}, refusal
 prompt = recorder.prompts[-1]
-assert "locked" in prompt and "The door does not argue." in prompt
-assert "open" not in prompt.split("CLOSED TO THE PLAYER RIGHT NOW:")[1].split("PLAYER ACTION")[0], \
-    "a satisfied gate must never reach the detector's prompt"
-print("OK: the detector is shown only unmet gates, with their authored tone")
+offered = prompt.split("CLOSED TO THE PLAYER RIGHT NOW:")[1].split("PLAYER ACTION")[0]
+assert "loc_vault" in offered and "The door does not argue." in offered
+assert "loc_hall" not in offered, "a satisfied gate must never reach the detector's prompt"
+# Measured on a live run: the model wrote a gate's own id into the player-facing sentence.
+# The id is a system identifier, so the fix is to never show it one - not to ask it nicely.
+assert "locked" not in offered, "a gate id must never reach the model - it leaks into prose"
+print("OK: the detector is shown only unmet gates, by number and authored tone, never by id")
 
-se.call_llm_json = RecordingLLM(lambda p: {"gate_id": None, "sentence": ""})
+se.call_llm_json = RecordingLLM(lambda p: {"blocked": None, "sentence": ""})
 assert se.detect_gate_refusal(ctx, "I sit down and wait") is None
-print("OK: gate_id null means the turn proceeds normally")
+print("OK: a null verdict means the turn proceeds normally")
 
-se.call_llm_json = RecordingLLM(lambda p: {"gate_id": "open", "sentence": "invented"})
-assert se.detect_gate_refusal(ctx, "I walk into the hall") is None, \
-    "the model naming a gate that is not unmet must not produce a refusal"
-se.call_llm_json = RecordingLLM(lambda p: {"gate_id": "not_a_gate", "sentence": "invented"})
-assert se.detect_gate_refusal(ctx, "I do something else") is None
-print("OK: the model cannot invent a refusal - an id outside the unmet list is dropped")
+for invented in (2, 0, -1, 99, "locked", "open"):
+    se.call_llm_json = RecordingLLM(lambda p: {"blocked": invented, "sentence": "invented"})
+    assert se.detect_gate_refusal(ctx, "I walk into the hall") is None, invented
+print("OK: the model cannot invent a refusal - any number outside the unmet list is dropped")
 
-se.call_llm_json = RecordingLLM(lambda p: {"gate_id": "locked", "sentence": "   "})
+se.call_llm_json = RecordingLLM(lambda p: {"blocked": 1, "sentence": "   "})
 assert se.detect_gate_refusal(ctx, "I try the vault door")["sentence"] == "The door does not argue.", \
     "an empty sentence falls back to the authored hint rather than showing the player nothing"
 print("OK: an empty sentence falls back to the gate's refusal_hint")

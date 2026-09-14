@@ -2330,10 +2330,14 @@ def detect_gate_refusal(ctx: dict, player_action: str) -> dict | None:
         return None
 
     scene = ctx["state"]["scene"]
+    # Numbered, never keyed by id: measured on a live run, the model wrote a gate's own id
+    # into the player-facing sentence ("the cold gate reads you and stays shut"). An id is a
+    # system identifier that happens to be a noun phrase, so instructing the model not to use
+    # it is weaker than never showing it one.
     gate_lines = "\n".join(
-        f"- {g['id']}: guards {g.get('target', 'something')}. "
-        f"Tone for the refusal: {g.get('refusal_hint', 'it simply does not work')}"
-        for g in unmet
+        f"{n}. {g.get('target', 'something')} - tone for the refusal: "
+        f"{g.get('refusal_hint', 'it simply does not work')}"
+        for n, g in enumerate(unmet, 1)
     )
     prompt = f"""A player of an interactive story has typed an action. Some things in this world
 are currently closed to them. Decide whether this action is an attempt to do one of them.
@@ -2351,17 +2355,20 @@ about it, or acting somewhere else does not. If the action does not reach for an
 gate_id must be null - that is the normal answer and you should give it freely.
 
 Reply with JSON only:
-{{"gate_id": "<the id above this action reaches for, or null>",
-  "sentence": "<if gate_id is not null: one or two sentences, in second person present tense,
-  telling the player what stops them. Match the tone given for that gate. Never explain the
-  rule, never mention conditions or requirements - write only what the protagonist experiences.
-  Empty string if gate_id is null>"}}"""
+{{"blocked": <the NUMBER above this action reaches for, or null>,
+  "sentence": "<if blocked is not null: one or two sentences, in second person present tense,
+  telling the player what stops them. Match the tone given for that number. Never explain the
+  rule, never mention conditions or requirements, and never refer to a gate, a check or a
+  number - write only what the protagonist sees and feels. Empty string if blocked is null>"}}"""
 
     result = _timed("gate_check", lambda: call_llm_json(prompt), model=TIER_C_MODEL)
-    gate_id = (result or {}).get("gate_id")
-    match = next((g for g in unmet if g["id"] == gate_id), None)
-    if match is None:
+    try:
+        index = int((result or {}).get("blocked"))
+    except (TypeError, ValueError):
         return None
+    if not 1 <= index <= len(unmet):
+        return None
+    match = unmet[index - 1]
     sentence = (result.get("sentence") or "").strip()
     return {"gate": match["id"], "sentence": sentence or match.get("refusal_hint", "")}
 
