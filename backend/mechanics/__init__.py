@@ -221,6 +221,18 @@ def validate(story):
               "mechanics.subplots.engine - the threads will never progress (no subplot_beats "
               "field, so nothing ever completes). Add \"engine\": \"weighted_threads\".")
 
+    # §2.2: an act's `requires` must latch, because a completion condition that can
+    # un-satisfy itself is worse than no condition at all. `stat` and `item_tag` are perfectly
+    # good on a door and a trap on an act - the act would advance, then un-advance when the
+    # player spends the item or the stat drifts back. A warning rather than a raise: it is an
+    # authoring smell, and there may be a story where the axis genuinely only moves one way.
+    for act in story.get("plot", {}).get("main_thread", {}).get("acts", []) or []:
+        loose = gate.non_latching_referents(act.get("requires"))
+        if loose:
+            print(f"WARNING: act {act.get('act_number')} requires {', '.join(loose)}, which "
+                  f"§2.2 marks non-latching - the act can un-satisfy its own precondition "
+                  f"after advancing. Prefer revelation or flag.")
+
     for slot, cfg in _declared(story):
         if (slot, cfg["engine"]) not in _REGISTRY:
             known = sorted(n for s, n in _REGISTRY if s == slot)
@@ -355,14 +367,22 @@ def all_acts(ctx) -> list:
     merged = []
     for act in ctx["story"]["plot"]["main_thread"]["acts"]:
         overlay = completion.get(str(act["act_number"]), {})
-        merged.append({
+        entry = {
             "act_number": act["act_number"],
             "title": act["title"],
             "description": act["description"],
             "completion_signals": list(act.get("completion_signals", [])),
             "completed": overlay.get("completed", False),
             "optional": overlay.get("optional", False),
-        })
+        }
+        # §2.2's authored precondition, carried through only when the act has one. This list
+        # is a fixed projection rather than a copy of the act, so a field not named here is
+        # silently dropped - which is what happened to `requires` until phase 6's act half
+        # went looking for it. Conditional rather than defaulted to {} because P-2 says an
+        # absent optional is absent, and `_requires_unmet` reads "no key" as "no floor".
+        if act.get("requires"):
+            entry["requires"] = act["requires"]
+        merged.append(entry)
     for act in ctx["state"]["plot"]["generated_acts"]:
         merged.append(dict(act))
     merged.sort(key=lambda a: a["act_number"])

@@ -1334,6 +1334,20 @@ def check_and_advance_act(ctx: dict):
     if not current_act:
         return None
 
+    # §2.2: necessary conditions belong to the engine, sufficiency stays with the director.
+    # An authored `requires` that is not met means no Tier B call, no verdict to validate and
+    # no advancement - and the director is still free to say no once it *is* met, so §2.1 is
+    # intact: the model can always refuse, it just cannot approve prematurely.
+    #
+    # This is also the cheapest call in the system to skip: phase 0 measured
+    # act_advancement_check at 12.29s p50, the second most expensive step there is.
+    #
+    # Evaluated through mechanics.gate.satisfied rather than a bound engine, because a
+    # `requires` is authored on the *act* and a story may carry act preconditions with no
+    # mechanics.gate block at all - declare-to-bind would leave it with nothing to ask.
+    if not mechanics.gate.satisfied(current_act.get("requires"), ctx):
+        return None
+
     summary = ctx["state"]["history"]["compressed_summary"] or "The story has just begun."
     recent = "\n".join(ctx["state"]["history"]["recent_turns"][-RECENT_TURN_LIMIT:])
     # completed_subplots accumulates for the whole game; subplots_completed_this_act

@@ -236,6 +236,29 @@ assert "CONTENT RULES" not in prompt, "absent meta.content_rules must contribute
 assert "GENRE" not in prompt, "absent meta.genre must contribute no label"
 # P-4 through the registry: a template with no mechanics block at all binds nothing,
 # contributes no section, and survives the whole turn pipeline.
+# --- §2.2's act `requires` (engine v2 phase 6) ----------------------------------------
+# Act preconditions are authored on the act, not in `mechanics`, so they sit outside the
+# module-marker machinery entirely: no slot, no engine, no EXPECTED_ENGINES entry. Without an
+# assertion of their own nothing guards them, and the failure is silent - the act merge is a
+# fixed projection, so a dropped `requires` reads exactly like an act that never had one.
+ACT_REQUIRES_FIXTURE = "courtroom.json"
+for name in sorted(EXPECTED_ENGINES):
+    act_ctx = load_fixture(name)
+    authored = [a for a in act_ctx["story"]["plot"]["main_thread"]["acts"] if a.get("requires")]
+    if name == ACT_REQUIRES_FIXTURE:
+        assert authored, f"{name}: must author an act requires - it is the only fixture that does"
+        for act in authored:
+            loose = se.mechanics.gate.non_latching_referents(se.state_store.thaw(act["requires"]))
+            assert not loose, \
+                f"{name}: act {act['act_number']} requires non-latching {loose} (§2.2)"
+        assert se.mechanics.current_act(act_ctx).get("requires"), \
+            f"{name}: an authored requires must survive the act merge, or the floor is invisible"
+    else:
+        assert not authored, \
+            f"{name}: authors an act requires but is not {ACT_REQUIRES_FIXTURE} - update this test"
+print(f"OK: {ACT_REQUIRES_FIXTURE} authors a latching act `requires` that survives the merge; "
+      f"the other fixtures author none")
+
 assert se.mechanics.bind(minimal) == [], "the minimal template must bind no engines"
 assert se.mechanics.prompt_sections(ctx) == {}, "the minimal template must contribute no section"
 se.mechanics.run_turn_pipeline(ctx)

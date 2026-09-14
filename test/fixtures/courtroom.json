@@ -111,7 +111,18 @@
           "description": "Your first witness. Everything the jury believes for the rest of the trial is decided in the next hour.",
           "completion_signals": [
             "A prosecution account has been impeached on the record"
-          ]
+          ],
+          "requires": {
+            "all": [
+              {
+                "revelation": "test_001"
+              },
+              {
+                "flag": "defence_rested"
+              }
+            ]
+          },
+          "_authored_requires": "§2.2's act floor: the act cannot resolve before the first disclosure has landed and the defence has rested, however resolved the director thinks the act feels. Both referents are latching - a revelation id and a flag - which is what that table requires of an act predicate, as opposed to a door."
         }
       ]
     },

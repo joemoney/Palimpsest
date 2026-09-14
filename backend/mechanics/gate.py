@@ -67,6 +67,34 @@ def satisfied(predicate, ctx) -> bool:
     return all(_leaf(kind, value, ctx) for kind, value in predicate.items())
 
 
+# §2.2's table: the referent kinds that are both enumerable when the predicate is written and
+# *latching* - once true, true forever. Only these belong in an act's `requires`. `item_tag`
+# and `stat` are deliberately absent: both are legitimate on a door, where re-locking when the
+# key is spent is correct behaviour, and a trap on an act, where it means advancing and then
+# un-advancing.
+LATCHING = frozenset({"revelation", "flag"})
+
+
+def non_latching_referents(predicate) -> list:
+    """Referent kinds in `predicate` that §2.2 rules out for act completion, sorted.
+
+    Returns [] for a predicate that is entirely latching, for a combinator whose clauses all
+    are, and for anything that is not a predicate at all - this reports an authoring smell and
+    must never itself be the thing that raises."""
+    if not isinstance(predicate, dict):
+        return []
+    found = set()
+    for key, value in predicate.items():
+        if key in (_ALL, _ANY):
+            for clause in value or []:
+                found.update(non_latching_referents(clause))
+        elif key == _NOT:
+            found.update(non_latching_referents(value))
+        elif key not in LATCHING:
+            found.add(key)
+    return sorted(found)
+
+
 def _leaf(kind, value, ctx) -> bool:
     if kind == "revelation":
         if value in (ctx["state"]["plot"].get("revelations_revealed") or {}):

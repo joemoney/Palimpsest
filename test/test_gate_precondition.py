@@ -13,6 +13,12 @@ Covers the two gates phase 6 names by name, plus the engine/model split §7.4 re
   - **The engine decides, the model only recognises.** `unmet()` must never return a gate
     whose predicate is met, because that list is exactly what the detector shows the model,
     and a model that can see a satisfied gate is a model that can invent a refusal.
+  - **§2.2's act half.** The same evaluator pointed at act advancement: an unmet `requires`
+    must skip the director call entirely (the engine decides necessity, the model still owns
+    sufficiency), an authored `requires` must survive the act merge, and both the latching and
+    no-deadlock rules must hold *there* and not merely in the evaluator's unit tests - the
+    merge dropping the field silently is exactly how this feature could read as working while
+    doing nothing.
 
 Run directly: python3 test/test_gate_precondition.py
 """
@@ -227,5 +233,100 @@ assert holder["ctx"]["state"]["scene"]["location"] == location_before, \
 assert holder["ctx"]["state"]["scene"]["summary"] == "inside the vault", \
     "only the location is vetoed - the narration the player read is left alone"
 print("OK: the veto refuses a gated scene_update.location the detector let through")
+
+# =====================================================================================
+# §2.2 - the same evaluator, pointed at act advancement
+# =====================================================================================
+
+def act_ctx(requires=None, flags_active=None, flags_archive=None, revealed=None):
+    """A save sitting exactly on an act checkpoint, so check_and_advance_act runs its real
+    path. `requires` is authored on the act, never in mechanics - a story may carry act
+    preconditions with no gate block at all."""
+    act = {"act_number": 1, "title": "Arrival", "description": "the first act",
+           "completion_signals": ["something happens"]}
+    if requires is not None:
+        act["requires"] = requires
+    story = {
+        "meta": {"title": "t"},
+        "world": {"characters": {}},
+        "plot": {"main_thread": {"acts": [act]}, "pacing": {"act_check_frequency": 1}},
+    }
+    return {
+        "story": se.state_store.freeze(story),
+        "state": {
+            "protagonist": {
+                "flags": {"active": dict(flags_active or {}), "archive": dict(flags_archive or {})},
+                "inventory": [], "stats": {},
+            },
+            "plot": {
+                "current_act": 1, "act_completion": {}, "generated_acts": [], "act_history": [],
+                "subplots": {}, "completed_subplots": [], "thread_steering": {},
+                "revelations_revealed": dict(revealed or {}),
+                "endgame": {"requested": False}, "entity_contact_count": 0,
+            },
+            "pacing": {"turn_count": 12, "turns_since_act_check": 5,
+                       "subplots_completed_this_act": 0},
+            "history": {"compressed_summary": "", "recent_turns": []},
+            "characters": {},
+        },
+    }
+
+
+# --- an authored `requires` survives the act merge ------------------------------------
+# The merge is a fixed projection, not a copy, so a field it does not name is dropped. That
+# is not hypothetical: `requires` was dropped until phase 6's act half went looking for it,
+# and every assertion below would have passed anyway with the predicate invisible.
+merged = mechanics.current_act(act_ctx(requires={"flag": "warned_off"}))
+assert merged.get("requires") == {"flag": "warned_off"}, \
+    "an authored requires must reach the caller, or the floor silently does not exist"
+assert "requires" not in mechanics.current_act(act_ctx()), \
+    "P-2: an act with no requires carries no empty one"
+print("OK: an authored act `requires` survives the act merge, and an absent one stays absent")
+
+# --- unmet: no director call at all ----------------------------------------------------
+recorder = RecordingLLM(lambda p: {})
+se.call_llm_json = recorder
+ctx = act_ctx(requires={"flag": "never_set"})
+assert se.check_and_advance_act(ctx) is None
+assert recorder.prompts == [], \
+    "an unmet act precondition must cost no LLM call - that is §2.2's whole point"
+print("OK: an unmet act `requires` skips the director call entirely, no verdict, no advance")
+
+# --- met: the director is asked, and may still refuse ----------------------------------
+se.call_llm_json = CannedResponses([{"ready": False, "reason": "not yet"}])
+ctx = act_ctx(requires={"flag": "warned_off"}, flags_active={"warned_off": {"value": True}})
+assert se.check_and_advance_act(ctx) is None
+assert ctx["state"]["plot"]["current_act"] == 1, "the director said no and that stands"
+print("OK: a met `requires` hands the verdict to the director, which can still refuse (§2.1)")
+
+# --- the latching rule, at the act level ------------------------------------------------
+# The evaluator's own latching test is above; this is the one that matters in production,
+# because act_check_frequency (12) is longer than the flag's life in `active` (10), so the
+# flag is *reliably* in archive by the time an act check consults it.
+recorder = RecordingLLM(lambda p: {"ready": False, "reason": "not yet"})
+se.call_llm_json = recorder
+ctx = act_ctx(requires={"flag": "warned_off"}, flags_archive={"warned_off": {"value": True}})
+se.check_and_advance_act(ctx)
+assert recorder.prompts, \
+    "a flag aged into archive must still satisfy an act precondition, or no act ever advances"
+print("OK: an act `requires` on an archived flag still advances - the latching rule holds "
+      "where act_check_frequency actually consults it")
+
+# --- no reachable deadlock, at the act level --------------------------------------------
+recorder = RecordingLLM(lambda p: {"ready": False, "reason": "not yet"})
+se.call_llm_json = recorder
+ctx = act_ctx(requires={"revelation": "rev_that_no_template_defines"})
+se.check_and_advance_act(ctx)
+assert recorder.prompts, \
+    "an act requiring an unknown referent must degrade to satisfied, never strand the thread"
+print("OK: an act `requires` naming an unknown referent degrades rather than blocking forever")
+
+# --- non-latching referents on an act are warned about, not raised on --------------------
+assert gate.non_latching_referents({"all": [{"revelation": "r"}, {"stat": {"axis": "x"}},
+                                            {"item_tag": "k"}]}) == ["item_tag", "stat"]
+assert gate.non_latching_referents({"all": [{"revelation": "r"}, {"flag": "f"}]}) == []
+assert gate.non_latching_referents(None) == [] and gate.non_latching_referents("junk") == []
+print("OK: non-latching referents in an act predicate are reported for a warning, and the "
+      "reporter itself never raises")
 
 print("\nALL CHECKS PASSED: test_gate_precondition")

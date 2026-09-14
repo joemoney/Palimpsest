@@ -724,12 +724,10 @@ different subsets" survives. Both engines are now guarded in both directions.
 
 ## Phase 6 — `gate`, and authored act preconditions
 
-**Status: done for actions, not for acts.** `backend/mechanics/gate.py`, plus the refusal path
-through `story_engine`, `app.py` and `frontend/_refusal.html`. All three of the phase's gates
-are met *for the half that shipped*, and **§2.2's authored act `requires` is not wired** — the
-evaluator was deliberately built as a module function so act code can call it with no bound
-engine, and nothing calls it yet. Two of three Work items, and the missing one is the half a
-player never sees.
+**Status: done.** `backend/mechanics/gate.py`, the refusal path through `story_engine`,
+`app.py` and `frontend/_refusal.html`, and §2.2's act `requires` in `check_and_advance_act`.
+All three of the phase's gates are met on both halves — the action half and the act half — and
+`tier` is the one catalogued referent deliberately left out.
 
 **Goal.** The world can refuse the player, and an authored act gets a floor.
 
@@ -801,22 +799,49 @@ the way the fiction names the place.
 > Either the 67% measured a harder paraphrase set worth keeping, or it should go. Until someone
 > knows which, do not quote it.
 
-### What phase 6 did not deliver
+### The act half (§2.2)
 
-**§2.2's authored act `requires`.** The predicate language, the latching flag semantics and the
-fail-open rule are all built and tested — the act side is only the call site. `satisfied()` is a
-module function precisely so `check_and_advance_act` can use it without a `gate` block being
-declared, since act preconditions are authored on the act. Nothing calls it, no act authors
-`requires`, and there is no test for it.
+**`check_and_advance_act` consults the predicate before it calls the director**, through
+`gate.satisfied` directly rather than a bound engine — a `requires` is authored on the *act*,
+so a story may carry act preconditions with no `mechanics.gate` block at all and
+declare-to-bind would otherwise leave it with nothing to ask. Unmet means no Tier B call, no
+verdict, no advancement; met hands the verdict to the director, which can still say no. §2.1
+is intact: the model can always refuse, it just cannot approve prematurely.
+
+**It pays for itself.** `act_advancement_check` is 12.29s p50, the second most expensive step
+in the system, and an unmet precondition skips it entirely. §5.1's "delete before you move",
+arriving from an unexpected direction.
+
+**One line nearly made the whole feature a no-op.** `all_acts()` rebuilds each authored act
+from a fixed projection — `act_number`, `title`, `description`, `completion_signals`,
+`completed`, `optional` — so `requires` was dropped on the floor and `current_act()` returned
+an act with no predicate. Every behavioural test would have passed with the floor invisible,
+because "no predicate" and "predicate satisfied" are the same answer. **The merge is now
+asserted directly**, in both the unit test and the conformance run, precisely because nothing
+downstream can tell the difference.
+
+**Both phase gates hold at the act level too, not just in the evaluator's unit tests.** The
+latching one matters more here than anywhere: `act_check_frequency` (12) is *longer* than a
+flag's life in `flags.active` (10), so an act predicate on a flag is reliably consulted after
+the flag has moved to `archive`. A test asserts an archived flag still advances the act.
+
+**Non-latching referents on an act are warned about at load.** §2.2's table marks `stat` and
+`item_tag` unusable for act completion — fine on a door, where re-locking when the key is spent
+is correct, and a trap on an act, where it means advancing and then un-advancing. A warning
+rather than a raise, matching `validate()`'s other authoring smells, because a story may have an
+axis that genuinely only moves one way.
+
+### What phase 6 did not deliver
 
 **`tier` as a leaf kind**, though §7.4 lists it. It needs a relationship lookup and a tier
 resolution, and it is non-latching in the way §2.2 says needs a high-water mark. Left out
 deliberately against this phase's named risk — the evaluator growing into an expression
 language — and it is one leaf to add when a story wants it.
 
-**Any authored content at all.** No story declares a `gate` block; only `courtroom.json` does,
-as a fixture. The feature ships dark until someone authors into it, and the two authoring
-findings above are what they will need.
+**Any authored content in a real story.** No shipped story declares a `gate` block or authors
+an act `requires`; `courtroom.json` does both, as the fixture that guards them. The feature
+ships dark until someone authors into it, and the two detector findings above plus §2.2's
+latching rule are what they will need when they do.
 
 ---
 
