@@ -97,3 +97,47 @@ gate's `target` string (*Spire District*). The detector is shown `target` verbat
 recognised most reliably when its `target` reads the way the fiction refers to the place. That is
 an authoring consideration too — and a cheap one to get wrong, since `target` doubles as a
 location id in the obvious authoring style.
+
+---
+
+## The real authored gate (`the_missing_core`)
+
+Everything above measures gates *this harness invented*. `the_missing_core` now authors one in
+its own template — REACH under 20 shuts Tally Station, straight from `world.rules` — so it can
+be measured as an author would actually write it. Reproduce with
+`--story the_missing_core`; the save is forced to REACH 5 and nothing is injected.
+
+| | synthetic (`new_babel`) | **authored (`the_missing_core`)** |
+|---|---|---|
+| False positives / 71 real actions | 0 / 119 | **0, 1, 1, 2, 2 across five runs (~1.2%)** |
+| Recall / 7 genuine attempts | ~90% | **4–7 of 7, highly variable** |
+| Hint echoed | 0% with fragments | **0 in every run** |
+
+**The fragment rule held completely.** Not one refusal came back as the authored hint, and the
+prose is per-scene: *"the drive answers with a long, tired groan… the stars outside the hold
+window barely shift"*. This is the finding above, confirmed on content someone wrote for a
+story rather than for a test.
+
+**Both rates move enough that one run is not a number.** Five runs of the identical
+configuration produced 0, 1, 1, 2 and 2 false positives, and recall swung 4–7 of 7 — with n=7,
+a single miss is 14 points. Quote a range or run it again.
+
+## Why recall is the cheap axis and precision is not
+
+**A miss has a backstop. A false positive does not.** `blocking()` vetoes a gated
+`scene_update.location` whatever the detector said, so an undetected attempt still fails to get
+the player in — they get a worse scene, not a broken rail. Nothing catches a false positive: it
+is a modal refusing an action that was never gated, and the player simply cannot proceed.
+
+**So trade recall for precision, never the reverse** — which is the opposite of the instinct a
+recall number invites.
+
+That rule was tested directly. The one consistent miss, *"I aim for the weigh-floors"*, fails
+because the weigh-floors live in Tally Station's **description** while the detector is shown
+only its name. Adding the description to the detector prompt fixed it — recall went to 7/7 —
+and **took false positives from ~1.2% to 7.0%**, firing on actions that merely mention a run to
+Tally or that reach for something else entirely. It buys a backed benefit with an unbacked
+cost, so it was measured, rejected, and reverted rather than kept for the better recall number.
+
+If that miss is ever worth closing, the shape to try is a narrower authored field — the terms
+this gate should catch — rather than handing the model more prose to pattern-match against.

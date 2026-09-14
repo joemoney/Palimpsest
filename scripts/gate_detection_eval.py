@@ -19,9 +19,14 @@ scene summary and giving it turn 49's scene for turn 3's action would measure no
 Requires a real API key (this is the one measurement here that cannot run offline) and the
 private submodule. Usage:
 
-    python3 scripts/gate_detection_eval.py                    # full run
-    python3 scripts/gate_detection_eval.py --positives-only   # 15 calls, for prompt tweaks
-    python3 scripts/gate_detection_eval.py --hints terse      # the echo-rate comparison
+    python3 scripts/gate_detection_eval.py                        # full run, synthetic gates
+    python3 scripts/gate_detection_eval.py --positives-only       # 15 calls, for prompt tweaks
+    python3 scripts/gate_detection_eval.py --hints terse          # the echo-rate comparison
+    python3 scripts/gate_detection_eval.py --story the_missing_core   # the real authored gate
+
+**Run it more than once.** Both rates move run to run - the shipped detector has produced
+0, 1, 1 and 2 false positives over the same 71 actions - and a single run of n=7 positives
+moves 14 points per miss. One run is indicative, not a number to quote.
 """
 import argparse
 import json
@@ -38,6 +43,21 @@ SAVES = [
     ("the_missing_core", "data/saves/9a20892e-0bc7-4f5e-8bab-8ca815082532/the_missing_core.json"),
 ]
 STORY = "new_babel"
+
+# the_missing_core authors a real gate in its own template (REACH < 20 shuts Tally Station), so
+# it needs no synthetic block - only a save forced below the threshold and positives in its own
+# voice. This is the honest target: `new_babel`'s gates are ones this script invented, and a
+# gate an author actually wrote is the thing worth measuring.
+TMC_POSITIVES = [
+    "I set a course for Tally Station and start the burn.",
+    "I take the Ninth-Hand out toward the station's far anchorages.",
+    "I tell her we're going to Tally, and start warming the drive.",
+    "I plot the run to the bond offices at Tally and commit to it.",
+    "I push the drive for the station, whatever it costs the frame.",
+    "I ask what it would take to get us to Tally, then start doing it.",
+    "I aim for the weigh-floors and let the belt fall away behind us.",
+]
+TMC_SCENE = "The hold, drive warm, the belt turning slowly outside."
 
 # Two gates the story's own worldbuilding already implies: the template describes the Spire's
 # "private security checkpoints, and skywalks that let the right ID badge avoid the street
@@ -104,6 +124,15 @@ def real_actions(path):
     return out
 
 
+def make_tmc_ctx(scene_summary, _style):
+    """the_missing_core with REACH forced under the authored threshold, so its own gate is shut.
+    Nothing is injected - the gate being measured is the one in the template."""
+    save = json.load(open(dict(SAVES)["the_missing_core"], encoding="utf-8"))
+    save["protagonist"]["stats"] = {"reach": 5, "frame": 30, "sync": 5, "trace": 10}
+    save["scene"] = {**save.get("scene", {}), "summary": (scene_summary or "")[:600]}
+    return {"story": state_store.load_template("the_missing_core"), "state": save}
+
+
 def make_ctx(scene_summary, style):
     """A ctx whose gate predicates are genuinely unmet - otherwise `unmet()` is empty and the
     detector returns without calling the model at all, measuring nothing."""
@@ -119,9 +148,10 @@ def make_ctx(scene_summary, style):
     return {"story": state_store.freeze(story), "state": save}
 
 
-def probe(action, scene, style):
+def probe(action, scene, style, story=None):
+    build = make_tmc_ctx if (story or STORY) == "the_missing_core" else make_ctx
     try:
-        result = story_engine.detect_gate_refusal(make_ctx(scene, style), action)
+        result = story_engine.detect_gate_refusal(build(scene, style), action)
     except Exception as exc:                                   # noqa: BLE001 - reported, not raised
         return {"action": action, "gate": "ERROR", "sentence": str(exc)[:120]}
     return {"action": action, "gate": result["gate"] if result else None,
@@ -130,19 +160,25 @@ def probe(action, scene, style):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--story", choices=["new_babel", "the_missing_core"], default="new_babel")
     ap.add_argument("--hints", choices=sorted(HINTS), default="prose")
     ap.add_argument("--positives-only", action="store_true")
     ap.add_argument("--workers", type=int, default=5)
     ap.add_argument("--out")
     args = ap.parse_args()
 
-    jobs = [("pos", expected, action, POSITIVE_SCENE) for expected, action in POSITIVES]
+    if args.story == "the_missing_core":
+        jobs = [("pos", "tally_reach", a, TMC_SCENE) for a in TMC_POSITIVES]
+        negatives_from = [dict(SAVES)["the_missing_core"]]
+    else:
+        jobs = [("pos", expected, action, POSITIVE_SCENE) for expected, action in POSITIVES]
+        negatives_from = [path for _, path in SAVES]
     if not args.positives_only:
-        for _, path in SAVES:
+        for path in negatives_from:
             jobs += [("neg", None, a, s) for a, s in real_actions(path)]
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        results = list(pool.map(lambda j: {**probe(j[2], j[3], args.hints),
+        results = list(pool.map(lambda j: {**probe(j[2], j[3], args.hints, args.story),
                                            "kind": j[0], "expected": j[1]}, jobs))
 
     negatives = [r for r in results if r["kind"] == "neg"]
@@ -150,10 +186,17 @@ def main():
     false_pos = [r for r in negatives if r["gate"] and r["gate"] != "ERROR"]
     detected = [r for r in positives if r["gate"] and r["gate"] != "ERROR"]
     correct = [r for r in detected if r["gate"] == r["expected"]]
+    if args.story == "the_missing_core":
+        authored = json.load(open("stories/private/the_missing_core/template.json",
+                                  encoding="utf-8"))["mechanics"]["gate"]["gates"]
+        hints = {g["id"]: g["refusal_hint"] for g in authored}
+    else:
+        hints = HINTS[args.hints]
     echoed = [r for r in detected if r["sentence"].strip().lower()
-              == HINTS[args.hints][r["gate"]].strip().lower()]
+              == hints.get(r["gate"], "\0").strip().lower()]
 
-    print(f"hints: {args.hints}")
+    print(f"story: {args.story}   hints: "
+          f"{'authored' if args.story == 'the_missing_core' else args.hints}")
     if negatives:
         print(f"  negatives      {len(negatives):>4}   false positives {len(false_pos)} "
               f"({100 * len(false_pos) / len(negatives):.1f}%)")
