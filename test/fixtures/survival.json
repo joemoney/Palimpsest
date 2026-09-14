@@ -113,6 +113,47 @@
           "ending_prompt": "Close in the dark, still walking, no longer certain of the direction."
         }
       ]
+    },
+    "pacing_loop": {
+      "engine": "beat_counter",
+      "_authored": "A two-beat vocabulary, deliberately unlike example's cozy disquiet/comfort pair: this fixture exists to prove an author can name their own beats without touching Python (P-6), so it must not reuse that wording.",
+      "beats": {
+        "endure": {
+          "definition": "The cold, the injury, or the dwindling supplies cost the protagonist something concrete this scene - a resource spent, a wound worsened, a route closed, or a plan abandoned. The loss must be on the page, not merely feared.",
+          "feeds": "attrition",
+          "resets": [
+            "respite"
+          ]
+        },
+        "recover": {
+          "definition": "The protagonist materially improves their position - shelter made, a wound dressed, food secured, a route opened. Resting without gaining anything is not recovery.",
+          "feeds": "respite",
+          "resets": [
+            "attrition"
+          ]
+        }
+      },
+      "tie_break": "If both seem to fit, choose `endure` unless the scene ends with the protagonist measurably better off than it began.",
+      "counters": {
+        "attrition": 0,
+        "respite": 0
+      },
+      "rules": [
+        {
+          "id": "force_scarcity",
+          "watch": "respite",
+          "threshold": 4,
+          "threshold_by_act": {
+            "finale": null
+          },
+          "max_deferrals": 2,
+          "suppress_when": [
+            "threat_present"
+          ],
+          "directive": "PACING DIRECTIVE - THE MOUNTAIN TAKES SOMETHING BACK\n\nThe protagonist has been gaining ground for {counter_value} accumulated scenes. This scene must take something back: a supply spoiled, a route closed by weather, or a shelter that turns out not to hold.",
+          "reduced_directive": "PACING DIRECTIVE - ONE THING GOES WRONG\n\nA full setback has been deferred {deferrals} times. End this scene with one concrete thing the protagonist can no longer count on."
+        }
+      ]
     }
   },
   "plot": {

@@ -69,18 +69,18 @@ STATE_UPDATE_MARKERS = {
 # weakening the test.
 EXPECTED_ABSENT = {
     "regency.json": ["locations", "factions", "stats", "tracked_entity",
-                     "failure_conditions", "progression", "pacing_loop", "inventory"],
+                     "failure_conditions", "pacing_loop", "inventory"],
     "courtroom.json": ["locations", "factions", "tracked_entity", "stats",
                        "relationships", "progression", "pacing_loop", "inventory",
                        "subplots"],
-    "survival.json": ["relationships", "characters", "revelations",
-                      "progression", "pacing_loop"],
+    "survival.json": ["relationships", "characters", "revelations", "progression"],
 }
 EXPECTED_PRESENT = {
-    "regency.json": ["relationships", "characters", "revelations", "subplots"],
+    "regency.json": ["relationships", "characters", "revelations", "subplots",
+                     "progression"],
     "courtroom.json": ["characters", "revelations", "failure_conditions"],
     "survival.json": ["stats", "tracked_entity", "failure_conditions", "locations",
-                      "inventory", "subplots"],
+                      "inventory", "subplots", "pacing_loop"],
 }
 
 # --- the registry dimension (engine v2 phase 3) ------------------------------------
@@ -94,11 +94,12 @@ EXPECTED_PRESENT = {
 # **Every phase 4 port must add its engine to this table and to at least one fixture in the
 # same commit**, or nothing is guarding P-2 for it.
 EXPECTED_ENGINES = {
-    "regency.json": ["relationships", "revelations", "subplots"],
+    "regency.json": ["progression", "relationships", "revelations", "subplots"],
     # courtroom authors no plot.subplots at all - it is the deliberately single-thread
     # fixture, and the reason the subplot field stopped being unconditional (P-2).
     "courtroom.json": ["failure_conditions", "revelations"],
-    "survival.json": ["failure_conditions", "inventory", "stats", "subplots"],
+    "survival.json": ["failure_conditions", "inventory", "pacing_loop", "stats",
+                      "subplots"],
 }
 ALL_ENGINE_SLOTS = sorted({slot for slot, _ in se.mechanics.registered_engines()})
 

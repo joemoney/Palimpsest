@@ -39,7 +39,7 @@ either would invalidate live saves to buy nothing. `reveal_queue` living under `
 a little odd now that a different engine owns it, but it is the pacing directive that
 consumes it, and relocating it is schema-cutover work rather than port work.
 """
-from . import Effect, MechanicEngine, ObservationField, register, register_effect
+from . import Effect, MechanicEngine, ObservationField, bound_for, register, register_effect
 
 # How many revealed fragments' content the narrator is shown. A long game reveals more than
 # a prompt should carry, and the most recent are the ones still live in the player's head.
@@ -90,7 +90,7 @@ class TriggeredReveal(MechanicEngine):
         dead state. Reading another module's presence, not another engine's state: this is
         a question about what the template authored, which is config, not the cross-engine
         coupling §8.2 rules out."""
-        return bool(ctx["story"].get("mechanics", {}).get("pacing_loop"))
+        return bound_for(ctx["story"], "pacing_loop") is not None
 
     def live(self, cfg, ctx):
         """Entries that could fire right now: not already revealed, and with every entry

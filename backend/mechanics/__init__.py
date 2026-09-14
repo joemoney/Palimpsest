@@ -338,6 +338,45 @@ def apply_effects(ctx, effects: list):
         handler(ctx, effect)
 
 
+def all_acts(ctx) -> list:
+    """Every act - the template's authored acts (annotated with their runtime completed/
+    optional flags from act_completion, since the template entry itself is frozen) plus
+    every act generated during play - sorted by act_number.
+
+    Here rather than in `story_engine` because `beat_counter` resolves a rule's effective
+    threshold against the current act (§13) and an engine may not import the module that
+    imports it. `story_engine._all_acts` delegates here, so there is one implementation
+    rather than a copy that drifts.
+
+    This is engines *reading* act state, which §7.9 does not forbid - what stays outside the
+    registry is act advancement (`check_and_advance_act`), i.e. owning the verdict on when an
+    act ends. Reading which act is current is not owning that."""
+    completion = ctx["state"]["plot"]["act_completion"]
+    merged = []
+    for act in ctx["story"]["plot"]["main_thread"]["acts"]:
+        overlay = completion.get(str(act["act_number"]), {})
+        merged.append({
+            "act_number": act["act_number"],
+            "title": act["title"],
+            "description": act["description"],
+            "completion_signals": list(act.get("completion_signals", [])),
+            "completed": overlay.get("completed", False),
+            "optional": overlay.get("optional", False),
+        })
+    for act in ctx["state"]["plot"]["generated_acts"]:
+        merged.append(dict(act))
+    merged.sort(key=lambda a: a["act_number"])
+    return merged
+
+
+def current_act(ctx):
+    """The main thread's currently-active act, looked up by act_number (CR-17) across the
+    merged act list rather than by list position - list position breaks as soon as act
+    numbering stops being contiguous. None if `current_act` matches no act."""
+    number = ctx["state"]["plot"]["current_act"]
+    return next((act for act in all_acts(ctx) if act["act_number"] == number), None)
+
+
 def bound_for(story, slot: str):
     """The single bound engine serving `slot`, or None. Most call sites want one specific
     mechanic rather than the whole list."""
@@ -379,4 +418,4 @@ def run_observation_pipeline(ctx, diff):
 
 # Engines register by being imported. At the bottom, because each one imports names from
 # this module - the package is the contract, the modules are the implementations.
-from . import failure, items, resource, reveal, social, threads  # noqa: E402,F401
+from . import failure, items, ledger, pacing, resource, reveal, social, threads  # noqa: E402,F401

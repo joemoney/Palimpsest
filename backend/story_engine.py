@@ -44,7 +44,7 @@ FLAGS_ACTIVE_LIMIT = 25
 # spent entries oldest-first and NEVER an unspent one - if unspent entries alone exceed the
 # limit, allow the overflow rather than dropping a live asset. Note only unspent entries
 # ever reach a prompt, so this bounds disk growth and the eviction order, not per-entry cost.
-LEVERAGE_LIMIT = 40
+LEVERAGE_LIMIT = mechanics.ledger.LIMIT
 # The completion_threshold a "multi_act"-span subplot gets instead of the normal 100 (see
 # insert_subplot) - the only lever that actually makes one take longer to resolve, since
 # progress/completion tracking (update_progress_from_turn, check_subplot_status) is generic
@@ -541,8 +541,7 @@ def _current_act(ctx: dict) -> dict:
     list position breaks as soon as act numbering stops being contiguous. Returns None if
     current_act doesn't match any act (shouldn't happen in practice - callers that can't
     tolerate that already guard)."""
-    number = ctx["state"]["plot"]["current_act"]
-    return next((act for act in _all_acts(ctx) if act["act_number"] == number), None)
+    return mechanics.current_act(ctx)
 
 
 def _all_acts(ctx: dict) -> list:
@@ -550,22 +549,7 @@ def _all_acts(ctx: dict) -> list:
     optional flags from act_completion, since the template entry itself is frozen) plus
     every act generated during play (already self-contained, carrying its own completed/
     optional directly) - sorted by act_number."""
-    completion = ctx["state"]["plot"]["act_completion"]
-    merged = []
-    for act in ctx["story"]["plot"]["main_thread"]["acts"]:
-        overlay = completion.get(str(act["act_number"]), {})
-        merged.append({
-            "act_number": act["act_number"],
-            "title": act["title"],
-            "description": act["description"],
-            "completion_signals": list(act.get("completion_signals", [])),
-            "completed": overlay.get("completed", False),
-            "optional": overlay.get("optional", False),
-        })
-    for act in ctx["state"]["plot"]["generated_acts"]:
-        merged.append(dict(act))
-    merged.sort(key=lambda a: a["act_number"])
-    return merged
+    return mechanics.all_acts(ctx)
 
 
 def _mark_act_completed(ctx: dict, act_number: int):
@@ -603,70 +587,23 @@ def _next_subplot_id(subplots: dict) -> str:
     return f"subplot_{next_number:03d}"
 
 
-def _next_leverage_number(leverage: list) -> int:
-    """Mirrors _next_subplot_id's numbering scheme for protagonist.leverage entries
-    (spec §7's "lev_004" ids), which is a list rather than an id-keyed dict."""
-    existing_numbers = [
-        int(entry["id"].rsplit("_", 1)[-1])
-        for entry in leverage
-        if entry.get("id", "").rsplit("_", 1)[-1].isdigit()
-    ]
-    return (max(existing_numbers) + 1) if existing_numbers else 1
-
-
-def _evict_spent_leverage(leverage: list) -> None:
-    """Spec 7's bounding policy, in place. Only ever drops entries already marked spent, and
-    the oldest of those first (list order is acquisition order, since entries are only ever
-    appended). Deliberately gives up rather than dropping a live asset: if the list is over
-    LEVERAGE_LIMIT but every entry is unspent, the overflow is allowed to stand - an unspent
-    entry is a promise the release directive can still cash, and silently deleting one would
-    make the directive point at something the story never delivered.
-
-    Mirrors archive_stale_flags' role for flags_active, not its mechanism: flags age out by
-    turn, leverage ages out only once the story has actually used it up."""
-    if len(leverage) <= LEVERAGE_LIMIT:
-        return
-    spent_indices = [i for i, entry in enumerate(leverage) if entry.get("spent")]
-    for index in reversed(spent_indices[: len(leverage) - LEVERAGE_LIMIT]):
-        leverage.pop(index)
-
-
 def _pacing_rule(pacing_loop_cfg: dict) -> dict | None:
-    """v1 scope (spec §6.2): the schema accepts a list of rules so both correction
-    directions are expressible without code, but v1 implements and tests exactly one rule
-    per story - a template declaring more logs a warning and uses only the first.
-    Multi-rule arbitration is deferred (spec §9) since nothing exercises it yet."""
-    rules = pacing_loop_cfg.get("rules", [])
-    if not rules:
-        return None
-    if len(rules) > 1:
-        print(
-            f"WARNING: mechanics.pacing_loop declares {len(rules)} rules; v1 only supports "
-            f"one per story - using '{rules[0]['id']}', ignoring the rest.",
-            file=sys.stderr,
-        )
-    return rules[0]
+    """The story's one pacing rule (spec §6.2). Phase 5: `beat_counter` owns this; the name
+    stays because `_section_pacing_directive` and `test_pacing_loop.py` both call it."""
+    return mechanics.pacing.ENGINE.rule(pacing_loop_cfg)
 
 
 def _rule_effective_threshold(rule: dict, current_act: dict | None):
-    """Spec §13 resolution order: exact act number -> "finale" if the current act is one ->
-    the rule's base threshold. A null at any resolved level disables the rule for that act
-    (the caller must treat a None return as "not armable/not eligible this act", not as
-    "use the default")."""
-    by_act = rule.get("threshold_by_act", {})
-    if current_act:
-        act_key = str(current_act["act_number"])
-        if act_key in by_act:
-            return by_act[act_key]
-        if current_act.get("is_finale") and "finale" in by_act:
-            return by_act["finale"]
-    return rule.get("threshold")
+    """Spec §13's resolution order. Phase 5: `beat_counter` owns this, for the same reason it
+    owns the arming that reads it - the directive builder stays the caller, not the author."""
+    return mechanics.pacing.ENGINE.effective_threshold(rule, current_act)
 
 
 def _unspent_leverage_text(ctx: dict) -> str:
     """{unspent_leverage} interpolation (spec §11) - only unspent entries are ever shown,
     per §7's retention policy (spent entries are kept for callbacks but cost nothing here)."""
-    labels = [e["label"] for e in ctx["state"]["protagonist"].get("leverage", []) if not e.get("spent")]
+    bound = mechanics.bound_for(ctx["story"], "progression")
+    labels = bound.engine.unspent(bound.cfg, ctx) if bound else []
     return ", ".join(labels) if labels else "none yet"
 
 
@@ -902,8 +839,7 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
     # constant - New Babel and example already use different vocabularies. This step only
     # extracts and stores the raw diff (last_beat, appended leverage entries); counter
     # arithmetic, arming, and spending are docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §4's job, not this one's.
-    pacing_loop_cfg = ctx["story"].get("mechanics", {}).get("pacing_loop")
-    progression_cfg = ctx["story"].get("mechanics", {}).get("progression")
+    pacing_loop_cfg = mechanics.bound_for(ctx["story"], "pacing_loop")
 
     schema_fields = [
         '  "flags_set": {"<flag_name>": {"value": true, "pinned": <true if this is a '
@@ -946,68 +882,13 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
     schema_fields += [field.schema for field in engine_fields]
     engine_context = "".join(field.context for field in engine_fields)
     engine_instructions = "".join(field.instruction for field in engine_fields)
-    if pacing_loop_cfg:
-        beat_names = list(pacing_loop_cfg["beats"].keys())
-        schema_fields.append(
-            f'  "beat_type": "<exactly one of: {", ".join(beat_names)} - whichever beat type '
-            'above best matches what actually happened on the page this scene>"'
-        )
-        schema_fields.append(
-            '  "intensity": <integer 1-3 for the beat above - 1: pressure present, no '
-            "immediate physical danger; 2: direct confrontation or a forced decision in the "
-            'room; 3: physical danger, active pursuit, or body-horror escalation>'
-        )
-    if progression_cfg:
-        kinds = progression_cfg.get("kinds", [])
-        hint = progression_cfg.get("prompt_hint", "")
-        label = progression_cfg.get("label", "leverage")
-        schema_fields.append(
-            f'  "leverage_gained": [{{"kind": "<one of: {", ".join(kinds)}>", "label": "<short, '
-            f'concrete description of a durable gain the protagonist did not have before this '
-            f'turn{" - " + hint if hint else ""}>"}}]'
-        )
-        # Spec §7: the ledger is a ratchet the release directive points at, so an entry that
-        # has been used up or invalidated has to stop being pointed at. Matched by exact
-        # label string against the CURRENT <LABEL> line in the prompt - the pattern
-        # items_lost used before phase 4 gave inventory real ids, and the reason that line
-        # is shown here. Worth revisiting when progression is ported (phase 5).
-        schema_fields.append(
-            f'  "leverage_spent": ["<the exact label, copied verbatim from CURRENT '
-            f'{label.upper()} above, of every entry this turn used up or invalidated - '
-            "spent when it has been cashed in and can't be cashed again, or when events "
-            'made it worthless. Not merely mentioned or acted on. [] if none>"]'
-        )
     schema_str = ",\n".join(schema_fields)
-
-    # Beat definitions are verbatim from the template (spec §5) - never hardcoded, since
-    # New Babel and example already use different vocabularies (4 beats vs. 2 - see
-    # docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §2 on why the spec's 4-beat default didn't survive validation).
-    beat_section = ""
-    if pacing_loop_cfg:
-        beat_lines = "\n".join(
-            f"- {name}: {info['definition']}" for name, info in pacing_loop_cfg["beats"].items()
-        )
-        tie_break = pacing_loop_cfg.get("tie_break", "")
-        beat_section = f"\nBEAT TYPES (choose exactly one for beat_type, per its definition below):\n{beat_lines}"
-        if tie_break:
-            beat_section += f"\n{tie_break}"
-
-    leverage_line = ""
-    if progression_cfg:
-        label = progression_cfg.get("label", "leverage")
-        unspent_labels = [
-            e["label"] for e in ctx["state"]["protagonist"].get("leverage", []) if not e.get("spent")
-        ]
-        leverage_line = (
-            f"\nCURRENT {label.upper()} (do not repeat in leverage_gained; copy a label "
-            f"verbatim from here for leverage_spent): {json.dumps(unspent_labels)}"
-        )
 
     prompt = f"""Given this turn of an interactive story, report what changed in the world state.
 {engine_context}
-CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}{leverage_line}
+CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}
 EXISTING CHARACTERS (do not repeat in new_characters): {', '.join(existing_characters) or 'none'}{stats_block}
-CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}{beat_section}
+CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}
 
 PLAYER ACTION: {player_action}
 NARRATION: {ai_response}
@@ -1086,75 +967,10 @@ is a separate, manual step."""
         )
         known_names.add(name)
 
-    # Phase 6 steps 3-4 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §3/§4, spec §9 steps 3-4): store the raw
-    # beat classification as pacing.last_beat, then run the counter arithmetic - the beat's
-    # feeds counter accumulates intensity, every counter in its resets goes to 0 (clearing
-    # any rule watching one of those counters back to unarmed), and any rule whose watched
-    # counter has now crossed its effective threshold (§13) gets armed. Lazy-init
-    # throughout: a save from before this module existed has none of these keys yet, and
-    # per docs/ARCHITECTURE.md's "Keeping LLM Context Bounded" this project never writes a migration
-    # for that - .setdefault/.get instead, same as every other lazily-added field.
-    if pacing_loop_cfg:
-        beat_type = diff.get("beat_type")
-        if beat_type in pacing_loop_cfg["beats"]:
-            try:
-                intensity = max(1, min(3, int(diff.get("intensity"))))
-            except (TypeError, ValueError):
-                intensity = 1
-            pacing_state = ctx["state"]["pacing"]
-            pacing_state["last_beat"] = {"type": beat_type, "intensity": intensity}
-
-            beat_def = pacing_loop_cfg["beats"][beat_type]
-            counters = pacing_state.setdefault("counters", dict(pacing_loop_cfg.get("counters", {})))
-            armed = pacing_state.setdefault("armed", {})
-            rule = _pacing_rule(pacing_loop_cfg)
-
-            feeds = beat_def.get("feeds")
-            if feeds:
-                counters[feeds] = counters.get(feeds, 0) + intensity
-            for reset_counter in beat_def.get("resets", []):
-                counters[reset_counter] = 0
-                if rule and rule["watch"] == reset_counter:
-                    armed.pop(rule["id"], None)
-
-            if rule:
-                threshold = _rule_effective_threshold(rule, _current_act(ctx))
-                if threshold is not None and counters.get(rule["watch"], 0) >= threshold:
-                    armed.setdefault(rule["id"], {"deferrals": 0})
-
-    if progression_cfg:
-        leverage = ctx["state"]["protagonist"].setdefault("leverage", [])
-        kinds = progression_cfg.get("kinds", [])
-        next_number = _next_leverage_number(leverage)
-        for gain in diff.get("leverage_gained", []):
-            label = gain.get("label")
-            kind = gain.get("kind")
-            if not label or (kinds and kind not in kinds):
-                continue
-            leverage.append({
-                "id": f"lev_{next_number:03d}",
-                "kind": kind,
-                "label": label,
-                "acquired_turn": turn_count,
-                "spent": False,
-            })
-            next_number += 1
-
-        # Spec §7: mark spent, don't remove - a spent entry is retained for callbacks and
-        # for the record (see LEVERAGE_LIMIT). Matched by exact label string against an
-        # entry that is still unspent: the model is shown the unspent labels verbatim in
-        # the prompt for exactly this reason. Applied after gains, mirroring the inventory
-        # engine's gains-before-expenditures order, so a gain cashed in within the same turn
-        # resolves correctly.
-        for label in diff.get("leverage_spent", []) or []:
-            for entry in leverage:
-                if entry["label"] == label and not entry.get("spent"):
-                    entry["spent"] = True
-                    entry["spent_turn"] = turn_count
-                    break
-
-        _evict_spent_leverage(leverage)
-
+    # Phase 5: the beat classification, its counter arithmetic and the leverage ledger all
+    # moved behind the registry (beat_counter / spendable_ledger). They now resolve inside
+    # run_observation_pipeline below with every other engine, rather than as two hand-written
+    # blocks that ran before it.
     # Phase 4: one call for every ported mechanic, replacing the hand-sequenced per-mechanic
     # apply blocks that used to live inline here. Each engine reads its own field back out of
     # the diff into typed events (§8.2), the events are appended to the save's log, and every
@@ -1855,10 +1671,10 @@ def _section_pacing_directive(ctx: dict) -> str | None:
     reading it destructively is what gives it that one-turn lifetime regardless of whether
     this turn's rule is even armed to make use of it.
     """
-    pacing_loop_cfg = ctx["story"].get("mechanics", {}).get("pacing_loop")
-    if not pacing_loop_cfg:
+    bound = mechanics.bound_for(ctx["story"], "pacing_loop")
+    if bound is None:
         return None
-    rule = _pacing_rule(pacing_loop_cfg)
+    rule = bound.engine.rule(bound.cfg)
     if not rule:
         return None
 

@@ -43,7 +43,9 @@ CHAIN = {
 def fake_ctx(cfg, revealed=None, queue=None, pacing_loop=False, turn=0):
     mech = {"revelations": cfg}
     if pacing_loop:
-        mech["pacing_loop"] = {"beats": {}}
+        # Phase 5: placement is gated on a *declared* pacing_loop engine, not merely an
+        # authored block - so this fixture has to declare one like a real template does.
+        mech["pacing_loop"] = {"engine": "beat_counter", "beats": {}}
     return {
         "story": {"mechanics": mech},
         "state": {"plot": {"revelations_revealed": dict(revealed or {})},

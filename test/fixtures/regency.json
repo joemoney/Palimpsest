@@ -104,6 +104,17 @@
           "content": "The hand is familiar and the date is wrong. Whatever was arranged, it was arranged before you were told of it."
         }
       ]
+    },
+    "progression": {
+      "engine": "spendable_ledger",
+      "label": "advantages",
+      "kinds": [
+        "confidence",
+        "obligation",
+        "introduction",
+        "reputation"
+      ],
+      "prompt_hint": "A durable social gain the heroine can spend later: something told to her in confidence, a favour someone now owes her, an introduction that opens a door, or a standing she has visibly earned in company."
     }
   },
   "plot": {

@@ -226,6 +226,10 @@ above is what keeps it honest as engines land.
 
 ## Phase 4 — Port the remaining state-carrying engines
 
+**Status: done.** All five ports landed — `backend/mechanics/` `social.py`, `items.py`,
+`reveal.py`, `failure.py`, `threads.py`. The gate was met on field count; it left §12.5 and
+the `stat_changes` conversion open, both recorded under *Phase 4 gate* below.
+
 **Goal.** The observation pass stops being a state diff.
 
 **Work.** In this order, each landing green before the next:
@@ -592,6 +596,11 @@ had assumed away. None of those were visible before the mechanic had a module.
 
 ## Phase 5 — Relocate `pacing_loop` and `progression`
 
+**Status: done.** `backend/mechanics/pacing.py` (`beat_counter`) and
+`backend/mechanics/ledger.py` (`spendable_ledger`). The gate was met strictly:
+`test_pacing_loop.py` passes with **zero edits**. Field counts are unchanged by design, so
+phase 7's projected 11 is still unproduced — see *What phase 5 did not deliver* below.
+
 **Goal.** Move the two mechanics that are already the right shape, and change nothing about
 them.
 
@@ -604,6 +613,69 @@ numbering, spend-matching and eviction.
 them, the registry is wrong — same logic as phase 2, later and cheaper to act on.
 
 **Risk.** Low, and that is the point: these are the control group.
+
+### Phase 5 gate
+
+**Met, and met literally.** `test_pacing_loop.py` is byte-for-byte unchanged, which is the
+whole claim: a relocation that needed its own test rewritten would not have been a
+relocation. Suite green at 42 files.
+
+**The observation prompt is the same bytes in a different order.** Measured on `example`,
+before and after: 8,008 chars both times, and the diff is one block moving. `BEAT TYPES` and
+`CURRENT <LABEL>` used to be appended after `CURRENT SCENE` by hand; they are now the
+`context` of the fields they belong to, so they travel with them into the `engine_context`
+block near the top. Nothing was added or dropped. This is worth recording rather than
+waving through: phase 1's gate was byte-identical prompts, and this is the first phase to
+break that deliberately. It breaks it because the §3.1 contract owns placement now, which is
+the point of having the contract.
+
+**Field counts are flat, and that is the result, not a null one.** `new_babel` and
+`the_missing_core` stay at 12/13, `example` at 10. The two fixtures that gained a module
+moved for that reason alone (`regency` 6 → 8 with `progression`, `survival` 8 → 10 with
+`pacing_loop`), not because the port cost anything.
+
+### What phase 5 did not deliver
+
+**The §5.4 merge, deliberately.** Both engines contribute **two** fields where §5.4 says one
+- `beat_type`/`intensity` and `leverage_gained`/`leverage_spent`, each the textbook case for
+the richer type that `revelations` already became in phase 4. They were not merged here
+because this phase's gate is `test_pacing_loop.py` passing unmodified and that file asserts
+on all four names, in the prompt and as diff keys. **The two goals are incompatible and the
+plan asserted both** - this section said "change nothing", while *Phase 4 gate* above said
+"phase 5 merges" the pairs. That contradiction is resolved in favour of the phase's own
+stated gate, and the merge is now its own step.
+
+**So phase 7's go/no-go is still waiting on a number.** The projection that a fully-ported
+flagship lands at 11 against a budget of 10 assumed the merge; without it the flagships read
+12/13, exactly as they did after phase 4. Re-measure after the merge, decide there, and do
+not read phase 5's flat counts as evidence either way.
+
+### What hosting them actually required
+
+**One thing moved that is not a mechanic: `all_acts`/`current_act`.** `beat_counter` resolves
+a rule's effective threshold against the current act (§13), an engine may not import the
+module that imports it, and duplicating an act lookup is how two act lookups drift apart. So
+both readers now live in `mechanics/__init__.py` and `story_engine._all_acts`/`_current_act`
+delegate to them - one implementation, and every existing caller (`app`, `plot_manager`,
+`subplot_manager`, three test files) keeps the name it already used. **§7.9 still holds**:
+what it keeps out of the registry is act *advancement*, i.e. owning the verdict on when an
+act ends. Reading which act is current is not owning that.
+
+**Two names stayed in `story_engine` only because the gate needs them.**
+`_pacing_rule` and `LEVERAGE_LIMIT` are now one-line delegations to the engines that own
+them, because `test_pacing_loop.py` calls both by name and the gate is that it does not
+change. They are aliases of a single definition rather than second copies, and the merge step
+is the natural place to retire them.
+
+**One test outside its own port changed**, flagged here rather than buried, exactly as phase
+4 flagged the one it had to touch: `test_triggered_reveal.py`'s fake context authored
+`pacing_loop` without an `engine` key, and reveal placement is gated on the *declared*
+engine now rather than the bare block. The fixture gained the declaration; not one assertion
+moved.
+
+**Fixtures, per phase 3's standing rule.** `survival` authors the pacing loop and `regency`
+the ledger — split across two fixtures rather than piled onto one, so P-6's "deliberately
+different subsets" survives. Both engines are now guarded in both directions.
 
 ---
 
