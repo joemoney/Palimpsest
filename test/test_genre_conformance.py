@@ -57,7 +57,11 @@ NARRATION_MARKERS = {
 }
 STATE_UPDATE_MARKERS = {
     "tracked_entity": "entity_interaction",
-    "stats": "stat_changes",
+    # The stats module now offers one of two fields: `stat_changes` where the story prices
+    # nothing, `stat_events` where it authors per-axis costs (§8.1). The marker has to be the
+    # thing both shapes share, or it stops testing module presence and starts testing which
+    # shape happens to be authored - which the dedicated check further down does properly.
+    "stats": '"stat_',
     "relationships": '"social"',
     "inventory": '"inventory"',
     "subplots": '"subplot_beats"',
@@ -258,6 +262,35 @@ for name in sorted(EXPECTED_ENGINES):
             f"{name}: authors an act requires but is not {ACT_REQUIRES_FIXTURE} - update this test"
 print(f"OK: {ACT_REQUIRES_FIXTURE} authors a latching act `requires` that survives the merge; "
       f"the other fixtures author none")
+
+# --- §8.1's priced stats, and the declare-to-opt-in that selects it --------------------
+# `costs` is a sub-config rather than a module, so it has no slot and no marker of its own;
+# without this nothing distinguishes the priced path from the delta-map one, and a regression
+# would read as "stats still works".
+PRICED_FIXTURE = "survival.json"
+for name in sorted(EXPECTED_ENGINES):
+    priced_ctx = load_fixture(name)
+    if "stats" not in EXPECTED_ENGINES[name]:
+        continue
+    recorder = RecordingLLM(lambda p: dict(EMPTY_DIFF))
+    se.call_llm_json = recorder
+    se.update_progress_from_turn(priced_ctx, "act", "narration")
+    prompt = recorder.prompts[-1]
+    if name == PRICED_FIXTURE:
+        assert '"stat_events"' in prompt and '"stat_changes"' not in prompt, \
+            f"{name}: authors costs, so it must be asked what happened, never for a delta map"
+        for key in ("shelter.made", "exposure.long", "forage.good"):
+            assert key in prompt, f"{name}: the authored vocabulary must reach the model ({key})"
+        # days_out is still a stat and still appears in the CURRENT STATS context line - what
+        # it must not do is contribute an event key, since it is priced by drift alone.
+        vocabulary_line = next(l for l in prompt.splitlines() if '"stat_events"' in l)
+        assert "days_out" not in vocabulary_line, \
+            f"{name}: a drift-only axis has no costs, so it must contribute no event key"
+    else:
+        assert '"stat_changes"' in prompt and '"stat_events"' not in prompt, \
+            f"{name}: authors no costs, so it must keep the v2 delta map"
+print(f"OK: {PRICED_FIXTURE} is asked for priced stat_events and its vocabulary reaches the "
+      f"model; a stats fixture without costs keeps stat_changes")
 
 assert se.mechanics.bind(minimal) == [], "the minimal template must bind no engines"
 assert se.mechanics.prompt_sections(ctx) == {}, "the minimal template must contribute no section"

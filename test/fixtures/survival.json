@@ -69,7 +69,8 @@
     ],
     "stats": {
       "warmth": 4,
-      "supplies": 6
+      "supplies": 6,
+      "days_out": 0
     }
   },
   "mechanics": {
@@ -90,7 +91,31 @@
     "stats": {
       "engine": "bounded_counter",
       "floor": -10,
-      "ceiling": 10
+      "ceiling": 10,
+      "_authored": "Priced rather than delta-reported (§8.1): the model names what happened from this vocabulary and the engine does the arithmetic, so the same event always costs the same. This is the fixture that guards the priced path - the other two stats-bearing fixtures author no costs and must keep the v2 stat_changes field, which is what makes the declare-to-opt-in behaviour testable in both directions. `days_out` carries per_turn drift so the clock advances whether or not the model noticed (§7.1); it also shows an axis with its own floor overriding the block-level -10.",
+      "axes": {
+        "warmth": {
+          "costs": {
+            "shelter.made": 3,
+            "fire.lit": 2,
+            "exposure.long": -3,
+            "exposure.brief": -1,
+            "soaked": -2
+          }
+        },
+        "supplies": {
+          "costs": {
+            "forage.good": 3,
+            "forage.poor": 1,
+            "meal.eaten": -1,
+            "cache.lost": -4
+          }
+        },
+        "days_out": {
+          "floor": 0,
+          "per_turn": 1
+        }
+      }
     },
     "tracked_entity": {
       "name": "The Thing on the Ice",
