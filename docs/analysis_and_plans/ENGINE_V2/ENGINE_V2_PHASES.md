@@ -748,6 +748,14 @@ different subsets" survives. Both engines are now guarded in both directions.
 language. Keep it to the referent classes §2.2's table marks usable. Generated acts carry no
 `requires` — that is a design decision (§2.2), not an unfinished edge.
 
+**Detector measured** — `docs/analysis_and_plans/ENGINE_V2/GATE_DETECTION_MEASUREMENT.md`,
+`scripts/gate_detection_eval.py`. Zero false refusals across 119 real player actions, ~90%
+recall on genuine attempts, right gate every time it fires. Two authoring findings came out of
+it and neither can be enforced in code: **a `refusal_hint` written as a finished sentence is
+returned verbatim ~55% of the time** (fragments drop that to zero), and a gate is recognised
+most reliably when its `target` reads the way the fiction names the place. The rest of the phase
+writeup is still outstanding.
+
 ---
 
 ## Phase 7 — Observation sharding *(conditional)*
