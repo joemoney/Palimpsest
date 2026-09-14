@@ -59,8 +59,8 @@ STATE_UPDATE_MARKERS = {
     "inventory": '"inventory"',
     "subplots": '"subplot_beats"',
     "failure_conditions": "failure_triggered",
-    "progression": "leverage_gained",
-    "pacing_loop": "beat_type",
+    "progression": '"leverage"',
+    "pacing_loop": '"beat"',
     "revelations": "LIVE TRIGGERS",
 }
 

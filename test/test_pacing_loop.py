@@ -1,6 +1,6 @@
 """Regression test for Phase 6 steps 3-5 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §3/§4):
 
-- Step 3: beat_type/intensity and leverage_gained extend update_progress_from_turn's
+- Step 3: the beat and leverage fields extend update_progress_from_turn's
   schema, conditional on the story authoring mechanics.pacing_loop / mechanics.progression
   - exactly mirroring how mechanics.stats gates stat_changes.
 - Step 4: counter arithmetic (feeds/resets) and arming, applied alongside that same diff.
@@ -53,9 +53,8 @@ assert "progression" not in ctx["story"]["mechanics"]
 recorder = RecordingLLM(lambda p: dict(BASE_DIFF))
 se.call_llm_json = recorder
 se.update_progress_from_turn(ctx, "look around", "narration text")
-assert '"beat_type"' not in recorder.prompts[-1]
-assert '"intensity"' not in recorder.prompts[-1]
-assert '"leverage_gained"' not in recorder.prompts[-1]
+assert '"beat"' not in recorder.prompts[-1]
+assert '"leverage"' not in recorder.prompts[-1]
 assert "BEAT TYPES" not in recorder.prompts[-1]
 assert "last_beat" not in ctx["state"]["pacing"]
 assert "leverage" not in ctx["state"]["protagonist"]
@@ -68,12 +67,12 @@ recorder = RecordingLLM(lambda p: dict(BASE_DIFF))
 se.call_llm_json = recorder
 se.update_progress_from_turn(ctx, "look around", "narration text")
 prompt = recorder.prompts[-1]
-assert '"beat_type"' in prompt and all(name in prompt for name in beat_names)
-assert '"intensity"' in prompt
-assert '"leverage_gained"' in prompt
+assert '"beat"' in prompt and all(name in prompt for name in beat_names)
+assert '"intensity"' in prompt          # nested inside the merged beat field
+assert '"leverage"' in prompt
 assert "BEAT TYPES" in prompt
 assert "CURRENT FOOTING" in prompt  # mechanics.progression.label == "footing"
-print("OK: a story with the module adds beat_type/intensity/leverage_gained to the schema, "
+print("OK: a story with the module adds the beat and leverage fields to the schema, "
       "plus BEAT TYPES definitions and a CURRENT <label> line to the prompt")
 
 # --- an old save predating the module has neither key; taking a turn without the model
@@ -90,7 +89,7 @@ print("OK: an old save with no pacing.last_beat/protagonist.leverage key takes a
 ctx = se.state_store.load_state("pacingtest4", se.state_store.DEFAULT_STORY_SLUG)
 beat = beat_names[0]
 se.call_llm_json = CannedResponses([
-    dict(BASE_DIFF, beat_type=beat, intensity=7),
+    dict(BASE_DIFF, beat={"type": beat, "intensity": 7}),
 ])
 se.update_progress_from_turn(ctx, "press the issue", "narration text")
 assert ctx["state"]["pacing"]["last_beat"] == {"type": beat, "intensity": 3}, \
@@ -100,19 +99,19 @@ print("OK: beat_type/intensity land in pacing.last_beat, with intensity clamped 
 # --- an unrecognized beat_type is ignored rather than stored ---
 ctx = se.state_store.load_state("pacingtest5", se.state_store.DEFAULT_STORY_SLUG)
 se.call_llm_json = CannedResponses([
-    dict(BASE_DIFF, beat_type="not_a_real_beat", intensity=2),
+    dict(BASE_DIFF, beat={"type": "not_a_real_beat", "intensity": 2}),
 ])
 se.update_progress_from_turn(ctx, "do something", "narration text")
 assert "last_beat" not in ctx["state"]["pacing"]
 print("OK: a beat_type outside the template's configured beats is ignored")
 
-# --- a leverage_gained entry is appended with a minted id, spent=False, and the turn it
+# --- a leverage.gained entry is appended with a minted id, spent=False, and the turn it
 # was acquired on; a second gain in a later turn continues the numbering ---
 ctx = se.state_store.load_state("pacingtest6", se.state_store.DEFAULT_STORY_SLUG)
 progression_cfg = ctx["story"]["mechanics"]["progression"]
 kind = progression_cfg["kinds"][0]
 se.call_llm_json = CannedResponses([
-    dict(BASE_DIFF, leverage_gained=[{"kind": kind, "label": "A name she let slip"}]),
+    dict(BASE_DIFF, leverage={"gained": [{"kind": kind, "label": "A name she let slip"}]}),
 ])
 se.update_progress_from_turn(ctx, "press for a name", "narration text")
 leverage = ctx["state"]["protagonist"]["leverage"]
@@ -125,24 +124,24 @@ assert entry["acquired_turn"] == ctx["state"]["pacing"]["turn_count"]
 assert entry["spent"] is False
 
 se.call_llm_json = CannedResponses([
-    dict(BASE_DIFF, leverage_gained=[{"kind": kind, "label": "A second thing"}]),
+    dict(BASE_DIFF, leverage={"gained": [{"kind": kind, "label": "A second thing"}]}),
 ])
 se.update_progress_from_turn(ctx, "press further", "narration text")
 assert [e["id"] for e in ctx["state"]["protagonist"]["leverage"]] == ["lev_001", "lev_002"]
-print("OK: leverage_gained entries append with sequential lev_NNN ids, spent=False, and "
+print("OK: leverage.gained entries append with sequential lev_NNN ids, spent=False, and "
       "the acquiring turn number")
 
 # --- an unknown kind or a missing label is dropped rather than stored ---
 ctx = se.state_store.load_state("pacingtest7", se.state_store.DEFAULT_STORY_SLUG)
 se.call_llm_json = CannedResponses([
-    dict(BASE_DIFF, leverage_gained=[
+    dict(BASE_DIFF, leverage={"gained": [
         {"kind": "not_a_real_kind", "label": "should be dropped"},
         {"kind": ctx["story"]["mechanics"]["progression"]["kinds"][0], "label": ""},
-    ]),
+    ]}),
 ])
 se.update_progress_from_turn(ctx, "do something", "narration text")
 assert ctx["state"]["protagonist"].get("leverage", []) == []
-print("OK: a leverage_gained entry with an unrecognized kind or empty label is dropped")
+print("OK: a leverage.gained entry with an unrecognized kind or empty label is dropped")
 
 # ===========================================================================
 # Phase 6 step 4 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §4): counter arithmetic and arming.
@@ -150,7 +149,7 @@ print("OK: a leverage_gained entry with an unrecognized kind or empty label is d
 # beat and reset by "disquiet" - threshold 5, max_deferrals 3, suppress_when ["just_fired"].
 # ===========================================================================
 def report_beat(ctx, beat_type, intensity):
-    se.call_llm_json = CannedResponses([dict(BASE_DIFF, beat_type=beat_type, intensity=intensity)])
+    se.call_llm_json = CannedResponses([dict(BASE_DIFF, beat={"type": beat_type, "intensity": intensity})])
     se.update_progress_from_turn(ctx, "do something", "narration text")
 
 
@@ -190,7 +189,7 @@ report_beat(ctx, "comfort", 2)
 assert ctx["state"]["pacing"]["armed"] == {"force_complication": {"deferrals": 0}}
 kind = ctx["story"]["mechanics"]["progression"]["kinds"][0]
 se.call_llm_json = CannedResponses([
-    dict(BASE_DIFF, leverage_gained=[{"kind": kind, "label": "The odd calendar date"}]),
+    dict(BASE_DIFF, leverage={"gained": [{"kind": kind, "label": "The odd calendar date"}]}),
 ])
 se.update_progress_from_turn(ctx, "note the calendar", "narration text")
 prompt = se.build_system_prompt(ctx)
@@ -279,39 +278,39 @@ def add_second_rule(s):
 with_story(ctx, add_second_rule)
 stderr = io.StringIO()
 with contextlib.redirect_stderr(stderr):
-    rule = se._pacing_rule(ctx["story"]["mechanics"]["pacing_loop"])
+    rule = se.mechanics.pacing.ENGINE.rule(ctx["story"]["mechanics"]["pacing_loop"])
 assert rule["id"] == "force_complication"
 assert "WARNING" in stderr.getvalue() and "2 rules" in stderr.getvalue()
 print("OK: a template declaring more than one rule logs a warning and uses only the first")
 
 # ===========================================================================
 # Gap 1 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §1, spec §7): leverage is *spent*, not just gained, and
-# the ledger is bounded by LEVERAGE_LIMIT with spent entries evicted oldest-first.
+# the ledger is bounded by spendable_ledger.LIMIT with spent entries evicted oldest-first.
 # ===========================================================================
 ctx = se.state_store.load_state("pacingtest14", se.state_store.DEFAULT_STORY_SLUG)
 kind = ctx["story"]["mechanics"]["progression"]["kinds"][0]
 se.call_llm_json = CannedResponses([
-    dict(BASE_DIFF, leverage_gained=[
+    dict(BASE_DIFF, leverage={"gained": [
         {"kind": kind, "label": "A name she let slip"},
         {"kind": kind, "label": "The back-door key"},
-    ]),
+    ]}),
 ])
 se.update_progress_from_turn(ctx, "press for a name", "narration text")
-recorder = RecordingLLM(lambda p: dict(BASE_DIFF, leverage_spent=["The back-door key"]))
+recorder = RecordingLLM(lambda p: dict(BASE_DIFF, leverage={"spent": ["The back-door key"]}))
 se.call_llm_json = recorder
 se.update_progress_from_turn(ctx, "use the key", "narration text")
-assert '"leverage_spent"' in recorder.prompts[-1]
+assert '"spent"' in recorder.prompts[-1]
 assert "The back-door key" in recorder.prompts[-1], \
-    "the CURRENT <LABEL> line is what leverage_spent matches against, like items_lost"
+    "the CURRENT <LABEL> line is what leverage.spent matches against, like items_lost"
 leverage = ctx["state"]["protagonist"]["leverage"]
 assert [(e["label"], e["spent"]) for e in leverage] == [
     ("A name she let slip", False), ("The back-door key", True),
 ], "a spent entry is marked, not removed"
 assert leverage[1]["spent_turn"] == ctx["state"]["pacing"]["turn_count"]
-print("OK: leverage_spent marks a matching unspent entry spent (retained, not pruned) and "
+print("OK: leverage.spent marks a matching unspent entry spent (retained, not pruned) and "
       "records the turn it was spent on")
 
-# --- a spent entry stops being offered to the directive and to leverage_gained's dedup ---
+# --- a spent entry stops being offered to the directive and to leverage.gained's dedup ---
 ctx["state"]["pacing"]["armed"] = {"force_complication": {"deferrals": 0}}
 ctx["state"]["pacing"]["counters"] = {"tension": 0, "stasis": 5}
 prompt = se.build_system_prompt(ctx)
@@ -322,15 +321,15 @@ print("OK: a spent entry drops out of {unspent_leverage} while the unspent one r
 
 # --- a label that doesn't match, or matches only an already-spent entry, is a no-op ---
 se.call_llm_json = CannedResponses([
-    dict(BASE_DIFF, leverage_spent=["The back-door key", "something never gained"]),
+    dict(BASE_DIFF, leverage={"spent": ["The back-door key", "something never gained"]}),
 ])
 se.update_progress_from_turn(ctx, "try again", "narration text")
 assert [e["spent"] for e in ctx["state"]["protagonist"]["leverage"]] == [False, True]
-print("OK: a leverage_spent label matching nothing unspent is ignored rather than raising")
+print("OK: a leverage.spent label matching nothing unspent is ignored rather than raising")
 
-# --- LEVERAGE_LIMIT evicts spent entries oldest-first, and never an unspent one ---
+# --- the ledger limit evicts spent entries oldest-first, and never an unspent one ---
 ctx = se.state_store.load_state("pacingtest15", se.state_store.DEFAULT_STORY_SLUG)
-limit = se.LEVERAGE_LIMIT
+limit = se.mechanics.ledger.LIMIT
 ledger = ctx["state"]["protagonist"]["leverage"] = [
     {"id": f"lev_{i:03d}", "kind": kind, "label": f"entry {i}", "acquired_turn": i,
      "spent": i % 2 == 0}
@@ -345,7 +344,7 @@ surviving = {e["id"] for e in ledger}
 assert all(e["id"] in surviving for e in ledger if not e["spent"])
 assert [i for i in spent_before if i not in surviving] == spent_before[:3], \
     "the three oldest SPENT entries are the ones evicted"
-print(f"OK: over LEVERAGE_LIMIT ({limit}) the oldest spent entries are evicted first")
+print(f"OK: over the ledger limit ({limit}) the oldest spent entries are evicted first")
 
 # --- unspent entries alone over the limit are allowed to overflow rather than be dropped ---
 ctx = se.state_store.load_state("pacingtest16", se.state_store.DEFAULT_STORY_SLUG)

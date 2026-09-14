@@ -36,15 +36,6 @@ FLAGS_ACTIVE_LIMIT = 25
 # CR-03: revealed memory fragments accumulate for the whole game, same shape of problem as
 # SUBPLOT_TITLE_HISTORY_LIMIT - bound how many of them reach the narration prompt, keyed off
 # revealed_turn so the most recently revealed ones are the ones that survive the cap.
-# Spec 7's retention/bounding policy for protagonist.leverage. Spent entries are deliberately
-# RETAINED rather than pruned on spend - they're cheap, they enable callbacks, and
-# history.compressed_summary is already lossy, so a spent-but-retained entry may end up the
-# only surviving record that something was ever gained. This is the roster cap that keeps
-# that from growing forever (docs/ARCHITECTURE.md, "Keeping LLM Context Bounded"): over the cap, evict
-# spent entries oldest-first and NEVER an unspent one - if unspent entries alone exceed the
-# limit, allow the overflow rather than dropping a live asset. Note only unspent entries
-# ever reach a prompt, so this bounds disk growth and the eviction order, not per-entry cost.
-LEVERAGE_LIMIT = mechanics.ledger.LIMIT
 # The completion_threshold a "multi_act"-span subplot gets instead of the normal 100 (see
 # insert_subplot) - the only lever that actually makes one take longer to resolve, since
 # progress/completion tracking (update_progress_from_turn, check_subplot_status) is generic
@@ -585,18 +576,6 @@ def _next_subplot_id(subplots: dict) -> str:
     ]
     next_number = (max(existing_numbers) + 1) if existing_numbers else 1
     return f"subplot_{next_number:03d}"
-
-
-def _pacing_rule(pacing_loop_cfg: dict) -> dict | None:
-    """The story's one pacing rule (spec §6.2). Phase 5: `beat_counter` owns this; the name
-    stays because `_section_pacing_directive` and `test_pacing_loop.py` both call it."""
-    return mechanics.pacing.ENGINE.rule(pacing_loop_cfg)
-
-
-def _rule_effective_threshold(rule: dict, current_act: dict | None):
-    """Spec §13's resolution order. Phase 5: `beat_counter` owns this, for the same reason it
-    owns the arming that reads it - the directive builder stays the caller, not the author."""
-    return mechanics.pacing.ENGINE.effective_threshold(rule, current_act)
 
 
 def _unspent_leverage_text(ctx: dict) -> str:
@@ -1664,7 +1643,7 @@ def _section_pacing_directive(ctx: dict) -> str | None:
     and nothing here persists beyond bookkeeping (deferrals, last_fired_rule) for next
     turn's eligibility check.
 
-    v1 scope: exactly one rule per story (_pacing_rule) - no cross-rule arbitration.
+    v1 scope: exactly one rule per story (beat_counter.rule) - no cross-rule arbitration.
 
     last_fired_rule is consumed here (popped, not just read): it should suppress a
     just_fired-gated rule for exactly the one turn immediately after it fired, not forever -
@@ -1685,7 +1664,7 @@ def _section_pacing_directive(ctx: dict) -> str | None:
     if entry is None:
         return None  # not armed - the watched counter hasn't crossed threshold
 
-    threshold = _rule_effective_threshold(rule, _current_act(ctx))
+    threshold = bound.engine.effective_threshold(rule, _current_act(ctx))
     if threshold is None:
         return None  # disabled for this act, e.g. "finale": null
 

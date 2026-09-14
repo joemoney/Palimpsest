@@ -878,9 +878,9 @@ acceptance gates, risks, and the story-content interleave.
 | 2 | Port `stats` → `bounded_counter`, declare-to-bind. **No schema cutover** (§8.3) | **Done.** Equivalence harness identical on 8 targets incl. 3 live saves; all 12 prompts byte-identical |
 | 3 | Registry dimension in the conformance fixtures | **Done.** Both directions, `EXPECTED_ENGINES` written out, budget rule made structural |
 | 4 | Port `relationship`, `inventory`, `revelation`, `failure`, subplot progress | **Done.** Field count down on all four measurable targets (11→10, 8→5, 8→6, 9→8); §12.5 and the `stat_changes` conversion left open, see `docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md`'s phase 4 gate |
-| 5 | Relocate `pacing_loop` and `progression`, deliberately unchanged | **Done.** `test_pacing_loop.py` passes with zero edits; observation prompt identical bytes, reordered. §5.4's two-fields-into-one merge is split out as its own step, see `ENGINE_V2_PHASES.md`'s phase 5 gate |
+| 5 | Relocate `pacing_loop` and `progression`, deliberately unchanged | **Done in two steps.** 5a relocated both with zero edits to `test_pacing_loop.py`; 5b merged each engine's two fields into one (§5.4), landing the flagships at 11 against a budget of 10 for +19 prompt chars. See `ENGINE_V2_PHASES.md`'s phase 5b |
 | 6 | `gate`: pre-action check, refusal path, and §2.2's authored act `requires` | Refusal path test; predicate latching test; no reachable deadlock |
-| 7 | Observation sharding (§5.3) — only if phase 4's measurement demands it | Concurrency; `test_status_labels.py` mirror intact |
+| 7 | Observation sharding (§5.3) — **measured after 5b: 11 vs a budget of 10, one field over on two stories only. Port `entity_interaction` or convert `stat_changes` first — either lands 10 with no concurrency work** | Concurrency; `test_status_labels.py` mirror intact |
 | 8 | `check` (§7.7) — minimal, on demand only | A story actually wants it |
 
 **Phase 2 is the stop-gate.** `resource` is the best-covered, least-surprising mechanic in

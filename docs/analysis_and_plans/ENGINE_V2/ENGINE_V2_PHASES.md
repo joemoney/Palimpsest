@@ -596,10 +596,11 @@ had assumed away. None of those were visible before the mechanic had a module.
 
 ## Phase 5 — Relocate `pacing_loop` and `progression`
 
-**Status: done.** `backend/mechanics/pacing.py` (`beat_counter`) and
-`backend/mechanics/ledger.py` (`spendable_ledger`). The gate was met strictly:
-`test_pacing_loop.py` passes with **zero edits**. Field counts are unchanged by design, so
-phase 7's projected 11 is still unproduced — see *What phase 5 did not deliver* below.
+**Status: done, in two steps.** `backend/mechanics/pacing.py` (`beat_counter`) and
+`backend/mechanics/ledger.py` (`spendable_ledger`). **5a** relocated both with zero edits to
+`test_pacing_loop.py`; **5b** then merged each engine's two observation fields into one, which
+is the edit 5a existed to avoid making by accident. **Phase 7's number is now measured: a
+fully-ported flagship sits at 11 against a budget of 10** — see *Phase 5b* below.
 
 **Goal.** Move the two mechanics that are already the right shape, and change nothing about
 them.
@@ -636,7 +637,8 @@ moved for that reason alone (`regency` 6 → 8 with `progression`, `survival` 8 
 
 ### What phase 5 did not deliver
 
-**The §5.4 merge, deliberately.** Both engines contribute **two** fields where §5.4 says one
+**The §5.4 merge — deferred to 5b above, not skipped.** As shipped in 5a both engines
+contributed **two** fields where §5.4 says one
 - `beat_type`/`intensity` and `leverage_gained`/`leverage_spent`, each the textbook case for
 the richer type that `revelations` already became in phase 4. They were not merged here
 because this phase's gate is `test_pacing_loop.py` passing unmodified and that file asserts
@@ -645,10 +647,51 @@ plan asserted both** - this section said "change nothing", while *Phase 4 gate* 
 "phase 5 merges" the pairs. That contradiction is resolved in favour of the phase's own
 stated gate, and the merge is now its own step.
 
-**So phase 7's go/no-go is still waiting on a number.** The projection that a fully-ported
-flagship lands at 11 against a budget of 10 assumed the merge; without it the flagships read
-12/13, exactly as they did after phase 4. Re-measure after the merge, decide there, and do
-not read phase 5's flat counts as evidence either way.
+**That left phase 7's go/no-go waiting on a number**, which 5b then produced. Read 5a's flat
+counts as evidence of nothing: they are what "relocated and changed nothing" looks like.
+
+### Phase 5b — the §5.4 merge
+
+**`beat_type`+`intensity` became `beat: {type, intensity}`, and
+`leverage_gained`+`leverage_spent` became `leverage: {gained, spent}`**, following the shape
+`revelations` already took in phase 4. Each pair was always one question asked in two halves:
+what kind of scene this was and how hard it landed; what the ledger gained and what it spent.
+
+**The measurement phase 7 was waiting on, finally taken:**
+
+| | phase 0 | after phase 4 | after 5b |
+|---|---|---|---|
+| `new_babel` (turn 0 / post-creation) | 14 / 15 | 12 / 13 | **10 / 11** |
+| `the_missing_core` | not tabled | 12 / 13 | **10 / 11** |
+| `example` | 11 | 10 | **8** |
+| `regency` / `survival` | 8 / 9 | 8 / 10 | **7 / 9** |
+
+The projection was exactly right: **11 against a budget of 10, over by one, and only on the two
+flagships.** `example` and every fixture are inside it.
+
+**It cost 19 characters.** Observation prompts moved `example` 7,979 → 7,998, `new_babel`
+11,117 → 11,136, `the_missing_core` 10,151 → 10,170 — the nesting wrapper, near enough free.
+That is worth stating precisely because the first cut of the merge cost **144**: a separate
+`instruction` paragraph explaining that both halves are lists. Folding that sentence back into
+the schema line recovered all of it. A merge that buys a field reduction with prompt characters
+is a poor trade and an easy one to make without noticing, since §5.4 budgets fields and nothing
+was watching the other number.
+
+**Phase 7's go/no-go, decidable now and still not urgent.** One field over budget, on two
+stories, with every other target inside it. §5.1 wants sharding when the observation pass is
+carrying more questions than one call should hold; 11 is not that, and the remaining overage is
+a single field. The two candidates for closing it are both real and neither is sharding:
+`entity_interaction` belongs to no §7 catalogue entry and has never been ported, and
+`stat_changes` is still v2-shaped pending the `costs` tables §8.1 wants. **Either would land the
+flagships at 10 without any concurrency work at all**, which is the cheaper experiment and
+should be run first.
+
+**Two shims retired, as planned.** `story_engine._pacing_rule` and `LEVERAGE_LIMIT` existed only
+because 5a's gate called them by name; the gate test now calls `mechanics.pacing.ENGINE.rule` and
+`mechanics.ledger.LIMIT` directly and both shims are gone. `_rule_effective_threshold` went with
+them - the directive builder calls the engine.
+
+---
 
 ### What hosting them actually required
 

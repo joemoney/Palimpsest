@@ -16,10 +16,16 @@ dropping a live asset: if the list is over `LIMIT` but every entry is unspent, t
 stands. An unspent entry is a promise the release directive can still cash, and silently deleting
 one would make the directive point at something the story never delivered.
 
-**Two fields, deliberately, for now** - `leverage_gained` and `leverage_spent`, which §5.4 wants
-as one richer field. Not merged here for the reason `beat_counter` gives at length: phase 5's gate
-is `test_pacing_loop.py` passing unmodified, and that file asserts on both names. The merge is its
-own step with its own measurement.
+**One field, `leverage`, carrying `{gained, spent}`.** §5.4 wants an engine's two fields to be
+one with a richer type, and these two are the same question asked in both directions - what did
+this turn add to the ledger, and what did it use up. Phase 5 kept them apart only because its gate
+pinned the old names; the merge step is where that edit is spent on purpose.
+
+**Both halves stay lists, and an absent half is an empty one.** A turn that gains without
+spending is the common case, so the model needs a cheap way to say "nothing here" that is not a
+missing key - `[]` for both. That lives in the schema line rather than in a separate instruction
+paragraph, because a merge that bought a field reduction with prompt characters would be a
+poor trade and an easy one to make by accident.
 
 **Still matched by exact label string**, the pattern `items_lost` used before phase 4 gave
 inventory real ids - and the reason the unspent labels are shown verbatim in the prompt. Giving
@@ -68,40 +74,40 @@ class SpendableLedger(MechanicEngine):
     # --- observation ---------------------------------------------------------------
 
     def observations(self, cfg, ctx):
-        """Two fields - see the module docstring on why they are not yet one."""
+        """One field (§5.4), both directions of the ledger in a single answer."""
         kinds = self.kinds(cfg)
         hint = cfg.get("prompt_hint", "")
         label = self.label(cfg)
-        unspent = self.unspent(cfg, ctx)
-        gained = ObservationField(
-            "leverage_gained",
-            f'  "leverage_gained": [{{"kind": "<one of: {", ".join(kinds)}>", "label": "<short, '
-            f'concrete description of a durable gain the protagonist did not have before this '
-            f'turn{" - " + hint if hint else ""}>"}}]',
-            f"\nCURRENT {label.upper()} (do not repeat in leverage_gained; copy a label "
-            f"verbatim from here for leverage_spent): {json.dumps(unspent)}",
+        schema = (
+            f'  "leverage": {{"gained": [{{"kind": "<one of: {", ".join(kinds)}>", '
+            f'"label": "<short, concrete description of a durable gain the protagonist did '
+            f'not have before this turn{" - " + hint if hint else ""}>"}}], '
+            f'"spent": ["<the exact label, copied verbatim from CURRENT {label.upper()} '
+            "above, of every entry this turn used up or invalidated - spent when it has been "
+            "cashed in and can't be cashed again, or when events made it worthless. Not "
+            'merely mentioned or acted on. Both halves are [] if nothing applies>"]}'
         )
-        spent = ObservationField(
-            "leverage_spent",
-            f'  "leverage_spent": ["<the exact label, copied verbatim from CURRENT '
-            f'{label.upper()} above, of every entry this turn used up or invalidated - '
-            "spent when it has been cashed in and can't be cashed again, or when events "
-            'made it worthless. Not merely mentioned or acted on. [] if none>"]',
+        context = (
+            f"\nCURRENT {label.upper()} (do not repeat in leverage.gained; copy a label "
+            f"verbatim from here for leverage.spent): {json.dumps(self.unspent(cfg, ctx))}"
         )
-        return [gained, spent]
+        return [ObservationField("leverage", schema, context)]
 
     def events(self, cfg, ctx, diff):
         """A gain with no label, or with a kind outside the authored list, is dropped - the
         vocabulary is the story's and an entry outside it is a mechanic the author never wrote."""
         kinds = self.kinds(cfg)
+        block = diff.get("leverage")
+        if not isinstance(block, dict):
+            return []
         events = []
-        for gain in diff.get("leverage_gained") or []:
+        for gain in block.get("gained") or []:
             label = gain.get("label")
             kind = gain.get("kind")
             if not label or (kinds and kind not in kinds):
                 continue
             events.append({"type": "leverage_gained", "kind": kind, "label": label})
-        for label in diff.get("leverage_spent") or []:
+        for label in block.get("spent") or []:
             events.append({"type": "leverage_spent", "label": label})
         return events
 

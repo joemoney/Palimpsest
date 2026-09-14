@@ -9,15 +9,16 @@ emits a beat name and an intensity, and every number after that is the engine's.
 moves code and changes no behaviour, which is what makes `test_pacing_loop.py` passing
 *unmodified* a meaningful gate rather than a formality.
 
-**Two fields, deliberately, for now.** §5.4 says one field per engine - "an engine needing two
-is two engines, or one field with a richer type" - and `beat_type`/`intensity` are the textbook
-case for the richer type, exactly as `revelations` merged `revealed`/`eligible` in phase 4.
-They are *not* merged here, because phase 5's gate is that `test_pacing_loop.py` passes
-unmodified and that file asserts on both names, in the prompt and as diff keys. Merging them is
-a real change with a real measurement attached - it is what phase 7's go/no-go budget was
-projected against - so it gets its own step and its own gate rather than riding in on a phase
-whose whole claim is that nothing changed. Until then this engine is the registry's one §5.4
-exception, and it is an exception with an end date.
+**One field, `beat`, carrying `{type, intensity}`.** §5.4: "an engine needing two is two
+engines, or one field with a richer type", and these two were always one question - *what kind
+of scene was this, and how hard did it land*. Phase 5 shipped them as two because its gate was
+that `test_pacing_loop.py` not change and that file pinned both names; the merge is the step
+that spends that edit deliberately rather than smuggling it in.
+
+**Intensity stays inside the beat rather than becoming its own event.** It is meaningless
+without a beat to qualify - an intensity with no type is not a weaker classification, it is no
+classification - so nesting it is what makes the invalid state unrepresentable instead of
+merely unlikely.
 
 **What deliberately did NOT move.** `_section_pacing_directive` stays in `story_engine`: it runs
 at prompt-assembly time rather than in the turn pipeline, and it reads the reveal queue, the
@@ -89,7 +90,7 @@ class BeatCounter(MechanicEngine):
     # --- observation ---------------------------------------------------------------
 
     def observations(self, cfg, ctx):
-        """Two fields - see the module docstring on why they are not yet one.
+        """One field (§5.4), carrying the classification and its weight together.
 
         No cadence (§5.2): a beat is classified every turn, because a turn that advanced nothing
         is itself a beat type in every vocabulary authored so far, and "no answer" and "the quiet
@@ -106,30 +107,27 @@ class BeatCounter(MechanicEngine):
         tie_break = cfg.get("tie_break", "")
         if tie_break:
             context += f"\n{tie_break}"
-        return [
-            ObservationField(
-                "beat_type",
-                f'  "beat_type": "<exactly one of: {", ".join(beats)} - whichever beat type '
-                'above best matches what actually happened on the page this scene>"',
-                context,
-            ),
-            ObservationField(
-                "intensity",
-                '  "intensity": <integer 1-3 for the beat above - 1: pressure present, no '
-                "immediate physical danger; 2: direct confrontation or a forced decision in the "
-                'room; 3: physical danger, active pursuit, or body-horror escalation>',
-            ),
-        ]
+        schema = (
+            f'  "beat": {{"type": "<exactly one of: {", ".join(beats)} - whichever beat type '
+            'above best matches what actually happened on the page this scene>", '
+            '"intensity": <integer 1-3 for that beat - 1: pressure present, no immediate '
+            "physical danger; 2: direct confrontation or a forced decision in the room; 3: "
+            'physical danger, active pursuit, or body-horror escalation>}'
+        )
+        return [ObservationField("beat", schema, context)]
 
     def events(self, cfg, ctx, diff):
         """A beat outside the authored vocabulary is dropped rather than stored, and a missing or
         unparseable intensity floors to 1 rather than failing the turn - the classification is
         advisory pressure, and a turn that loses it should still land."""
-        beat_type = diff.get("beat_type")
+        block = diff.get("beat")
+        if not isinstance(block, dict):
+            return []
+        beat_type = block.get("type")
         if beat_type not in self.beats(cfg):
             return []
         try:
-            intensity = max(1, min(3, int(diff.get("intensity"))))
+            intensity = max(1, min(3, int(block.get("intensity"))))
         except (TypeError, ValueError):
             intensity = 1
         return [{"type": "beat", "beat": beat_type, "intensity": intensity}]
