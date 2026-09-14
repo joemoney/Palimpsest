@@ -77,6 +77,27 @@
           "ending_prompt": "Close on the verdict, read into a room that has already stopped listening."
         }
       ]
+    },
+    "gate": {
+      "engine": "precondition",
+      "_authored": "One gate, unmet at turn 0, so the conformance run sees the authored direction as well as the absent one.",
+      "gates": [
+        {
+          "id": "sealed_record_room",
+          "target": "loc_records",
+          "requires": {
+            "all": [
+              {
+                "item_tag": "writ"
+              },
+              {
+                "flag": "clerk_persuaded"
+              }
+            ]
+          },
+          "refusal_hint": "The clerk does not refuse you. He simply keeps finding other things to attend to, and the door stays where it is."
+        }
+      ]
     }
   },
   "plot": {

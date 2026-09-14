@@ -151,6 +151,22 @@ def _scene_and_controls_response(ctx: dict, story_slug: str, user_id: str = None
     )
 
 
+def _refusal_response(ctx: dict, story_slug: str, user_id: str, refusal: dict) -> str:
+    """§7.4's refusal, rendered as out-of-band swaps only.
+
+    No scene block: nothing happened, so there is nothing to append - and the result fetch
+    targets #scene-list, so a body here would be appended to the story as if it were a turn.
+    An empty body plus two OOB swaps leaves the transcript untouched, fills the modal, and
+    hands the controls back re-enabled with the same options still on them."""
+    turn = _latest_rendered_turn(ctx, animate=False)
+    mode = "concluded" if ctx["state"]["plot"]["endgame"]["concluded"] else "playing"
+    return render_template(
+        "_refusal.html", refusal=refusal, turn=turn, options=turn["options"], mode=mode,
+        story_slug=story_slug,
+        label_row=_label_row(ctx, story_slug, user_id) if user_id else None,
+    )
+
+
 def _turn_in_progress_response():
     """Shared by take_turn/regenerate_turn: refuses to start a second turn for a save that
     already has one running, rather than racing it - reuses state_store's turn-status beacon
@@ -190,6 +206,9 @@ def _start_turn_job(fn, user_id: str, story_slug: str):
         try:
             fn()
             state_store.write_turn_result(user_id, story_slug, ok=True)
+        except story_engine.ActionRefused as e:
+            state_store.write_turn_result(user_id, story_slug, ok=True,
+                                          refusal={"sentence": e.sentence, "gate": e.gate})
         except story_engine.LLMUnavailableError as e:
             state_store.write_turn_result(user_id, story_slug, ok=False, error=str(e))
 
@@ -439,6 +458,10 @@ def turn_result(story_slug):
         # so #scene-list/#controls are left exactly as they were and the player can just
         # retry the same choice.
         return result["error"], 503
+    if result.get("refusal"):
+        # §7.4: the world refused the action, so no turn happened and there is no new scene.
+        ctx = state_store.load_state(user_id, story_slug)
+        return _refusal_response(ctx, story_slug, user_id, result["refusal"])
     ctx = state_store.load_state(user_id, story_slug)
     return _scene_and_controls_response(ctx, story_slug, user_id)
 

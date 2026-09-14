@@ -20,7 +20,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _llm_stubs import RecordingLLM, load_story_engine  # noqa: E402
+from _llm_stubs import CannedResponses, RecordingLLM, load_story_engine  # noqa: E402
 
 se = load_story_engine()
 mechanics = se.mechanics
@@ -167,5 +167,65 @@ se.call_llm_json = RecordingLLM(lambda p: {"blocked": 1, "sentence": "   "})
 assert se.detect_gate_refusal(ctx, "I try the vault door")["sentence"] == "The door does not argue.", \
     "an empty sentence falls back to the authored hint rather than showing the player nothing"
 print("OK: an empty sentence falls back to the gate's refusal_hint")
+
+# =====================================================================================
+# 7. The hard rail - a gated location is vetoed however the narration got there
+# =====================================================================================
+# The detector is a model reading prose and misses roughly a third of oblique attempts
+# (measured, 6/9 recall). This is the half that never misses: scene_update.location is a
+# closed set, so refusing a move needs no judgement.
+cfg_vault = {"engine": "precondition", "gates": [
+    {"id": "vault", "target": "loc_vault", "requires": {"item_tag": "vault_key"},
+     "refusal_hint": "The door does not argue."}]}
+assert ENGINE.blocking(cfg_vault, ctx_with(), "loc_vault")["id"] == "vault"
+assert ENGINE.blocking(cfg_vault, ctx_with(), "loc_hall") is None
+carrying_key = ctx_with(inventory=[{"id": "i1", "label": "key", "tags": ["vault_key"]}])
+assert ENGINE.blocking(cfg_vault, carrying_key, "loc_vault") is None
+print("OK: blocking() names the gate refusing a location, and nothing once its predicate is met")
+
+sections = mechanics.prompt_sections({"story": se.state_store.freeze({"mechanics": {"gate": cfg_vault}}),
+                                      "state": ctx_with()["state"]})
+assert "gate.closed" in sections and "The door does not argue." in sections["gate.closed"]
+open_sections = mechanics.prompt_sections(
+    {"story": se.state_store.freeze({"mechanics": {"gate": cfg_vault}}), "state": carrying_key["state"]})
+assert "gate.closed" not in open_sections, "P-2: a story with nothing shut contributes no header"
+print("OK: the narrator is told what is shut, and nothing at all when nothing is")
+
+# =====================================================================================
+# 8. The refusal path - no narration, no observation pass, no state change
+# =====================================================================================
+holder = {"ctx": se.state_store.load_state("gatetest", se.state_store.DEFAULT_STORY_SLUG)}
+story = se.state_store.thaw(holder["ctx"]["story"])
+story["mechanics"]["gate"] = cfg_vault
+holder["ctx"]["story"] = se.state_store.freeze(story)
+se.state_store.load_state = lambda *a, **k: holder["ctx"]
+se.state_store.save_state = lambda c, *a, **k: holder.update(ctx=c)
+
+before = se.state_store.thaw(holder["ctx"]["state"])
+narration = RecordingLLM(lambda p: "should never be called")
+se.call_llm = narration
+se.call_llm_json = RecordingLLM(lambda p: {"blocked": 1, "sentence": "The door does not move."})
+try:
+    se.take_turn("I try the vault door")
+    raise AssertionError("a refused action must not fall through into a turn")
+except se.ActionRefused as exc:
+    assert exc.sentence == "The door does not move." and exc.gate == "vault", exc
+assert narration.prompts == [], "a refused action must never reach the narration call"
+assert se.state_store.thaw(holder["ctx"]["state"]) == before, "a refusal must change no state"
+print("OK: a refused action raises ActionRefused, with no narration call and no state change")
+
+se.call_llm = CannedResponses(["A scene.\n\nOPTIONS:\n1. a || a\n2. b || b\n3. c || c"])
+se.call_llm_json = CannedResponses([
+    {"blocked": None, "sentence": ""},
+    {"flags_set": {}, "scene_update": {"location": "loc_vault", "summary": "inside the vault",
+                                       "present_npcs": []}, "new_characters": []},
+])
+location_before = holder["ctx"]["state"]["scene"]["location"]
+se.take_turn("I walk around")
+assert holder["ctx"]["state"]["scene"]["location"] == location_before, \
+    "the veto must refuse a gated location even when the narration went there"
+assert holder["ctx"]["state"]["scene"]["summary"] == "inside the vault", \
+    "only the location is vetoed - the narration the player read is left alone"
+print("OK: the veto refuses a gated scene_update.location the detector let through")
 
 print("\nALL CHECKS PASSED: test_gate_precondition")

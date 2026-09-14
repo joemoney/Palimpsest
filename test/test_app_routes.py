@@ -237,6 +237,37 @@ try:
     assert resp.get_json() == {"label": None, "progress": None}
     print("OK: GET /api/status is cleared back to None after the turn completes")
 
+    # --- §7.4: a refused action returns 200 with OOB swaps only. No scene block, because no
+    # turn happened - the result fetch targets #scene-list, so a body here would append the
+    # refusal to the transcript as though the story had moved on. ---
+    story = ss.thaw(ss.load_state(alice_id, "new_babel")["story"])
+    story["mechanics"]["gate"] = {"engine": "precondition", "gates": [
+        {"id": "vault", "target": "loc_vault", "requires": {"item_tag": "never_carried"},
+         "refusal_hint": "The door does not argue."}]}
+    real_load = ss.load_state
+    ss.load_state = lambda u, s, *a, **k: dict(real_load(u, s, *a, **k), story=ss.freeze(story))
+    turns_before = real_load(alice_id, "new_babel")["state"]["pacing"]["turn_count"]
+    se.call_llm_json = CannedResponses([{"blocked": 1, "sentence": "The door does not move."}])
+
+    resp = client.post("/play/new_babel/api/turn", data={"action": "I try the vault door"})
+    assert resp.status_code == 202, resp.status_code
+    wait_for_idle(alice_id)
+    resp = client.get("/play/new_babel/api/turn/result")
+    assert resp.status_code == 200, resp.status_code
+    assert b'id="refusal-text"' in resp.data and b"The door does not move." in resp.data
+    assert b'class="scene-block"' not in resp.data, \
+        "a refusal must not append anything to the transcript"
+    assert b'id="controls"' in resp.data and b'hx-swap-oob="true"' in resp.data, \
+        "the controls have to come back, or the player is left with a disabled form"
+    assert real_load(alice_id, "new_babel")["state"]["pacing"]["turn_count"] == turns_before, \
+        "a refused action must not consume a turn"
+    ss.load_state = real_load
+    # Restore the shared queue: the refusal above swapped in a single-response stub, and the
+    # tests below still need the normal state-update answer for every turn they take.
+    se.call_llm_json = CannedResponses([state_update] * 10)
+    print("OK: a refused action returns the refusal fragment, appends no scene, and "
+          "consumes no turn")
+
     # --- a turn already in flight for this save makes /api/turn and /api/regenerate refuse
     # to start a second one, rather than racing it - the turn-status beacon doubles as a
     # cheap in-flight lock, not just a display hint for the busy indicator. Simulated

@@ -440,12 +440,16 @@ def _result_path(user_id: str, story_slug: str) -> str:
     return _save_path(user_id, story_slug) + ".result"
 
 
-def write_turn_result(user_id: str, story_slug: str, ok: bool, error: str | None = None):
+def write_turn_result(user_id: str, story_slug: str, ok: bool, error: str | None = None,
+                      refusal: dict | None = None):
+    """`refusal` is a third outcome, not a kind of error: the turn ran correctly and the world
+    said no (§7.4). It carries the sentence to show and the gate that produced it, and it means
+    no state was written, so the caller re-renders nothing."""
     path = _result_path(user_id, story_slug)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp_path = path + f".tmp{os.getpid()}"
     with open(tmp_path, "w") as f:
-        json.dump({"ok": ok, "error": error}, f)
+        json.dump({"ok": ok, "error": error, "refusal": refusal}, f)
     os.replace(tmp_path, path)
 
 

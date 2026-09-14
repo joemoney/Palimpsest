@@ -1,0 +1,8 @@
+{# §7.4's refusal. Out-of-band swaps only: no turn happened, so nothing is appended to the
+   transcript. data-text rather than inline HTML, matching _scene_block.html - the sentence is
+   LLM output, and play.html's escapeHtml runs before the three marker regexes so it can never
+   inject real markup. Jinja escapes the attribute itself. #}
+<p id="refusal-text" class="story" data-text="{{ refusal.sentence }}" hx-swap-oob="true"></p>
+<fieldset id="controls" class="post-narration" hx-swap-oob="true">
+{% include "_controls.html" %}
+</fieldset>

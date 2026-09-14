@@ -148,6 +148,19 @@ if not GOOGLE_API_KEY:
 genai.configure(api_key=GOOGLE_API_KEY)
 
 
+class ActionRefused(Exception):
+    """The world refused this action (§7.4), so no turn happened.
+
+    An exception rather than a return value for the same reason `LLMUnavailableError` is one:
+    it has to unwind every caller - CLI, web, and any future entry point - without each of
+    them having to remember to check a flag, and it carries the guarantee that nothing was
+    written. A refusal costs one Tier C call and no state change at all."""
+
+    def __init__(self, sentence: str, gate: str):
+        super().__init__(sentence)
+        self.sentence, self.gate = sentence, gate
+
+
 class LLMUnavailableError(Exception):
     """Raised when the LLM API call fails for a reason outside our control - rate limit,
     quota exhausted, transient outage - rather than a bug in our own code, regardless of
@@ -918,7 +931,18 @@ is a separate, manual step."""
     if isinstance(scene_update, dict):
         new_location = scene_update.get("location")
         if new_location and (not valid_locations or new_location in valid_locations):
-            scene["location"] = new_location
+            # §7.4's hard rail. The pre-action detector is a model reading prose and misses
+            # roughly a third of oblique attempts; this is a closed-set check that misses
+            # none, so a gate the narration talked its way past still does not move the
+            # player. The narration is left as written - it is the scene the player read -
+            # and only the location is refused.
+            gate_bound = mechanics.bound_for(ctx["story"], "gate")
+            blocked = (gate_bound.engine.blocking(gate_bound.cfg, ctx, new_location)
+                       if gate_bound else None)
+            if blocked is None:
+                scene["location"] = new_location
+            else:
+                print(f"[gate] {blocked['id']} refused a move to {new_location}")
         new_summary = scene_update.get("summary")
         if new_summary:
             scene["summary"] = new_summary
@@ -1892,6 +1916,15 @@ underscores for anything other than underline).
 {instruction_footer}"""
 
 
+def _section_gates(ctx: dict) -> str | None:
+    """What the world is currently refusing (§7.4), so the prose agrees with the rail.
+
+    Its own section rather than a clause in the footer because it is *situational* - it
+    changes as the player picks up a key or talks their way past a clerk - and it belongs
+    beside the scene it constrains, not among the standing format instructions."""
+    return mechanics.prompt_sections(ctx).get("gate.closed")
+
+
 SECTIONS = [
     _section_identity,
     _section_style,
@@ -1906,6 +1939,7 @@ SECTIONS = [
     _section_pacing_or_endgame,
     _section_pacing_directive,
     _section_scene,
+    _section_gates,
     _section_revelations,
     _section_protagonist,
     _section_footer,
@@ -2387,6 +2421,14 @@ def take_turn(
             final_arc = handle_end_story_request(ctx)
             state_store.save_state(ctx, user_id, story_slug)
             print(f"\n[The story is moving toward its conclusion: {final_arc['title']}]\n")
+
+        # §4's pre-action gate check, and the only thing before it is the end-story command
+        # (which is the player asking to stop, not an action the world may refuse). Ahead of
+        # the snapshot on purpose: a refused turn takes no snapshot because there is no turn
+        # to regenerate, so `pending_regenerate` still points at the last real one.
+        refusal = detect_gate_refusal(ctx, player_action)
+        if refusal:
+            raise ActionRefused(refusal["sentence"], refusal["gate"])
 
         pre_turn_snapshot = copy.deepcopy(ctx["state"])
         pre_turn_snapshot.pop("pending_regenerate", None)

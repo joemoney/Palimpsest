@@ -142,9 +142,19 @@ class Precondition(MechanicEngine):
     # Adjudicates rather than resolves, so its order never matters; kept low so that a future
     # engine wanting to read a gate verdict finds it already decided.
     resolve_order = 10
-    # §5.4. Contributes no narration section: what the narrator is told about a locked door
-    # is the refusal path's job, and that is not assembled here.
-    prompt_budget = 0
+    # §5.4. One line per currently-shut gate plus a header; a story with a dozen gates open
+    # at once is authoring a maze rather than a world, and should be told so.
+    prompt_budget = 900
+
+    def resolve(self, cfg, ctx, observations, events):
+        """Nothing. §7.4: this engine adjudicates, it does not resolve - it owns no state and
+        emits no effects, and its verdicts are consumed by the turn pipeline and the narration
+        prompt rather than applied.
+
+        Spelled out rather than inherited because the base `resolve` raises: an engine that
+        forgets to implement it should fail loudly, and one that genuinely has nothing to do
+        should say so where a reader can see it."""
+        return []
 
     def gates(self, cfg):
         """The authored gates. Required for the same reason `triggered_reveal` requires
@@ -156,6 +166,41 @@ class Precondition(MechanicEngine):
                 "mechanics.gate declares engine 'precondition' but authors no 'gates'."
             )
         return gates
+
+    def blocking(self, cfg, ctx, location_id):
+        """The gate refusing entry to `location_id` right now, or None.
+
+        This is the hard rail, and it is the reason the detector is allowed to be imperfect.
+        The pre-action check is a model judging prose and measured at ~67% recall against
+        paraphrase - fine for deciding whether to raise a modal, not fine as the only thing
+        standing between a player and a locked room. `scene_update.location` is a closed set
+        the model picks from, so vetoing it needs no judgement at all and is right every time.
+        Same split as `mechanics.stats.readout` (P-7): the prompt makes the model usually
+        comply, the engine makes it always true."""
+        if not location_id:
+            return None
+        for g in self.gates(cfg):
+            if g.get("target") == location_id and not satisfied(g.get("requires"), ctx):
+                return g
+        return None
+
+    def prompt_sections(self, cfg, ctx) -> dict:
+        """Tell the narrator what is shut, so the prose agrees with the rail.
+
+        Without this the veto still holds but reads as a bug: the narration walks the player
+        into the vault and the state quietly leaves them outside. P-2 governs the header -
+        a story whose gates are all currently satisfied contributes nothing at all."""
+        unmet = self.unmet(cfg, ctx)
+        if not unmet:
+            return {}
+        lines = "\n".join(
+            f"- {g.get('target', 'somewhere')}: {g.get('refusal_hint', 'it does not open')}"
+            for g in unmet
+        )
+        return {"closed": (
+            "\nCLOSED TO THE PROTAGONIST RIGHT NOW (they cannot get in this turn, however "
+            "they try - write the attempt and the refusal, never the entry):\n" + lines
+        )}
 
     def unmet(self, cfg, ctx) -> list:
         """Every gate whose predicate is *not* satisfied right now - i.e. the only gates that

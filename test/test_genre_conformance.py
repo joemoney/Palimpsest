@@ -51,6 +51,9 @@ NARRATION_MARKERS = {
     # stable signal: it appears iff the scored_axis engine is bound and the story has a
     # roster to state it over.
     "relationships": "standing is",
+    # Phase 6. Only present while a gate is actually shut - a story whose gates are all
+    # satisfied contributes no header, which is P-2 rather than an accident of timing.
+    "gate": "CLOSED TO THE PROTAGONIST",
 }
 STATE_UPDATE_MARKERS = {
     "tracked_entity": "entity_interaction",
@@ -69,16 +72,16 @@ STATE_UPDATE_MARKERS = {
 # weakening the test.
 EXPECTED_ABSENT = {
     "regency.json": ["locations", "factions", "stats", "tracked_entity",
-                     "failure_conditions", "pacing_loop", "inventory"],
+                     "failure_conditions", "pacing_loop", "inventory", "gate"],
     "courtroom.json": ["locations", "factions", "tracked_entity", "stats",
                        "relationships", "progression", "pacing_loop", "inventory",
                        "subplots"],
-    "survival.json": ["relationships", "characters", "revelations", "progression"],
+    "survival.json": ["relationships", "characters", "revelations", "progression", "gate"],
 }
 EXPECTED_PRESENT = {
     "regency.json": ["relationships", "characters", "revelations", "subplots",
                      "progression"],
-    "courtroom.json": ["characters", "revelations", "failure_conditions"],
+    "courtroom.json": ["characters", "revelations", "failure_conditions", "gate"],
     "survival.json": ["stats", "tracked_entity", "failure_conditions", "locations",
                       "inventory", "subplots", "pacing_loop"],
 }
@@ -97,7 +100,7 @@ EXPECTED_ENGINES = {
     "regency.json": ["progression", "relationships", "revelations", "subplots"],
     # courtroom authors no plot.subplots at all - it is the deliberately single-thread
     # fixture, and the reason the subplot field stopped being unconditional (P-2).
-    "courtroom.json": ["failure_conditions", "revelations"],
+    "courtroom.json": ["failure_conditions", "gate", "revelations"],
     "survival.json": ["failure_conditions", "inventory", "pacing_loop", "stats",
                       "subplots"],
 }
