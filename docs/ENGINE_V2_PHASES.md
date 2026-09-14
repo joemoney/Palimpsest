@@ -527,12 +527,45 @@ beats). Broken down, its engine fields cost 2,455 chars of the 7,979: `social` 1
 `subplot_beats` 633, `inventory` 598. Every instruction block was tightened once after
 measurement, which recovered ~400 chars across the three.
 
-**This is the input to phase 7's go/no-go, and it argues for keeping phase 7 conditional
-rather than scheduling it.** §5.4's threshold is `core + 7` = ten fields, and the most
-loaded available story sits at ten exactly — at the line, not over it. But the two flagship
-stories are in the private submodule and could not be measured from this working copy, and
-phase 0 recorded them at 14–15 fields. **Phase 7's decision needs those two numbers re-run
-before it can be made**; nothing in the four public targets settles it either way.
+**Phase 7's go/no-go, now decidable.** The two flagship stories were unmeasurable while
+the private submodule sat unpushed; it was pushed on 2026-09-13 and both converted to the
+v3 shapes, so here are the numbers the decision was waiting on:
+
+| | phase 0 | now |
+|---|---|---|
+| `new_babel` (turn 0 / post-creation) | 14 / 15 | **12 / 13** |
+| `the_missing_core` | not tabled | **12 / 13** |
+
+The ports removed exactly the two they should have (`items_gained` + `items_lost` → one,
+`memory_fragments_revealed` + `revelations_eligible` → one); the other three were 1-for-1.
+`new_babel`'s 13 breaks down as:
+
+- **3 core** — `flags_set`, `scene_update`, `new_characters`
+- **5 ported engines** — `stat_changes`, `social`, `inventory`, `revelations`, `subplot_beats`
+- **5 not yet ported** — `entity_interaction`, `beat_type`, `intensity`, `leverage_gained`,
+  `leverage_spent`
+
+Phase 5 merges `beat_type`/`intensity` into one and `leverage_gained`/`leverage_spent` into
+one, which lands a fully-ported flagship at **11 against a budget of 10** — over, but by one,
+and only on the two flagships. So **phase 7 is indicated rather than merely conditional, and
+it is not urgent**: one field over budget on two stories does not justify concurrent
+sharding before phase 5 has actually produced that number. Re-measure after phase 5 and
+decide there.
+
+**Phase 0's "around 9 or 10 fully ported" projection was optimistic by one to two, and it is
+worth knowing why**, because the same reasoning would mislead again. It assumed revelations
+would cadence-gate to "usually none" — but `new_babel` authors 19 entries and
+`the_missing_core` 6, so the chain stays live for most of a playthrough and the field is
+present nearly every turn. And it never counted `entity_interaction`, which belongs to no
+§7 catalogue entry and so was invisible to a walk through the catalogue. **A projection made
+by walking the port list misses every field the port list does not mention.**
+
+**One number nobody was watching.** `the_missing_core`'s *narration* prompt is 19,795 chars
+(~4,950 tokens) — 58% larger than `new_babel`'s 12,534 and 3.7× `example`'s. Phase 0 tabled
+observation prompts because §5.1 was aimed there, and this one has been the bigger prompt all
+along. Nothing in engine v2 caused it (its narration prompt is flat across phase 4), and
+sharding the observation pass would not touch it. Worth a look on its own terms before
+phase 7 optimises the smaller half.
 
 **What the gate did not close, and neither item is hidden:**
 
@@ -658,7 +691,12 @@ Three stories, three different handling requirements:
 
 Both non-`example` stories are repo-owner items, not agent items.
 
-**Pending as of 2026-09-13.** The submodule was restructured to one folder per story and
+**Resolved 2026-09-13** — the submodule was pushed (`005e5d4..2770d67`), the gitlink
+bumped, and both private templates converted to the v3 shapes. Kept below because the
+failure mode it describes is the one to avoid repeating, and because the recovery order it
+states is still the rule.
+
+**Was pending.** The submodule was restructured to one folder per story and
 mounted at `stories/private/` (it was `stories/new_babel/`, a submodule of the same repo
 whose content sat at its root). That restructure is committed **in the submodule and not
 pushed**, so this branch deliberately carries the gitlink at the old commit with an
