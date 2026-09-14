@@ -877,7 +877,7 @@ acceptance gates, risks, and the story-content interleave.
 | 1 | Registry, `Effect`, resolve ordering, event log plumbing. No mechanic ported | Full suite green; assembled prompts byte-identical for all three stories and all three fixtures |
 | 2 | Port `stats` → `bounded_counter`, declare-to-bind. **No schema cutover** (§8.3) | **Done.** Equivalence harness identical on 8 targets incl. 3 live saves; all 12 prompts byte-identical |
 | 3 | Registry dimension in the conformance fixtures | **Done.** Both directions, `EXPECTED_ENGINES` written out, budget rule made structural |
-| 4 | Port `relationship`, `inventory`, `revelation`, `failure`, subplot progress | **Done.** Field count down on all four measurable targets (11→10, 8→5, 8→6, 9→8); §12.5 and the `stat_changes` conversion left open, see `docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md`'s phase 4 gate |
+| 4 | Port `relationship`, `inventory`, `revelation`, `failure`, subplot progress | **Done.** Field count down on all four measurable targets (11→10, 8→5, 8→6, 9→8). §12.5 since closed by measurement (Tier C stands); the `stat_changes` conversion remains open, see `docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md`'s phase 4 gate |
 | 5 | Relocate `pacing_loop` and `progression`, deliberately unchanged | **Done in two steps.** 5a relocated both with zero edits to `test_pacing_loop.py`; 5b merged each engine's two fields into one (§5.4), landing the flagships at 11 against a budget of 10 for +19 prompt chars. See `ENGINE_V2_PHASES.md`'s phase 5b |
 | 6 | `gate`: pre-action check, refusal path, and §2.2's authored act `requires` | **Done.** All three gates pass on both halves; the refusal is a Tier C detector raising a modal over a hard `scene_update.location` veto, amending §4's free pre-action check, and an unmet act `requires` skips the 12.29s director call. `tier` left out. See `ENGINE_V2_PHASES.md` |
 | 7 | Observation sharding (§5.3) | **Skipped, measured.** Folding `entity_interaction` into `scene_update` put every target at or under §5.4's ten, flagships included. Sharding would buy a threading complication for nothing; reopens if a later phase adds a field | Concurrency; `test_status_labels.py` mirror intact |
@@ -927,10 +927,14 @@ than a guideline.
 4. ~~**The sharding threshold.**~~ **Closed by phase 0.** Six did not survive measurement;
    §5.4 is now `core + 7` = ten, expressed as core plus engines. Phase 7 stays conditional
    and phase 1 is unblocked.
-5. **Is Tier C still right for the observation pass after E-3?** §5.5 has the argument in
-   both directions and cannot settle it on paper. Phase 4 settles it by measurement: run the
-   ported observation pass on Tier C and on Tier AB over the same held-out turns and compare
-   misclassification rates against the latency and cost delta. Until then, Tier C stands.
+5. ~~**Is Tier C still right for the observation pass after E-3?**~~ **Closed by measurement.**
+   Tier C stands, and is the *more* self-consistent of the two: over 20 held-out turns run twice
+   per tier it ties or beats Tier A and B on 8 of 11 classification fields, including 95% against
+   83–85% on the beat type the pacing loop rests on. Cross-tier agreement sits inside the
+   self-agreement range, so the difference between tiers is noise. See
+   `docs/analysis_and_plans/ENGINE_V2/TIER_OBSERVATION_MEASUREMENT.md`,
+   `scripts/tier_observation_probe.py`. The measurement also found what a tier switch would not
+   have fixed: `revelations.eligible` and `subplot_beats` reproduce at 44–50% on *every* tier.
 6. **Should a generated act ever carry a `requires`?** Deferred, not rejected — §2.2 records
    the design that would work and the reason not to build it yet. Revisit only if playtesting
    shows acts advancing too early, and only after `gate` has landed.

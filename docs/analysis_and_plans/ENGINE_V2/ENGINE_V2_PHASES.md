@@ -574,12 +574,14 @@ phase 7 optimises the smaller half.
 
 **What the gate did not close, and neither item is hidden:**
 
-- **§12.5 (is Tier C still right for the observation pass?) is not settled.** The phase asked
-  for the ported pass to be run on Tier C and Tier AB over the same held-out turns and the
-  misclassification rates compared. That needs live API calls against real turns; the whole
-  test suite here is offline by design and this working copy has no key. The pass now exists
-  in the form the experiment needs, which was the blocker — the measurement is schedulable
-  work, not design work. **Tier C stands until the numbers say otherwise**, per §5.5.
+- ~~**§12.5 (is Tier C still right for the observation pass?) is not settled.**~~ **Closed by
+  measurement** — `TIER_OBSERVATION_MEASUREMENT.md`, `scripts/tier_observation_probe.py`. It was
+  blocked only because this working copy had no key; it does. Tier C stands, and is the *more*
+  self-consistent of the two: it ties or beats Tier A and B on 8 of 11 classification fields, and
+  cross-tier agreement sits inside the self-agreement range, so the tier difference is noise. The
+  run also surfaced what no tier switch would have fixed — `revelations.eligible` and
+  `subplot_beats` reproduce at 44–50% on every tier, which is a question problem rather than a
+  model one.
 - **`stat_changes` → event vocabulary is still v2-shaped.** Phase 2 deferred "the field-count
   reduction" here and this phase delivered it from the other four ports; the `stat_changes`
   conversion itself needs authored `costs` tables (§8.1) in every story with stats plus a
