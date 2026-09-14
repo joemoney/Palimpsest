@@ -842,10 +842,33 @@ resolution, and it is non-latching in the way §2.2 says needs a high-water mark
 deliberately against this phase's named risk — the evaluator growing into an expression
 language — and it is one leaf to add when a story wants it.
 
-**Any authored content in a real story.** No shipped story declares a `gate` block or authors
-an act `requires`; `courtroom.json` does both, as the fixture that guards them. The feature
-ships dark until someone authors into it, and the two detector findings above plus §2.2's
-latching rule are what they will need when they do.
+**Authored content, in two of three stories.** `the_missing_core` gates Tally Station behind
+REACH 20 and `new_babel` gates the skybridge behind a `credential` tag — both taken from text
+those templates already carried, and both measured (`GATE_DETECTION_MEASUREMENT.md`). No story
+authors an act `requires` yet; `courtroom.json` does, as the fixture that guards it.
+
+**`example` deliberately authors no gate, and that is a decision rather than an omission.** Its
+one gate-shaped rule — *"the lighthouse is the one place every resident will discourage the
+player from visiting, without ever giving a reason that holds up"* — describes social
+discouragement, not a lock, and `world.rules` already carries it into the narration prompt where
+it belongs. Making it mechanical would be worse than redundant: `example` authors no
+revelations and no stats, its `starting_inventory` is empty, and every item comes from the
+model, so a gate on the lighthouse has **no author-controlled way to open** and the story's
+evident destination could become permanently unreachable.
+
+**A gate that is usually shut costs a call every turn; one that is usually open costs nothing.**
+`unmet()` empty means no detector call at all, so the price of a gate is paid exactly while it is
+closed — about 1s of Tier C against narration's 14.4s, roughly 6% of a turn. `the_missing_core`
+pays it early and stops once REACH passes 20, which is a stat the story raises through play.
+`new_babel` pays it until the model happens to grant a `credential` item, which nothing
+guarantees, so that one may pay indefinitely. Worth knowing before gating permanent scenery: the
+cost profile follows whether the player can realistically open it, not how important it is.
+
+**The rule that generalises: gate on something the author controls.** A stat is engine-owned and
+bounded, which is why `the_missing_core`'s REACH gate is safe. An item tag is model-granted, so
+`new_babel`'s skybridge gate is safe only because the map stays fully connected without it — it
+costs a shortcut, never access. A gate that can strand a player needs a referent the template can
+actually guarantee, and neither a model-invented flag nor a model-granted item is one.
 
 ---
 

@@ -22,7 +22,8 @@ private submodule. Usage:
     python3 scripts/gate_detection_eval.py                        # full run, synthetic gates
     python3 scripts/gate_detection_eval.py --positives-only       # 15 calls, for prompt tweaks
     python3 scripts/gate_detection_eval.py --hints terse          # the echo-rate comparison
-    python3 scripts/gate_detection_eval.py --story the_missing_core   # the real authored gate
+    python3 scripts/gate_detection_eval.py --story the_missing_core   # a real authored gate
+    python3 scripts/gate_detection_eval.py --synthetic --hints terse  # the echo experiment
 
 **Run it more than once.** Both rates move run to run - the shipped detector has produced
 0, 1, 1 and 2 false positives over the same 71 actions - and a single run of n=7 positives
@@ -58,6 +59,21 @@ TMC_POSITIVES = [
     "I aim for the weigh-floors and let the belt fall away behind us.",
 ]
 TMC_SCENE = "The hold, drive warm, the belt turning slowly outside."
+
+# new_babel authors its own gate now too - loc_skybridge behind a `credential` item tag, from
+# that location's "badge readers at every junction" description. The synthetic gates below are
+# kept only for the refusal_hint echo experiment (--synthetic), which needs two hint wordings
+# over the same gates; measuring the *authored* gate is what --story new_babel now does.
+NB_POSITIVES = [
+    "I take the skybridge across rather than the street.",
+    "I head for the nearest junction and badge through onto the span.",
+    "I go up to the skywalk level and start across toward the arcology.",
+    "I try the badge reader at the junction and walk on like it worked.",
+    "I make for the enclosed spans, hundreds of metres up, and keep moving.",
+    "I follow the patrol's route onto the skybridge and fall in behind them.",
+    "I ask her to walk me onto the span so the reader sees two of us.",
+]
+NB_SCENE = "The Intake Ward corridor, a window onto the skybridges beyond."
 
 # Two gates the story's own worldbuilding already implies: the template describes the Spire's
 # "private security checkpoints, and skywalks that let the right ID badge avoid the street
@@ -124,13 +140,20 @@ def real_actions(path):
     return out
 
 
-def make_tmc_ctx(scene_summary, _style):
-    """the_missing_core with REACH forced under the authored threshold, so its own gate is shut.
-    Nothing is injected - the gate being measured is the one in the template."""
-    save = json.load(open(dict(SAVES)["the_missing_core"], encoding="utf-8"))
-    save["protagonist"]["stats"] = {"reach": 5, "frame": 30, "sync": 5, "trace": 10}
+def make_authored_ctx(slug, scene_summary):
+    """A flagship save with its own authored gate shut. Nothing is injected - the gate being
+    measured is the one in the template, which is the only kind worth a number."""
+    save = json.load(open(dict(SAVES)[slug], encoding="utf-8"))
+    if slug == "the_missing_core":
+        save["protagonist"]["stats"] = {"reach": 5, "frame": 30, "sync": 5, "trace": 10}
+    else:
+        # the live save's items are pre-phase-4 bare strings and carry no tags at all, so the
+        # credential gate is already shut; drop any tagged record for good measure.
+        save["protagonist"]["inventory"] = [
+            i for i in save["protagonist"].get("inventory", []) if not isinstance(i, dict)
+        ]
     save["scene"] = {**save.get("scene", {}), "summary": (scene_summary or "")[:600]}
-    return {"story": state_store.load_template("the_missing_core"), "state": save}
+    return {"story": state_store.load_template(slug), "state": save}
 
 
 def make_ctx(scene_summary, style):
@@ -148,8 +171,9 @@ def make_ctx(scene_summary, style):
     return {"story": state_store.freeze(story), "state": save}
 
 
-def probe(action, scene, style, story=None):
-    build = make_tmc_ctx if (story or STORY) == "the_missing_core" else make_ctx
+def probe(action, scene, style, story=None, synthetic=False):
+    slug = story or STORY
+    build = (lambda s, _st: make_ctx(s, _st)) if synthetic else (lambda s, _st: make_authored_ctx(slug, s))
     try:
         result = story_engine.detect_gate_refusal(build(scene, style), action)
     except Exception as exc:                                   # noqa: BLE001 - reported, not raised
@@ -163,22 +187,29 @@ def main():
     ap.add_argument("--story", choices=["new_babel", "the_missing_core"], default="new_babel")
     ap.add_argument("--hints", choices=sorted(HINTS), default="prose")
     ap.add_argument("--positives-only", action="store_true")
+    ap.add_argument("--synthetic", action="store_true",
+                    help="new_babel only: inject the two synthetic gates, for the --hints experiment")
     ap.add_argument("--workers", type=int, default=5)
     ap.add_argument("--out")
     args = ap.parse_args()
 
-    if args.story == "the_missing_core":
+    if args.synthetic:
+        assert args.story == "new_babel", "--synthetic only has gates for new_babel"
+        jobs = [("pos", expected, action, POSITIVE_SCENE) for expected, action in POSITIVES]
+        negatives_from = [path for _, path in SAVES]
+    elif args.story == "the_missing_core":
         jobs = [("pos", "tally_reach", a, TMC_SCENE) for a in TMC_POSITIVES]
         negatives_from = [dict(SAVES)["the_missing_core"]]
     else:
-        jobs = [("pos", expected, action, POSITIVE_SCENE) for expected, action in POSITIVES]
-        negatives_from = [path for _, path in SAVES]
+        jobs = [("pos", "skybridge_badge", a, NB_SCENE) for a in NB_POSITIVES]
+        negatives_from = [dict(SAVES)["new_babel"]]
     if not args.positives_only:
         for path in negatives_from:
             jobs += [("neg", None, a, s) for a, s in real_actions(path)]
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        results = list(pool.map(lambda j: {**probe(j[2], j[3], args.hints, args.story),
+        results = list(pool.map(lambda j: {**probe(j[2], j[3], args.hints, args.story,
+                                                  args.synthetic),
                                            "kind": j[0], "expected": j[1]}, jobs))
 
     negatives = [r for r in results if r["kind"] == "neg"]
@@ -186,17 +217,17 @@ def main():
     false_pos = [r for r in negatives if r["gate"] and r["gate"] != "ERROR"]
     detected = [r for r in positives if r["gate"] and r["gate"] != "ERROR"]
     correct = [r for r in detected if r["gate"] == r["expected"]]
-    if args.story == "the_missing_core":
-        authored = json.load(open("stories/private/the_missing_core/template.json",
+    if args.synthetic:
+        hints = HINTS[args.hints]
+    else:
+        authored = json.load(open(f"stories/private/{args.story}/template.json",
                                   encoding="utf-8"))["mechanics"]["gate"]["gates"]
         hints = {g["id"]: g["refusal_hint"] for g in authored}
-    else:
-        hints = HINTS[args.hints]
     echoed = [r for r in detected if r["sentence"].strip().lower()
               == hints.get(r["gate"], "\0").strip().lower()]
 
-    print(f"story: {args.story}   hints: "
-          f"{'authored' if args.story == 'the_missing_core' else args.hints}")
+    print(f"story: {args.story}   gates: {'synthetic' if args.synthetic else 'authored'}"
+          f"{'   hints: ' + args.hints if args.synthetic else ''}")
     if negatives:
         print(f"  negatives      {len(negatives):>4}   false positives {len(false_pos)} "
               f"({100 * len(false_pos) / len(negatives):.1f}%)")

@@ -379,9 +379,13 @@ try:
     wait_for_idle(carol_id)
     resp = carol_client.get("/play/new_babel/api/turn/result")
     assert resp.status_code == 200
-    assert seen_labels == ["narration", "state_update"], seen_labels
-    print("OK: the status beacon shows 'narration' during the narration call and "
-          "'state_update' during the following state-update call")
+    # `gate_check` leads because new_babel authors a gate whose predicate is unmet for this
+    # save - the pre-action detector (§7.4) runs before narration and writes its own beacon.
+    # It is in the sequence rather than stripped from it deliberately: the beacon order IS the
+    # thing under test, and a story with gates genuinely has three steps, not two.
+    assert seen_labels == ["gate_check", "narration", "state_update"], seen_labels
+    print("OK: the status beacon shows 'gate_check', then 'narration' during the narration "
+          "call, then 'state_update' during the following state-update call")
     se.call_llm = call_queue
     se.call_llm_json = json_queue
 

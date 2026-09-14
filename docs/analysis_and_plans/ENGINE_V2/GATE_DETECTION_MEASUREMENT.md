@@ -100,18 +100,31 @@ location id in the obvious authoring style.
 
 ---
 
-## The real authored gate (`the_missing_core`)
+## The real authored gates
 
-Everything above measures gates *this harness invented*. `the_missing_core` now authors one in
-its own template — REACH under 20 shuts Tally Station, straight from `world.rules` — so it can
-be measured as an author would actually write it. Reproduce with
-`--story the_missing_core`; the save is forced to REACH 5 and nothing is injected.
+Everything above measures gates *this harness invented*. Both flagships now author their own —
+`the_missing_core` puts Tally Station behind REACH 20, straight from `world.rules`, and
+`new_babel` puts the skybridge behind a `credential` item tag, straight from that location's
+"badge readers at every junction" description. Reproduce with `--story <slug>`; the save is
+forced below the threshold and nothing is injected. `--synthetic` still runs the invented gates,
+which is what the hint experiment above needs.
 
-| | synthetic (`new_babel`) | **authored (`the_missing_core`)** |
-|---|---|---|
-| False positives / 71 real actions | 0 / 119 | **0, 1, 1, 2, 2 across five runs (~1.2%)** |
-| Recall / 7 genuine attempts | ~90% | **4–7 of 7, highly variable** |
-| Hint echoed | 0% with fragments | **0 in every run** |
+**`new_babel`'s two failures are stable rather than random**, which makes them legible. The false
+positive is an action going *down* to street level for clothes that mentions "the rail"; the miss
+is "I try the badge reader at the junction and walk on like it worked" — the most explicit badge
+attempt in the set, apparently read as having succeeded. Both repeat exactly across runs.
+
+| | synthetic (`new_babel`) | **`the_missing_core`** | **`new_babel`** |
+|---|---|---|---|
+| gate | invented here | REACH < 20 shuts Tally Station | `credential` shuts the skybridge |
+| False positives | 0 / 119 | **0,1,1,2,2 of 71 (~1.2%)** | **1, 1 of 48 (2.1%)** |
+| Recall / 7 attempts | ~90% | **4–7 of 7** | **6, 6 of 7** |
+| Right gate, when detected | 100% | 100% | 100% |
+| Hint echoed | 0% with fragments | **0 every run** | **0 every run** |
+
+Both authored gates land in the same band: false positives low single digits, recall imperfect,
+and the fragment rule holding completely. `new_babel` is the steadier of the two — identical
+numbers across runs, down to the same single false positive and the same single miss.
 
 **The fragment rule held completely.** Not one refusal came back as the authored hint, and the
 prose is per-scene: *"the drive answers with a long, tired groan… the stars outside the hold
