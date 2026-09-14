@@ -421,6 +421,9 @@ STATUS_LABELS = {
     # SECONDS entry either (falls back to no progress bar, just the spinner, which suits a
     # step that's normally over in well under a second).
     "queued": "Starting",
+    # §7.4's pre-action check. Tier C and a small prompt, so it is normally over before
+    # the poll notices - but it is on the turn path, so it carries a real estimate.
+    "gate_check": "Checking",
     "narration": "Narrating",
     "options_generation": "Offering",
     "state_update": "Reckoning",
@@ -448,6 +451,7 @@ STATUS_LABELS = {
 # app.py's /api/status route only falls back to this when p50_duration is None - one real
 # completed call is enough for the rolling median to take over from then on.
 DEFAULT_STEP_ESTIMATE_SECONDS = {
+    "gate_check": 2,
     "narration": 17,
     # Same tier/model as narration but a much smaller ask (just the OPTIONS block, against
     # narration it's already been handed), so a fraction of narration's estimate.
@@ -2294,6 +2298,72 @@ def _generate_and_apply_turn(
 
     state_store.save_state(ctx, user_id, story_slug)
     return ctx["state"]["plot"]["endgame"]["concluded"]
+
+
+def detect_gate_refusal(ctx: dict, player_action: str) -> dict | None:
+    """Whether this action reaches for something the world is currently refusing (§7.4), and
+    the sentence to tell the player if so. None means the turn proceeds normally.
+
+    **The engine decides, the model only recognises.** `Precondition.unmet` evaluates every
+    gate's predicate first, and a gate whose predicate is *met* is never shown to the model at
+    all - so the model can never grant or invent a refusal, only spot that this action is
+    reaching for a door the engine has already established is shut. That is the §7.4 split,
+    and it is what keeps `refusal_hint` from becoming `refusal_text`: the template sets the
+    tone, the model writes the sentence.
+
+    **Tier C, and only where a story authors gates.** Costs ~1.7s against narration's ~14.4s,
+    and a story with no `gate` block makes no call at all (P-2). When it does fire it
+    *replaces* narration plus the state pass, so a refused turn is cheaper than a normal one.
+
+    **Why this is a model call at all**, when §4 originally specified a free pre-action check:
+    matching a free-text action to a gated target with string matching does not work. Measured
+    over 119 real player actions across both flagship saves, actions name a location in ~2% of
+    turns (`new_babel`, 1 of 48) and the apparent 55% on `the_missing_core` is almost entirely
+    false positives - `hold`, `hand`, `behind` and a bare `s` from "The Ninth-Hand's" matching
+    ordinary prose. A gate that fires on "I hold the cutter steady" refuses the player for
+    nothing, which is worse than one that never fires."""
+    bound = mechanics.bound_for(ctx["story"], "gate")
+    if bound is None:
+        return None
+    unmet = bound.engine.unmet(bound.cfg, ctx)
+    if not unmet:
+        return None
+
+    scene = ctx["state"]["scene"]
+    gate_lines = "\n".join(
+        f"- {g['id']}: guards {g.get('target', 'something')}. "
+        f"Tone for the refusal: {g.get('refusal_hint', 'it simply does not work')}"
+        for g in unmet
+    )
+    prompt = f"""A player of an interactive story has typed an action. Some things in this world
+are currently closed to them. Decide whether this action is an attempt to do one of them.
+
+CURRENT SCENE ({scene.get('location')}): {scene.get('summary')}
+
+CLOSED TO THE PLAYER RIGHT NOW:
+{gate_lines}
+
+PLAYER ACTION: {player_action}
+
+Answer only about whether the action REACHES FOR one of the closed things above. Moving toward
+it, asking to be let in, or trying to work around it all count. Merely mentioning it, thinking
+about it, or acting somewhere else does not. If the action does not reach for any of them,
+gate_id must be null - that is the normal answer and you should give it freely.
+
+Reply with JSON only:
+{{"gate_id": "<the id above this action reaches for, or null>",
+  "sentence": "<if gate_id is not null: one or two sentences, in second person present tense,
+  telling the player what stops them. Match the tone given for that gate. Never explain the
+  rule, never mention conditions or requirements - write only what the protagonist experiences.
+  Empty string if gate_id is null>"}}"""
+
+    result = _timed("gate_check", lambda: call_llm_json(prompt), model=TIER_C_MODEL)
+    gate_id = (result or {}).get("gate_id")
+    match = next((g for g in unmet if g["id"] == gate_id), None)
+    if match is None:
+        return None
+    sentence = (result.get("sentence") or "").strip()
+    return {"gate": match["id"], "sentence": sentence or match.get("refusal_hint", "")}
 
 
 def take_turn(

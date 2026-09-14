@@ -418,4 +418,4 @@ def run_observation_pipeline(ctx, diff):
 
 # Engines register by being imported. At the bottom, because each one imports names from
 # this module - the package is the contract, the modules are the implementations.
-from . import failure, items, ledger, pacing, resource, reveal, social, threads  # noqa: E402,F401
+from . import failure, gate, items, ledger, pacing, resource, reveal, social, threads  # noqa: E402,F401
