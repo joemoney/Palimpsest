@@ -724,6 +724,13 @@ different subsets" survives. Both engines are now guarded in both directions.
 
 ## Phase 6 — `gate`, and authored act preconditions
 
+**Status: done for actions, not for acts.** `backend/mechanics/gate.py`, plus the refusal path
+through `story_engine`, `app.py` and `frontend/_refusal.html`. All three of the phase's gates
+are met *for the half that shipped*, and **§2.2's authored act `requires` is not wired** — the
+evaluator was deliberately built as a module function so act code can call it with no bound
+engine, and nothing calls it yet. Two of three Work items, and the missing one is the half a
+player never sees.
+
 **Goal.** The world can refuse the player, and an authored act gets a floor.
 
 **Work.**
@@ -748,13 +755,68 @@ different subsets" survives. Both engines are now guarded in both directions.
 language. Keep it to the referent classes §2.2's table marks usable. Generated acts carry no
 `requires` — that is a design decision (§2.2), not an unfinished edge.
 
-**Detector measured** — `docs/analysis_and_plans/ENGINE_V2/GATE_DETECTION_MEASUREMENT.md`,
-`scripts/gate_detection_eval.py`. Zero false refusals across 119 real player actions, ~90%
-recall on genuine attempts, right gate every time it fires. Two authoring findings came out of
-it and neither can be enforced in code: **a `refusal_hint` written as a finished sentence is
-returned verbatim ~55% of the time** (fragments drop that to zero), and a gate is recognised
-most reliably when its `target` reads the way the fiction names the place. The rest of the phase
-writeup is still outstanding.
+---
+
+### Phase 6 gate
+
+**All three met, for the action half.** `test/test_gate_precondition.py`, 19 checks:
+
+| Phase gate | Where |
+|---|---|
+| Refusal path: refusal, no state change, no observation pass | `ActionRefused` raised with no narration call — and the veto catches a gated `scene_update.location` the detector let through |
+| Latching: a flag predicate survives `RECENT_TURN_LIMIT` | a flag aged out of `active` into `archive` still reads true |
+| No reachable deadlock | absent, malformed, empty *and* unimplemented predicates all degrade to satisfied |
+
+**What shipped is two layers where the plan specified one**, and that is the phase's real
+finding. §4 specified a free pre-action check; matching free text to a gated target with string
+matching does not work, measured over 119 real player actions — they name a location in ~2% of
+turns, and the apparent 55% on `the_missing_core` is almost entirely `hold`, `hand`, `behind`
+and a bare `s` from "The Ninth-Hand's" matching ordinary prose. A gate firing on "I hold the
+cutter steady" refuses the player for nothing. So:
+
+- **A Tier C detector decides whether to raise the modal.** The engine evaluates every
+  predicate first and a satisfied gate is never shown to the model, so the model can only
+  recognise a refusal, never grant or invent one. That is §7.4's split intact.
+- **`blocking()` vetoes a gated `scene_update.location` regardless.** `scene_update.location`
+  is a closed set the model selects from, so the veto needs no judgement and is right every
+  time. Same shape as `mechanics.stats.readout` (P-7): the prompt makes the model usually
+  comply, the engine makes it always true.
+- **A `gate.closed` prompt section tells the narrator what is shut**, so the prose agrees with
+  the rail instead of walking the player into a vault the state then denies.
+
+**§4's "costs nothing — no LLM call" is amended**: one Tier C call, ~1s measured, and only
+where a story authors gates (P-2 — every story shipping today makes no call at all). When it
+fires it replaces narration plus the state pass, so a refused turn is *cheaper* than a normal
+one.
+
+**Detector measured** — `GATE_DETECTION_MEASUREMENT.md`, `scripts/gate_detection_eval.py`.
+Zero false refusals across 119 real player actions, **~90% recall** (13–15 of 15 across runs),
+right gate every time it fires. Two authoring findings came out of it, neither enforceable in
+code: **a `refusal_hint` written as a finished sentence is returned verbatim ~55% of the time**
+(fragments drop that to zero), and a gate is recognised most reliably when its `target` reads
+the way the fiction names the place.
+
+> **Number to reconcile.** `gate.py`'s `blocking()` docstring cites "~67% recall against
+> paraphrase". That figure has no script or record behind it; the ~90% above is reproducible.
+> Either the 67% measured a harder paraphrase set worth keeping, or it should go. Until someone
+> knows which, do not quote it.
+
+### What phase 6 did not deliver
+
+**§2.2's authored act `requires`.** The predicate language, the latching flag semantics and the
+fail-open rule are all built and tested — the act side is only the call site. `satisfied()` is a
+module function precisely so `check_and_advance_act` can use it without a `gate` block being
+declared, since act preconditions are authored on the act. Nothing calls it, no act authors
+`requires`, and there is no test for it.
+
+**`tier` as a leaf kind**, though §7.4 lists it. It needs a relationship lookup and a tier
+resolution, and it is non-latching in the way §2.2 says needs a high-water mark. Left out
+deliberately against this phase's named risk — the evaluator growing into an expression
+language — and it is one leaf to add when a story wants it.
+
+**Any authored content at all.** No story declares a `gate` block; only `courtroom.json` does,
+as a fixture. The feature ships dark until someone authors into it, and the two authoring
+findings above are what they will need.
 
 ---
 

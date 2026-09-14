@@ -171,9 +171,10 @@ class Precondition(MechanicEngine):
         """The gate refusing entry to `location_id` right now, or None.
 
         This is the hard rail, and it is the reason the detector is allowed to be imperfect.
-        The pre-action check is a model judging prose and measured at ~67% recall against
-        paraphrase - fine for deciding whether to raise a modal, not fine as the only thing
-        standing between a player and a locked room. `scene_update.location` is a closed set
+        The pre-action check is a model judging prose, measured at ~90% recall over repeated
+        runs (docs/analysis_and_plans/ENGINE_V2/GATE_DETECTION_MEASUREMENT.md) - fine for
+        deciding whether to raise a modal, not fine as the only thing standing between a player
+        and a locked room. `scene_update.location` is a closed set
         the model picks from, so vetoing it needs no judgement at all and is right every time.
         Same split as `mechanics.stats.readout` (P-7): the prompt makes the model usually
         comply, the engine makes it always true."""
