@@ -2106,12 +2106,12 @@ def update_state_after_turn(
     # Separate state-update pass: subplot progress, flags, memory fragments, entity contact
     update_progress_from_turn(ctx, player_action, ai_response)
 
-    # Engine v2 (docs/ENGINE_V2_SPEC.md §4): record what was observed, resolve it into
-    # effects, apply them. Runs unconditionally so the seam exists and is exercised, but
-    # no mechanic is ported yet - every template that ships today binds zero engines, so
-    # this records nothing, resolves nothing and applies nothing. Phase 2 is what gives it
-    # something to do; until then its only job is to already be in the right place.
-    mechanics.run_turn_pipeline(ctx)
+    # The engine pipeline runs inside update_progress_from_turn above, where the diff it
+    # reads actually is. A second unconditional run_turn_pipeline(ctx) used to sit here - a
+    # phase 1 placeholder from when no mechanic was ported and resolving twice was provably
+    # a no-op. It stopped being a no-op the moment an engine could produce an effect without
+    # an observation to trigger it: `per_turn` drift ticked twice a turn, which is how this
+    # was found. Resolve once per turn, at the point the observations arrive.
 
     # Stat readouts are substituted *after* the state update, so the figures a scene shows
     # are the ones it ended on - "the readout is the aftermath", per the story's own rules.

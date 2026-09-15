@@ -141,14 +141,23 @@ assert ctx["state"]["protagonist"]["stats"]["warmth"] == 0, \
     "warmth authors no floor, so the block-level 0 applies"
 print("OK: a per-axis floor overrides the block-level one; an axis without one inherits it")
 
-# --- per_turn drift ticks on a turn that observed nothing --------------------------------
+# --- per_turn drift ticks ONCE per turn, including one that observed nothing -------------
+# The count is the assertion, not just the movement. update_state_after_turn used to run the
+# engine pipeline a second time after update_progress_from_turn had already run it - a phase 1
+# placeholder that was provably a no-op while every engine needed an observation to produce an
+# effect. Drift is the first thing that does not, so it ticked twice a turn and nothing caught
+# it until a real save was played forward.
 ctx = priced_ctx({"warmth": 5, "supplies": 5, "days_out": 0})
 report(ctx)
 assert ctx["state"]["protagonist"]["stats"]["days_out"] == 1, \
-    "drift must arrive whether or not the model reported anything (§7.1)"
+    "drift must arrive whether or not the model reported anything (§7.1), and exactly once"
 report(ctx, stat_events=["shelter.made"])
-assert ctx["state"]["protagonist"]["stats"]["days_out"] == 2
-print("OK: per_turn drift ticks every turn, including one with no observed events")
+assert ctx["state"]["protagonist"]["stats"]["days_out"] == 2, \
+    "a turn that DID observe something must still drift exactly once"
+report(ctx, stat_events=["shelter.made", "exposure.long"])
+assert ctx["state"]["protagonist"]["stats"]["days_out"] == 3, \
+    "drift is per turn, not per observed event"
+print("OK: per_turn drift ticks exactly once a turn - with no events, with one, and with two")
 
 # --- a story with stats but no costs keeps the delta map ---------------------------------
 ctx = se.state_store.load_state("unpricedstats", se.state_store.DEFAULT_STORY_SLUG)
