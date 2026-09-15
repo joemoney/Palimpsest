@@ -137,10 +137,20 @@ treatment as these existing ones:
     Rarer, judgment-heavy calls where a bit of latency/failure risk is worth
     it for a better decision: `check_and_advance_act`, `generate_new_subplot`,
     `generate_steering_seed`, `generate_character_from_relationship`.
-  - **Tier C** — fastest available model. Used only for
-    `update_progress_from_turn`: a closed-vocabulary classification/diff
-    extraction that runs every single turn, where speed and cost matter far
-    more than reasoning depth.
+  - **Tier C** — fastest available model. `update_progress_from_turn`, a
+    closed-vocabulary classification that runs every single turn where speed
+    matters far more than reasoning depth; and `detect_gate_refusal`, which
+    runs before narration and only for a story with a gate currently shut.
+    The registry's standing rule is that **an engine call is Tier C unless its
+    module records why not** — deliberately stricter than the rest of the
+    codebase, because the registry makes call sites cheap to add.
+
+    Measured rather than assumed: over 24 held-out turns run three times per
+    tier, Tier C ties or beats Tier A and Tier B on self-consistency for 8 of
+    11 classification fields, including 95% against 83–85% on the beat type the
+    pacing loop rests on. Cross-tier agreement sits inside the *self*-agreement
+    range, so the difference between tiers is noise. See
+    `docs/analysis_and_plans/ENGINE_V2/TIER_OBSERVATION_MEASUREMENT.md`.
 
   Tier A and Tier B are therefore the *same* provider/model pair —
   `TIER_AB_PROVIDER`/`TIER_AB_MODEL` (both default to OpenRouter/DeepSeek) —
@@ -404,8 +414,30 @@ truth once a link exists.
   `starting_stats` merges on top of it - so a story wanting a stat scale but no
   class picker (survival, horror) can have one, and a story using both is
   unchanged. Bounds are per-story via `mechanics.stats.floor`/`.ceiling`
-  (global across that story's stats, not per-stat; `ceiling` absent means
-  unbounded), which replaced the old global `STAT_FLOOR = 0`.
+  (`ceiling` absent means unbounded), which replaced the old global
+  `STAT_FLOOR = 0`; an axis may override either under
+  `mechanics.stats.axes.<axis>`, where the block level stays the default rather
+  than being replaced, because most stories want one floor for everything.
+
+  **A story may also price its stats instead of letting the model choose the
+  numbers.** Authoring `axes.<axis>.costs` — a map of event key to magnitude —
+  switches the observation pass from `stat_changes` (a delta map the model fills
+  in) to `stat_events` (keys from the story's own closed vocabulary, which the
+  engine then prices). Authoring no `costs` keeps the delta map, because an
+  absent costs table means the story has not said what anything is worth and
+  inventing prices for it would be the engine holding a creative opinion. One
+  event may move several axes, which is how a single "cast a complex proof"
+  costs neural load *and* draws attention in one answer.
+
+  The motivation is measured: `stat_changes` reproduces at **25%** across
+  repeated runs on the same turn — the least reproducible field in the
+  observation pass — and even discarding the magnitudes, the model agrees with
+  itself about *which* axes moved only 29% of the time. Pricing does not fix the
+  classification (a closed vocabulary did not save `subplot_beats`, which sits
+  at 33%); what it fixes is that the consequence of a given answer becomes exact
+  and authored instead of invented. `axes.<axis>.per_turn` adds drift that ticks
+  every turn whether or not anything was observed, which is what makes a
+  deadline arrive rather than a number the model remembers to decrement.
   `mechanics.stats.visible` (default `false`) decides whether the narrator may
   quote a stat's raw number to the player: false keeps the original behaviour
   of reflecting it narratively as strain or risk, true is for a story whose
@@ -436,6 +468,97 @@ truth once a link exists.
   "Heading: The Drowned Quarter" on turn 50 as readily as turn 1 - a
   permanent pull back toward a place the player may have long since left. It
   carries `"prompt_label": "Started out"` for that reason.
+
+## The Mechanic Registry (engine v2)
+
+Phases 1–6 moved every mechanic out of `story_engine` and behind a registry in
+`backend/mechanics/`. `story_engine` no longer knows what a relationship or a
+revelation is; it knows there are engines, and asks them. This section is what
+exists, not what was planned — `docs/ENGINE_V2_SPEC.md` is the design and
+`docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md` records what each phase
+actually found.
+
+- **Eight engines, one per `mechanics` slot.** `stats`/`bounded_counter`,
+  `relationships`/`scored_axis`, `inventory`/`tagged_items`,
+  `revelations`/`triggered_reveal`, `failure_conditions`/`triggered_ending`,
+  `subplots`/`weighted_threads`, `pacing_loop`/`beat_counter`,
+  `progression`/`spendable_ledger`, plus `gate`/`precondition` which serves two
+  callers rather than one slot. Each is a module under `backend/mechanics/`
+  that registers itself on import; the package `__init__` is the contract and
+  the modules are the implementations, which is why the engine imports sit at
+  the *bottom* of `__init__.py`.
+
+- **Declare-to-bind, and the failure it exists to remove.** A story gets a
+  mechanic by writing `"engine": "<name>"` inside that `mechanics` block, and
+  gets nothing without it. A block with no `engine` key is not an error — it is
+  a mechanic the registry does not own yet — but a block that *should* have one
+  and does not loads **inert**: no state, no prompt line, no observation field,
+  and a story that looks fine and quietly never progresses. `mechanics.validate()`
+  warns at load for the three most damaging cases (seeded stats, seeded
+  inventory, authored subplots, each with no engine declared). Take those
+  warnings seriously; they are the only signal.
+
+- **The turn pipeline.** `run_observation_pipeline(ctx, diff)` is the whole
+  engine-side half of a turn: each engine reads back *its own* field from the
+  state-update diff into typed events, the events are appended to the save's
+  `events` log, every bound engine resolves against the whole stream in
+  `resolve_order`, and the resulting effects are applied. `resolve()` is pure —
+  it returns `Effect` objects and never touches `ctx` — which is what makes
+  conflicting effects detectable instead of order-dependent by accident.
+
+- **Effects carry absolute values, never deltas.** "Set fuel to 12" replays
+  identically; "subtract 3" depends on what has already been applied this turn.
+  Engines that price several events against one axis project the running value
+  locally so the second event sees the first, then emit the final absolute.
+
+- **An engine contributes at most one observation field per turn**, and may
+  contribute none — a *cadence*, which is what stops a story with an exhausted
+  clue chain being asked about revelations every turn. §5.4's budget is
+  `core + 7` = ten fields, measured by `scripts/measure_baseline.py` rather than
+  asserted. Two engines that wanted two fields each were merged into one richer
+  field apiece (`beat: {type, intensity}`, `leverage: {gained, spent}`) rather
+  than granted an exception.
+
+- **Prompt contributions are budgeted.** `prompt_sections()` returns named
+  fragments and every engine that returns any text must declare a
+  `prompt_budget`; contributing text with a budget of 0 raises, and so does
+  exceeding it. `prompt_budget = 0` is legitimate and means "this engine
+  contributes no narration text at all" — several engines reach the narrator
+  through the pacing and act machinery instead, which is not the registry's
+  surface.
+
+- **`gate`/`precondition` is the one engine that observes nothing.** It answers
+  two questions with the same evaluator: whether a location is closed to the
+  player right now (§7.4), and whether an authored act's `requires` is met
+  (§2.2). Its `satisfied()` is a *module function* rather than a method,
+  because an act's `requires` is authored on the act and a story may carry act
+  preconditions with no `mechanics.gate` block for the registry to bind.
+
+- **Refusal is two layers, and only one of them is allowed to be wrong.** A
+  Tier C detector decides whether a free-text action reaches for a shut gate and
+  writes the sentence the player sees; `blocking()` then vetoes a gated
+  `scene_update.location` regardless of what the detector said. The detector is
+  a model judging prose and measured at ~90% recall, which is fine for deciding
+  whether to raise a modal and not fine as the only thing between a player and a
+  locked room. `scene_update.location` is a closed set the model picks from, so
+  vetoing it needs no judgement and is right every time. Same split as the stat
+  readout: the prompt makes the model usually comply, the engine makes it
+  always true.
+
+- **Act state is read through `mechanics.all_acts`/`current_act`.**
+  `story_engine._all_acts`/`_current_act` delegate there so there is one
+  implementation — `beat_counter` resolves a rule's effective threshold against
+  the current act and an engine may not import the module that imports it. Act
+  *advancement* stays outside the registry deliberately: supplying an evaluator
+  is not owning the verdict.
+
+- **Saves stayed at schema version 2.** Every phase kept storage where it was —
+  stats at `state.protagonist.stats`, the reveal queue under `pacing` — so the
+  v2→v3 cutover the plan allowed for was never performed and existing saves load
+  unchanged against v3 templates. What went to v3 is the *template* shape
+  (declare-to-bind, per-axis `axes`, `gates`), not the save. The save gained one
+  optional top-level key, `events`, written lazily and never read by a prompt.
+
 
 ## Web UI
 The `/play/<slug>` page is a single, continuously-appending transcript, not

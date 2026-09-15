@@ -9,6 +9,7 @@ works. For that:
 | Topic | Where |
 |---|---|
 | How the engine actually works, as built | `docs/ARCHITECTURE.md` |
+| The mechanic registry, as built | `docs/ARCHITECTURE.md` § *The Mechanic Registry* |
 | Template/save schema and its design principles | `docs/SCHEMA_V2_SPEC.md` |
 | Pacing loop, beats, counters, directives | `docs/Narrative_Pacing_Loop_Spec_v4.md` |
 | Web UI design intent | `docs/Web_UI_Spec.md` |
@@ -101,7 +102,13 @@ already gone off the rails.
 ### State shape
 - **The model can never introduce a new stat axis.** Stats are seeded at save
   creation from `protagonist.stats` plus any `character_creation`
-  `starting_stats`, and `stat_changes` may only move an existing one.
+  `starting_stats`, and the observation pass may only move an existing one.
+  §8.1's `axes.<axis>.start` is deliberately **not** implemented — a third seeding
+  source would break the stories that seed through character creation.
+- **Authoring `axes.<axis>.costs` switches the whole story to priced stats.** The model then
+  names events from a closed vocabulary and the engine does the arithmetic; authoring none
+  keeps the v2 delta map. It is all-or-nothing per story, not per axis, and an axis with no
+  `costs` entry can then only move by `per_turn` drift.
 - **Relationship scores are deltas, not absolutes**, and eviction drops whatever
   sits *closest to neutral* — a story's strongest bonds must never silently
   disappear.
@@ -112,6 +119,44 @@ already gone off the rails.
   every subplot through `insert_subplot()`.
 - **Adding a `character_creation` step retroactively halts every live save** for
   that story until the player answers it. Usually right, never opt-in.
+
+### Mechanic registry (see `docs/ARCHITECTURE.md` § *The Mechanic Registry* for how)
+- **Declare-to-bind: a `mechanics` block with no `"engine"` key binds nothing.** That is not
+  an error — it is a mechanic the registry does not own yet — but a block that *should*
+  declare one and doesn't loads **inert**: no state, no prompt line, no observation field,
+  and a story that looks fine and never progresses. Silent inertness is the failure this
+  architecture exists to remove, so an engine declared with an empty config raises rather
+  than adjudicating nothing, and `mechanics.validate()` warns for seeded stats, seeded
+  inventory and authored subplots with no engine. Don't quiet those warnings.
+- **A mechanics block must live inside `mechanics`.** Obvious until it isn't: a block placed
+  one level up parses fine, seeds nothing, binds nothing, and reads exactly like a story that
+  never authored the mechanic. This has happened once.
+- **An engine contributes at most one observation field per turn**, and may contribute none
+  (a cadence). An engine that needs two is two engines, or one field with a richer type —
+  both existing cases were merged rather than granted an exception. The budget is `core + 7`
+  and is *measured* by `scripts/measure_baseline.py`, not asserted.
+- **An engine that contributes prompt text must declare a `prompt_budget`.** Zero means "no
+  narration text at all" and is legitimate; zero *with* text raises, and so does exceeding it.
+- **`resolve()` is pure and effects are absolute.** It returns `Effect`s and never touches
+  `ctx`. "Set it to 12" replays; "subtract 3" depends on what already applied this turn, so
+  an engine pricing several events against one axis projects locally and emits the final value.
+- **An engine call is Tier C unless its module records why not.** Stricter than the rest of
+  the codebase on purpose: the registry makes call sites cheap to add. Measured — Tier C is
+  the *more* self-consistent tier on 8 of 11 classification fields.
+- **Gate predicates fail open, never closed.** An unknown referent, a malformed predicate, an
+  empty `any`, a stat axis the save lacks — all read as *satisfied*. A typo should cost a
+  locked door, never a save whose main thread can never advance.
+- **Flag predicates read `flags.active ∪ flags.archive`.** `archive_stale_flags` retires a
+  flag out of `active` on a 10-turn window while `act_check_frequency` defaults to 12, so
+  reading `active` alone is consulted on a cadence longer than the flag's own lifetime there
+  and is reliably false exactly when it matters.
+- **The refusal rail is the location veto, not the detector.** The Tier C detector decides
+  whether to raise the modal and is ~90% accurate; `blocking()` vetoes a gated
+  `scene_update.location` regardless. Trade recall for precision and never the reverse — a
+  miss has a backstop, a false positive refuses a legitimate action and nothing catches it.
+- **Saves are still schema version 2.** Every phase kept storage where it was, so the v2→v3
+  cutover was never performed and existing saves load unchanged. What went to v3 is the
+  template shape. Don't relocate save state without a migration and a version bump.
 
 ### Schema (see `docs/SCHEMA_V2_SPEC.md` §1 for the full principles)
 - **An absent optional module means the feature does not exist** — no state, no
