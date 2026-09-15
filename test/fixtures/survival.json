@@ -1,0 +1,224 @@
+{
+  "schema_version": 2,
+  "story_version": "fixture-3",
+  "meta": {
+    "title": "Windward",
+    "genre": "Survival horror",
+    "tone": "Cold, depleting, and entirely without reassurance.",
+    "content_rules": [
+      "Death is a real outcome and arrives without narrative warning."
+    ]
+  },
+  "narration": {
+    "pov": "second-person",
+    "option_pov": "first-person",
+    "scene_length": {
+      "min": 380,
+      "max": 420
+    },
+    "style": [
+      "Every scene costs something. Name what it cost.",
+      "No comfort, no reprieve, no one arriving to help.",
+      "The cold is not described. It is the reason for every decision."
+    ]
+  },
+  "world": {
+    "setting_summary": "Nine kilometres of ice shelf between the wreck and the depot, in the dark, in March.",
+    "rules": [
+      "Nobody is coming. There is no rescue in this story and no character may credibly promise one.",
+      "WARMTH below zero is hypothermia and the narration must play it - judgement first, then coordination.",
+      "The thing on the ice is never seen whole and never explained."
+    ],
+    "locations": {
+      "loc_wreck": {
+        "name": "The Wreck",
+        "description": "What is left of the fuselage, and the only windbreak for six kilometres.",
+        "connected_to": [
+          "loc_shelf"
+        ]
+      },
+      "loc_shelf": {
+        "name": "The Open Shelf",
+        "description": "Flat, unmarked, and the same in every direction.",
+        "connected_to": [
+          "loc_wreck",
+          "loc_depot"
+        ]
+      },
+      "loc_depot": {
+        "name": "The Depot",
+        "description": "If it is still standing. Nobody has confirmed it since October.",
+        "connected_to": [
+          "loc_shelf"
+        ]
+      }
+    }
+  },
+  "protagonist": {
+    "default_name": "Kel",
+    "starting_inventory": [
+      {
+        "id": "itm_001",
+        "label": "a headlamp",
+        "tags": [
+          "tool",
+          "light"
+        ],
+        "uses": 2
+      }
+    ],
+    "stats": {
+      "warmth": 4,
+      "supplies": 6,
+      "days_out": 0
+    }
+  },
+  "mechanics": {
+    "subplots": {
+      "engine": "weighted_threads"
+    },
+    "inventory": {
+      "engine": "tagged_items",
+      "capacity": 4,
+      "tags": [
+        "tool",
+        "light",
+        "food",
+        "shelter",
+        "signal"
+      ]
+    },
+    "stats": {
+      "engine": "bounded_counter",
+      "floor": -10,
+      "ceiling": 10,
+      "_authored": "Priced rather than delta-reported (§8.1): the model names what happened from this vocabulary and the engine does the arithmetic, so the same event always costs the same. This is the fixture that guards the priced path - the other two stats-bearing fixtures author no costs and must keep the v2 stat_changes field, which is what makes the declare-to-opt-in behaviour testable in both directions. `days_out` carries per_turn drift so the clock advances whether or not the model noticed (§7.1); it also shows an axis with its own floor overriding the block-level -10.",
+      "axes": {
+        "warmth": {
+          "costs": {
+            "shelter.made": 3,
+            "fire.lit": 2,
+            "exposure.long": -3,
+            "exposure.brief": -1,
+            "soaked": -2
+          }
+        },
+        "supplies": {
+          "costs": {
+            "forage.good": 3,
+            "forage.poor": 1,
+            "meal.eaten": -1,
+            "cache.lost": -4
+          }
+        },
+        "days_out": {
+          "floor": 0,
+          "per_turn": 1
+        }
+      }
+    },
+    "tracked_entity": {
+      "name": "The Thing on the Ice",
+      "description": "Something keeps pace at the edge of the headlamp's throw. It has never closed, and it has never fallen behind.",
+      "pacing_note": "Appears rarely and never fully. It is a shape, a distance, or a sound with nothing to have made it. Never let it resolve, never let it attack directly, and never let any character explain it."
+    },
+    "failure_conditions": {
+      "engine": "triggered_ending",
+      "conditions": [
+        {
+          "id": "fail_cold",
+          "trigger": "The protagonist spends a scene at WARMTH -10 without shelter or fire.",
+          "title": "Windward",
+          "ending_prompt": "Close on the cold winning. Not dramatic. The decisions simply get worse until there are none."
+        },
+        {
+          "id": "fail_dark",
+          "trigger": "The protagonist's last light source fails on the open shelf.",
+          "title": "No Fixed Point",
+          "ending_prompt": "Close in the dark, still walking, no longer certain of the direction."
+        }
+      ]
+    },
+    "pacing_loop": {
+      "engine": "beat_counter",
+      "_authored": "A two-beat vocabulary, deliberately unlike example's cozy disquiet/comfort pair: this fixture exists to prove an author can name their own beats without touching Python (P-6), so it must not reuse that wording.",
+      "beats": {
+        "endure": {
+          "definition": "The cold, the injury, or the dwindling supplies cost the protagonist something concrete this scene - a resource spent, a wound worsened, a route closed, or a plan abandoned. The loss must be on the page, not merely feared.",
+          "feeds": "attrition",
+          "resets": [
+            "respite"
+          ]
+        },
+        "recover": {
+          "definition": "The protagonist materially improves their position - shelter made, a wound dressed, food secured, a route opened. Resting without gaining anything is not recovery.",
+          "feeds": "respite",
+          "resets": [
+            "attrition"
+          ]
+        }
+      },
+      "tie_break": "If both seem to fit, choose `endure` unless the scene ends with the protagonist measurably better off than it began.",
+      "counters": {
+        "attrition": 0,
+        "respite": 0
+      },
+      "rules": [
+        {
+          "id": "force_scarcity",
+          "watch": "respite",
+          "threshold": 4,
+          "threshold_by_act": {
+            "finale": null
+          },
+          "max_deferrals": 2,
+          "suppress_when": [
+            "threat_present"
+          ],
+          "directive": "PACING DIRECTIVE - THE MOUNTAIN TAKES SOMETHING BACK\n\nThe protagonist has been gaining ground for {counter_value} accumulated scenes. This scene must take something back: a supply spoiled, a route closed by weather, or a shelter that turns out not to hold.",
+          "reduced_directive": "PACING DIRECTIVE - ONE THING GOES WRONG\n\nA full setback has been deferred {deferrals} times. End this scene with one concrete thing the protagonist can no longer count on."
+        }
+      ]
+    }
+  },
+  "plot": {
+    "main_thread": {
+      "title": "Nine Kilometres",
+      "description": "Reach the depot before the warmth runs out. There is nothing else to do and nowhere else to go.",
+      "acts": [
+        {
+          "act_number": 1,
+          "title": "Leaving the Wreck",
+          "description": "The wreck is not survivable and the shelf may not be either. Choose what to carry.",
+          "completion_signals": [
+            "The protagonist has committed to the shelf with what they chose to carry"
+          ]
+        }
+      ]
+    },
+    "subplots": {
+      "subplot_001": {
+        "title": "What to Carry",
+        "description": "Everything you take costs warmth to carry and everything you leave is gone for good.",
+        "priority": "high",
+        "completion_threshold": 100,
+        "ties_to_main_plot": "The first irreversible decision of the crossing.",
+        "span": "single_act",
+        "starts_active": true
+      }
+    },
+    "pacing": {
+      "nudge_frequency": 5,
+      "act_check_frequency": 10,
+      "max_parallel_subplots": 2
+    },
+    "initial_scene": {
+      "location": "loc_wreck",
+      "summary": "The protagonist is in the lee of the fuselage with the light going and a decision to make about what to carry."
+    },
+    "opening_scene": {
+      "narration_before_name": "The transponder wants a name for the log it will never transmit.",
+      "narration_after_name": "You key in {player_name} and the screen accepts it and then, a moment later, goes dark for good.\n\nOPTIONS:\n1. Takes the supplies and leaves the shelter kit || I take what I can eat and move now, while I can still work the buckles.\n2. Takes the shelter kit and leaves the supplies || I take what will keep the wind off and gamble that nine kilometres is one push.\n3. Stays in the lee of the wreck until first light || I stay. Six hours of dark against whatever is out there walking my pace."
+    }
+  }
+}

@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from flask import Flask, Response, redirect, render_template, request, session, url_for
 
 import label_sheet
+import mechanics
 import plot_manager
 import state_store
 import story_engine
@@ -45,6 +46,18 @@ def login_required(view):
 
 
 INITIAL_TURNS_SHOWN = 3
+
+# Display-only cap for the story list's info panel - unrelated to
+# story_engine.SUMMARY_MAX_WORDS, which sizes compressed_summary for LLM prompt context
+# and stays untouched.
+SUMMARY_STAT_WORD_LIMIT = 60
+
+
+def _truncate_words(text: str, limit: int) -> str:
+    words = text.split()
+    if len(words) <= limit:
+        return text
+    return " ".join(words[:limit]) + "…"
 
 
 # Turn-text parsing (split_turn_entry) and chronological ordering (all_turns) live in
@@ -138,6 +151,22 @@ def _scene_and_controls_response(ctx: dict, story_slug: str, user_id: str = None
     )
 
 
+def _refusal_response(ctx: dict, story_slug: str, user_id: str, refusal: dict) -> str:
+    """§7.4's refusal, rendered as out-of-band swaps only.
+
+    No scene block: nothing happened, so there is nothing to append - and the result fetch
+    targets #scene-list, so a body here would be appended to the story as if it were a turn.
+    An empty body plus two OOB swaps leaves the transcript untouched, fills the modal, and
+    hands the controls back re-enabled with the same options still on them."""
+    turn = _latest_rendered_turn(ctx, animate=False)
+    mode = "concluded" if ctx["state"]["plot"]["endgame"]["concluded"] else "playing"
+    return render_template(
+        "_refusal.html", refusal=refusal, turn=turn, options=turn["options"], mode=mode,
+        story_slug=story_slug,
+        label_row=_label_row(ctx, story_slug, user_id) if user_id else None,
+    )
+
+
 def _turn_in_progress_response():
     """Shared by take_turn/regenerate_turn: refuses to start a second turn for a save that
     already has one running, rather than racing it - reuses state_store's turn-status beacon
@@ -177,6 +206,9 @@ def _start_turn_job(fn, user_id: str, story_slug: str):
         try:
             fn()
             state_store.write_turn_result(user_id, story_slug, ok=True)
+        except story_engine.ActionRefused as e:
+            state_store.write_turn_result(user_id, story_slug, ok=True,
+                                          refusal={"sentence": e.sentence, "gate": e.gate})
         except story_engine.LLMUnavailableError as e:
             state_store.write_turn_result(user_id, story_slug, ok=False, error=str(e))
 
@@ -209,10 +241,35 @@ def index():
     return redirect(url_for("stories"))
 
 
+def _story_save_stats(user_id: str, story_slug: str) -> dict | None:
+    """Non-spoiler save-progress stats for the story list's info panel: turn count,
+    current act, and the running summary - all things the player has already lived
+    through, so none of it risks revealing anything they haven't seen yet. Returns None
+    for a story the player hasn't started (state_store.peek_state, not load_state - this
+    must never create a save as a side effect of just browsing the list)."""
+    ctx = state_store.peek_state(user_id, story_slug)
+    if ctx is None:
+        return None
+    current_act = story_engine._current_act(ctx)
+    summary = ctx["state"]["history"]["compressed_summary"] or "The story has just begun."
+    return {
+        "turn_count": ctx["state"]["pacing"]["turn_count"],
+        "act_title": current_act["title"] if current_act else None,
+        # compressed_summary is sized for LLM prompt context (SUMMARY_MAX_WORDS = 2000
+        # words, see docs/ARCHITECTURE.md) - display-truncated here, not at the source, since a stats
+        # blurb needs a couple sentences, not the full rolling summary.
+        "summary": _truncate_words(summary, SUMMARY_STAT_WORD_LIMIT),
+    }
+
+
 @app.route("/stories")
 @login_required
 def stories():
-    return render_template("stories.html", stories=state_store.list_stories())
+    user_id = session["user_id"]
+    story_list = state_store.list_stories()
+    for story in story_list:
+        story["save_stats"] = _story_save_stats(user_id, story["slug"])
+    return render_template("stories.html", stories=story_list)
 
 
 @app.route("/help")
@@ -401,6 +458,10 @@ def turn_result(story_slug):
         # so #scene-list/#controls are left exactly as they were and the player can just
         # retry the same choice.
         return result["error"], 503
+    if result.get("refusal"):
+        # §7.4: the world refused the action, so no turn happened and there is no new scene.
+        ctx = state_store.load_state(user_id, story_slug)
+        return _refusal_response(ctx, story_slug, user_id, result["refusal"])
     ctx = state_store.load_state(user_id, story_slug)
     return _scene_and_controls_response(ctx, story_slug, user_id)
 
@@ -519,7 +580,7 @@ def plot_manager_view(story_slug):
             # well under the Cloudflare tunnel's ~100-125s cutoff - so this stays inline
             # like every other command on this route, unlike take_turn/regenerate_turn's
             # background-thread + poll handoff (see "Asynchronous turn-taking" in
-            # CLAUDE.md), which exists specifically for the much longer full turn chain.
+            # docs/ARCHITECTURE.md), which exists specifically for the much longer full turn chain.
             plot_manager.stage_steering_seed(ctx, request.form.get("note", ""))
         elif command == "seed-apply":
             overrides = {}
@@ -583,14 +644,15 @@ def subplot_manager_view(story_slug):
 
     plot_state = ctx["state"]["plot"]
     pacing_state = ctx["state"]["pacing"]
-    pacing_story = ctx["story"]["plot"]["pacing"]
-    revelations = ctx["story"].get("mechanics", {}).get("revelations", [])
+    pacing_story = ctx["story"]["plot"].get("pacing", {})
+    bound = mechanics.bound_for(ctx["story"], "revelations")
+    revelations = bound.engine.entries(bound.cfg) if bound else []
     revealed_map = plot_state["revelations_revealed"]
     memory_fragments = [dict(r, revealed=(r["id"] in revealed_map)) for r in revelations]
     pacing_view = {
         "turn_count": pacing_state["turn_count"],
         "turns_since_last_pacing_nudge": pacing_state["turns_since_nudge"],
-        "pacing_nudge_frequency": pacing_story["nudge_frequency"],
+        "pacing_nudge_frequency": pacing_story.get("nudge_frequency", story_engine.DEFAULT_NUDGE_FREQUENCY),
         "max_parallel_subplots": pacing_story["max_parallel_subplots"],
         "subplots_completed_this_act": pacing_state["subplots_completed_this_act"],
         "last_pacing_direction": pacing_state["last_direction"],

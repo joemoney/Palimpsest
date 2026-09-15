@@ -24,7 +24,7 @@ print("OK: regenerate_last_turn() with nothing pending is a no-op that returns F
 # --- take a real turn: narrates, and completes subplot_001 for a visible state change ---
 se.call_llm = CannedResponses(["First narration.\n\nOPTIONS:\n1. a || a\n2. b || b\n3. c || c"])
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {"subplot_001": 100}, "flags_set": {"test_flag": {"value": True, "pinned": False}},
+    {"subplot_beats": {"subplot_001": "resolved"}, "flags_set": {"test_flag": {"value": True, "pinned": False}},
      "memory_fragments_revealed": []},
     # subplot_001 completing triggers a replacement via generate_new_subplot
     {"title": "Replacement Subplot", "description": "d", "priority": "medium", "ties_to_main_plot": "t"},
@@ -47,7 +47,7 @@ print("OK: take_turn() applies state changes and stashes a pre-turn snapshot")
 # --- regenerate: state should roll back to pre-turn, then re-apply based on the NEW response ---
 se.call_llm = CannedResponses(["Second narration (regenerated).\n\nOPTIONS:\n1. x || x\n2. y || y\n3. z || z"])
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": []},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []}},
 ])
 result = se.regenerate_last_turn()
 assert result is False
@@ -69,7 +69,7 @@ print("OK: regenerate_last_turn() restores pre-turn state, then applies the fres
 recorder = RecordingLLM(lambda prompt: "Third narration.\n\nOPTIONS:\n1. p || p\n2. q || q\n3. r || r")
 se.call_llm = recorder
 se.call_llm_json = CannedResponses([
-    {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": []},
+    {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []}},
 ])
 se.regenerate_last_turn()
 ctx = ctx_holder["ctx"]

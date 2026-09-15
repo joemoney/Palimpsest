@@ -1,6 +1,6 @@
 """Regression test for per-tier provider selection: both TIER_AB_PROVIDER and
 TIER_C_PROVIDER default to "openrouter" in real use (Google is reserved for testing/
-debugging and call_llm's fail-safe - see CLAUDE.md), but an operator can still point Tier C
+debugging and call_llm's fail-safe - see docs/ARCHITECTURE.md), but an operator can still point Tier C
 at Google directly (TIER_C_PROVIDER=google, using their own GOOGLE_API_KEY) if they want
 the state-update tier's every-turn call routed that way - e.g. when trying a real Gemini
 model there instead of an OpenRouter slug. This file exercises exactly that opt-in mixed

@@ -9,7 +9,7 @@ Primary sources, in priority order when they conflict:
 
 1. `CLAUDE.md` — engine invariants. Read it first; it is not optional context.
 2. `docs/Narrative_Pacing_Loop_Spec_v4.md` — the feature spec. **Partly superseded, see §2.**
-3. `docs/PHASE_0_GATE_REPORT.md` §7–§10 — what was measured and what it means.
+3. `docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md` §7–§10 — what was measured and what it means.
 4. This file.
 
 ---
@@ -64,7 +64,7 @@ the reveal queue is non-empty, surface exactly ONE reveal" - an instruction abou
 narrator could not see, since nothing interpolated `{queued_reveal}`. It now interpolates the
 queued reveal's **content** (never its id or authored trigger) and instructs the model to
 write it only when that content isn't `"none queued"`. This is directive text, not a beat
-definition, so it does not invalidate `PHASE_0_GATE_REPORT.md` §9.13.1 or require re-running
+definition, so it does not invalidate `docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md` §9.13.1 or require re-running
 the gate scripts. `reduced_directive` was deliberately left alone - a constrained
 mid-action breath is not the scene to land a revelation in.
 
@@ -226,7 +226,7 @@ stronger model) rather than deciding alone:
   single run; report mean and range), and check the marginals for majority-class riding.
 - Threshold changes. They are simulated, not guessed — `_threshold_note` in each template
   records the method, and any replacement should be derived the same way.
-- Anything that would change a verdict already recorded in `PHASE_0_GATE_REPORT.md`. Corrections
+- Anything that would change a verdict already recorded in `docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md`. Corrections
   there are appended and marked superseded, never rewritten — that is a deliberate convention.
 
 Routine implementation work — schema plumbing, counter arithmetic, section builders, tests,

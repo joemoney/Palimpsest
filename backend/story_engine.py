@@ -15,6 +15,7 @@ load_dotenv()
 import google.generativeai as genai
 import requests
 
+import mechanics
 import state_store
 from state_store import DEFAULT_STORY_SLUG, DEFAULT_USER_ID
 
@@ -32,20 +33,9 @@ ROLLOVER_BATCH_TURNS = 10
 SUMMARY_MAX_WORDS = 2000
 SUBPLOT_TITLE_HISTORY_LIMIT = 15
 FLAGS_ACTIVE_LIMIT = 25
-RELATIONSHIPS_LIMIT = 20
 # CR-03: revealed memory fragments accumulate for the whole game, same shape of problem as
 # SUBPLOT_TITLE_HISTORY_LIMIT - bound how many of them reach the narration prompt, keyed off
 # revealed_turn so the most recently revealed ones are the ones that survive the cap.
-MEMORY_FRAGMENT_PROMPT_LIMIT = 12
-# Spec 7's retention/bounding policy for protagonist.leverage. Spent entries are deliberately
-# RETAINED rather than pruned on spend - they're cheap, they enable callbacks, and
-# history.compressed_summary is already lossy, so a spent-but-retained entry may end up the
-# only surviving record that something was ever gained. This is the roster cap that keeps
-# that from growing forever (CLAUDE.md, "Keeping LLM Context Bounded"): over the cap, evict
-# spent entries oldest-first and NEVER an unspent one - if unspent entries alone exceed the
-# limit, allow the overflow rather than dropping a live asset. Note only unspent entries
-# ever reach a prompt, so this bounds disk growth and the eviction order, not per-entry cost.
-LEVERAGE_LIMIT = 40
 # The completion_threshold a "multi_act"-span subplot gets instead of the normal 100 (see
 # insert_subplot) - the only lever that actually makes one take longer to resolve, since
 # progress/completion tracking (update_progress_from_turn, check_subplot_status) is generic
@@ -56,10 +46,10 @@ MULTI_ACT_SUBPLOT_THRESHOLD = 250
 # check_and_advance_act) - every current template authors its own value, same convention as
 # nudge_frequency.
 DEFAULT_ACT_CHECK_FREQUENCY = 12
-# Fallback floor for a story that doesn't author mechanics.stats.floor at all (see 5.2's
-# use in update_progress_from_turn) - mechanics.stats.floor/.ceiling is the real per-story
-# dial now; this is just what a minimal template without one degrades to.
-STAT_FLOOR = 0
+# P-4 companions to the above: plot.pacing itself is optional, so every read of it goes
+# through .get() with one of these rather than subscripting the block into existence.
+DEFAULT_NUDGE_FREQUENCY = 8
+DEFAULT_MAX_PARALLEL_SUBPLOTS = 3
 # Fallback scene length for a story that omits narration.scene_length entirely (P-4: a
 # minimal template must still run).
 DEFAULT_SCENE_WORD_MIN = 470
@@ -83,7 +73,7 @@ STEER_WARNING = (
 )
 
 # --- LLM tier configuration ---
-# Three tiers, matched to what each call site actually needs (see CLAUDE.md's "Backend /
+# Three tiers, matched to what each call site actually needs (see docs/ARCHITECTURE.md's "Backend /
 # Model Notes" for the full picture and the reasoning behind each choice):
 #   Tier A - cheap flagship, reasoning OFF. For calls where style/format adherence matters
 #     most and a model's reasoning phase swallowing the final answer (see the "reasoning"
@@ -107,6 +97,13 @@ TIER_AB_PROVIDER = os.getenv("TIER_AB_PROVIDER", "openrouter")
 TIER_AB_MODEL = os.getenv("TIER_AB_MODEL", "deepseek/deepseek-v4-pro-20260813")
 TIER_C_PROVIDER = os.getenv("TIER_C_PROVIDER", "openrouter")
 TIER_C_MODEL = os.getenv("TIER_C_MODEL", "deepseek/deepseek-v4-flash-0731")
+# Optional pin overriding the default "sort": "throughput" OpenRouter routing (see
+# _call_llm_openrouter) for TIER_AB_MODEL specifically - an explicit tradeoff of throughput
+# for a cheaper upstream, opted into per-deployment rather than a blanket default, since
+# "sort": "throughput" exists precisely because the wrong upstream can be much slower for
+# the same price. Only ever applied to TIER_AB_MODEL, never TIER_C_MODEL's own calls, and
+# unset means unchanged (throughput-sorted) behavior.
+TIER_AB_OPENROUTER_PROVIDER = os.getenv("TIER_AB_OPENROUTER_PROVIDER", "").strip() or None
 for _provider in (TIER_AB_PROVIDER, TIER_C_PROVIDER):
     if _provider not in ("openrouter", "google"):
         raise ValueError(f"Unknown provider {_provider!r} - expected 'openrouter' or 'google'")
@@ -149,6 +146,19 @@ if not TESTING_FORCE_GOOGLE and "openrouter" in (TIER_AB_PROVIDER, TIER_C_PROVID
 if not GOOGLE_API_KEY:
     raise ValueError("GOOGLE_API_KEY not found in .env file")
 genai.configure(api_key=GOOGLE_API_KEY)
+
+
+class ActionRefused(Exception):
+    """The world refused this action (§7.4), so no turn happened.
+
+    An exception rather than a return value for the same reason `LLMUnavailableError` is one:
+    it has to unwind every caller - CLI, web, and any future entry point - without each of
+    them having to remember to check a flag, and it carries the guarantee that nothing was
+    written. A refusal costs one Tier C call and no state change at all."""
+
+    def __init__(self, sentence: str, gate: str):
+        super().__init__(sentence)
+        self.sentence, self.gate = sentence, gate
 
 
 class LLMUnavailableError(Exception):
@@ -203,19 +213,30 @@ def _trim_to_last_sentence(text: str) -> str:
 
 def _call_llm_openrouter(prompt: str, model: str, reasoning: bool = False, json_mode: bool = False) -> str:
     def do_request():
+        # deepseek-v4-flash-0731 (TIER_C_MODEL) alone is resold through 29 different
+        # OpenRouter providers, with measured throughput ranging 6-109 tok/s and TTFT
+        # 0.42-2.42s depending which one a request lands on - OpenRouter's default
+        # routing doesn't optimize for this, so a real production call landed on the
+        # slow end (see git log: an 83s state-update call was the dominant cost in a
+        # 132s turn). This asks OpenRouter to prefer whichever provider is currently
+        # fastest for the requested model, instead of leaving that to chance - same
+        # model, same price, just routed better. Applies to every OpenRouter call
+        # (every tier) EXCEPT the TIER_AB_OPENROUTER_PROVIDER pin below, since sorting
+        # by throughput can only help absent a deliberate reason to override it.
+        provider_route = {"sort": "throughput"}
+        if model == TIER_AB_MODEL and TIER_AB_OPENROUTER_PROVIDER:
+            # Deliberate opt-in tradeoff (see TIER_AB_OPENROUTER_PROVIDER above): pin
+            # TIER_AB_MODEL to one specific upstream instead of the fastest one, e.g. to
+            # chase a cheaper provider knowing it'll be slower. allow_fallbacks: False
+            # means a request fails outright (LLMUnavailableError, same as any other
+            # OpenRouter failure) rather than silently landing on a different, possibly
+            # pricier upstream if the pinned one is down - call_llm's Gemini fail-safe is
+            # still the safety net for that case, same as for any other primary failure.
+            provider_route = {"order": [TIER_AB_OPENROUTER_PROVIDER], "allow_fallbacks": False}
         body = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
-            # deepseek-v4-flash-0731 (TIER_C_MODEL) alone is resold through 29 different
-            # OpenRouter providers, with measured throughput ranging 6-109 tok/s and TTFT
-            # 0.42-2.42s depending which one a request lands on - OpenRouter's default
-            # routing doesn't optimize for this, so a real production call landed on the
-            # slow end (see git log: an 83s state-update call was the dominant cost in a
-            # 132s turn). This asks OpenRouter to prefer whichever provider is currently
-            # fastest for the requested model, instead of leaving that to chance - same
-            # model, same price, just routed better. Applies to every OpenRouter call
-            # (every tier), since it can only help.
-            "provider": {"sort": "throughput"},
+            "provider": provider_route,
             # A reasoning-capable model (observed with deepseek-v4-pro) can finish
             # normally (finish_reason "stop") while leaving message.content null and
             # putting the entire finished reply - including a correctly-formatted OPTIONS
@@ -413,6 +434,9 @@ STATUS_LABELS = {
     # SECONDS entry either (falls back to no progress bar, just the spinner, which suits a
     # step that's normally over in well under a second).
     "queued": "Starting",
+    # §7.4's pre-action check. Tier C and a small prompt, so it is normally over before
+    # the poll notices - but it is on the turn path, so it carries a real estimate.
+    "gate_check": "Checking",
     "narration": "Narrating",
     "options_generation": "Offering",
     "state_update": "Reckoning",
@@ -440,6 +464,7 @@ STATUS_LABELS = {
 # app.py's /api/status route only falls back to this when p50_duration is None - one real
 # completed call is enough for the rolling median to take over from then on.
 DEFAULT_STEP_ESTIMATE_SECONDS = {
+    "gate_check": 2,
     "narration": 17,
     # Same tier/model as narration but a much smaller ask (just the OPTIONS block, against
     # narration it's already been handed), so a fraction of narration's estimate.
@@ -524,8 +549,7 @@ def _current_act(ctx: dict) -> dict:
     list position breaks as soon as act numbering stops being contiguous. Returns None if
     current_act doesn't match any act (shouldn't happen in practice - callers that can't
     tolerate that already guard)."""
-    number = ctx["state"]["plot"]["current_act"]
-    return next((act for act in _all_acts(ctx) if act["act_number"] == number), None)
+    return mechanics.current_act(ctx)
 
 
 def _all_acts(ctx: dict) -> list:
@@ -533,22 +557,7 @@ def _all_acts(ctx: dict) -> list:
     optional flags from act_completion, since the template entry itself is frozen) plus
     every act generated during play (already self-contained, carrying its own completed/
     optional directly) - sorted by act_number."""
-    completion = ctx["state"]["plot"]["act_completion"]
-    merged = []
-    for act in ctx["story"]["plot"]["main_thread"]["acts"]:
-        overlay = completion.get(str(act["act_number"]), {})
-        merged.append({
-            "act_number": act["act_number"],
-            "title": act["title"],
-            "description": act["description"],
-            "completion_signals": list(act.get("completion_signals", [])),
-            "completed": overlay.get("completed", False),
-            "optional": overlay.get("optional", False),
-        })
-    for act in ctx["state"]["plot"]["generated_acts"]:
-        merged.append(dict(act))
-    merged.sort(key=lambda a: a["act_number"])
-    return merged
+    return mechanics.all_acts(ctx)
 
 
 def _mark_act_completed(ctx: dict, act_number: int):
@@ -586,97 +595,26 @@ def _next_subplot_id(subplots: dict) -> str:
     return f"subplot_{next_number:03d}"
 
 
-def _next_leverage_number(leverage: list) -> int:
-    """Mirrors _next_subplot_id's numbering scheme for protagonist.leverage entries
-    (spec §7's "lev_004" ids), which is a list rather than an id-keyed dict."""
-    existing_numbers = [
-        int(entry["id"].rsplit("_", 1)[-1])
-        for entry in leverage
-        if entry.get("id", "").rsplit("_", 1)[-1].isdigit()
-    ]
-    return (max(existing_numbers) + 1) if existing_numbers else 1
-
-
-def _evict_spent_leverage(leverage: list) -> None:
-    """Spec 7's bounding policy, in place. Only ever drops entries already marked spent, and
-    the oldest of those first (list order is acquisition order, since entries are only ever
-    appended). Deliberately gives up rather than dropping a live asset: if the list is over
-    LEVERAGE_LIMIT but every entry is unspent, the overflow is allowed to stand - an unspent
-    entry is a promise the release directive can still cash, and silently deleting one would
-    make the directive point at something the story never delivered.
-
-    Mirrors archive_stale_flags' role for flags_active, not its mechanism: flags age out by
-    turn, leverage ages out only once the story has actually used it up."""
-    if len(leverage) <= LEVERAGE_LIMIT:
-        return
-    spent_indices = [i for i, entry in enumerate(leverage) if entry.get("spent")]
-    for index in reversed(spent_indices[: len(leverage) - LEVERAGE_LIMIT]):
-        leverage.pop(index)
-
-
-def _pacing_rule(pacing_loop_cfg: dict) -> dict | None:
-    """v1 scope (spec §6.2): the schema accepts a list of rules so both correction
-    directions are expressible without code, but v1 implements and tests exactly one rule
-    per story - a template declaring more logs a warning and uses only the first.
-    Multi-rule arbitration is deferred (spec §9) since nothing exercises it yet."""
-    rules = pacing_loop_cfg.get("rules", [])
-    if not rules:
-        return None
-    if len(rules) > 1:
-        print(
-            f"WARNING: mechanics.pacing_loop declares {len(rules)} rules; v1 only supports "
-            f"one per story - using '{rules[0]['id']}', ignoring the rest.",
-            file=sys.stderr,
-        )
-    return rules[0]
-
-
-def _rule_effective_threshold(rule: dict, current_act: dict | None):
-    """Spec §13 resolution order: exact act number -> "finale" if the current act is one ->
-    the rule's base threshold. A null at any resolved level disables the rule for that act
-    (the caller must treat a None return as "not armable/not eligible this act", not as
-    "use the default")."""
-    by_act = rule.get("threshold_by_act", {})
-    if current_act:
-        act_key = str(current_act["act_number"])
-        if act_key in by_act:
-            return by_act[act_key]
-        if current_act.get("is_finale") and "finale" in by_act:
-            return by_act["finale"]
-    return rule.get("threshold")
-
-
 def _unspent_leverage_text(ctx: dict) -> str:
     """{unspent_leverage} interpolation (spec §11) - only unspent entries are ever shown,
     per §7's retention policy (spent entries are kept for callbacks but cost nothing here)."""
-    labels = [e["label"] for e in ctx["state"]["protagonist"].get("leverage", []) if not e.get("spent")]
+    bound = mechanics.bound_for(ctx["story"], "progression")
+    labels = bound.engine.unspent(bound.cfg, ctx) if bound else []
     return ", ".join(labels) if labels else "none yet"
 
 
 def _queued_reveal_text(ctx: dict) -> str:
-    """{queued_reveal} interpolation (spec §11/§12). pacing.reveal_queue is populated by
-    update_progress_from_turn's revelations_eligible field: a revelation whose authored
-    trigger is already satisfied but which the narration hasn't actually written yet waits
-    here for a corrective beat to place it, rather than firing into whatever scene happens
-    to be next. FIFO, so the oldest eligible reveal is the one offered.
+    """{queued_reveal} interpolation (spec §11/§12) - placement only; the queue itself and
+    everything about what may go in it belong to the triggered_reveal engine (phase 4).
 
-    Only the *content* is interpolated, never the id or the trigger - the narrator writes
-    the reveal, it doesn't get told the bookkeeping. Skips (rather than shows) an entry
-    that has since been revealed by other means, so a stale queue entry can never make the
-    directive ask for something the player has already read.
-
-    CR-03 - this section's hard prerequisite (spec §12) - has landed: _section_revelations
-    puts revealed content into the narration prompt, so a placed reveal now reaches a pipe
-    that is actually connected."""
-    queue = ctx["state"]["pacing"].get("reveal_queue", [])
-    if not queue:
+    "none queued" rather than an omitted section because this is interpolated into the
+    middle of an authored pacing directive, not appended as a block of its own - a story
+    writes "{queued_reveal}" into a sentence and needs something there. P-2 governs whether
+    the *directive* fires at all, which is the pacing module's call, not this one's."""
+    bound = mechanics.bound_for(ctx["story"], "revelations")
+    if bound is None:
         return "none queued"
-    revealed = ctx["state"]["plot"]["revelations_revealed"]
-    revelations = {r["id"]: r for r in ctx["story"].get("mechanics", {}).get("revelations", [])}
-    for rev_id in queue:
-        if rev_id in revelations and rev_id not in revealed:
-            return revelations[rev_id]["content"]
-    return "none queued"
+    return bound.engine.queued_content(bound.cfg, ctx) or "none queued"
 
 
 def _suppress_predicate(name: str, ctx: dict, rule_id: str, fired_last_turn: str | None) -> bool:
@@ -691,35 +629,13 @@ def _suppress_predicate(name: str, ctx: dict, rule_id: str, fired_last_turn: str
     return False
 
 
-def _subplot_view(ctx: dict, sid: str) -> dict:
-    """Merged view of one subplot: a seeded subplot resolves title/description/priority/
-    ties_to_main_plot/completion_threshold/span from the template; a generated one (no
-    template counterpart) carries all of that on its own runtime entry instead, since
-    there's nothing to resolve it against. If a seeded subplot's template entry has since
-    been removed by an author (SCHEMA_V2_SPEC.md §2.3 reconciliation), falls back to a
-    placeholder rather than raising - the runtime copy stays in place either way."""
-    seed = ctx["story"]["plot"]["subplots"].get(sid, {})
-    runtime = ctx["state"]["plot"]["subplots"].get(sid, {})
-    return {
-        "id": sid,
-        "title": runtime.get("title") or seed.get("title") or f"(removed from template: {sid})",
-        "description": runtime.get("description", seed.get("description", "")),
-        "priority": runtime.get("priority", seed.get("priority", "medium")),
-        "ties_to_main_plot": runtime.get("ties_to_main_plot", seed.get("ties_to_main_plot", "")),
-        "completion_threshold": runtime.get("completion_threshold", seed.get("completion_threshold", 100)),
-        "span": runtime.get("span", seed.get("span", "single_act")),
-        "progress": runtime.get("progress", 0),
-        "status": runtime.get("status", "not_started"),
-        "active": runtime.get("active", False),
-    }
-
-
-def _all_subplots(ctx: dict) -> dict:
-    """{id: merged view} for every subplot that currently exists - ctx["state"]["plot"]
-    ["subplots"] is the authoritative id set (every template-seeded subplot is
-    instantiated into it at save creation, and every generated one is added to it
-    directly), so iterating its keys covers both kinds."""
-    return {sid: _subplot_view(ctx, sid) for sid in ctx["state"]["plot"]["subplots"]}
+# Phase 4 moved the merge itself into backend/mechanics/threads.py, next to the engine that
+# prices progress against it - but it stayed a module function there rather than becoming an
+# engine method, precisely so these keep working for a story that declares no subplot engine.
+# check_subplot_status, generate_new_subplot, act advancement and subplot_manager all need
+# the view, and none of them may go dark over a missing declaration.
+_subplot_view = mechanics.threads.subplot_view
+_all_subplots = mechanics.threads.all_subplots
 
 
 def _authored_character(ctx: dict, name: str) -> dict:
@@ -758,7 +674,14 @@ def _existing_character_names(ctx: dict) -> list:
     prompting the model for new characters - the merged roster, plus the tracked entity's
     name if the story has one (mechanics.tracked_entity isn't part of the characters
     roster, but a model unaware of it could otherwise reinvent it as a new NPC)."""
-    names = list(_all_character_names(ctx))
+    # sorted(), not list(): _all_character_names returns a set, and set iteration order
+    # varies between processes, so this list - which is interpolated verbatim into the
+    # state-update, subplot-generation, steering and act-check prompts as "EXISTING
+    # CHARACTERS (do not repeat)" - used to render in a different order on every run. Same
+    # context, different prompt bytes, which defeats prompt caching and makes a prompt
+    # impossible to regression-test. Every other caller of _all_character_names already
+    # sorts (plot_manager, app.py, _section_roster); this was the one that didn't.
+    names = sorted(_all_character_names(ctx))
     tracked = ctx["story"].get("mechanics", {}).get("tracked_entity")
     if tracked:
         names.append(tracked["name"])
@@ -835,7 +758,7 @@ def insert_subplot(ctx: dict, title: str, description: str, priority: str = "med
     new_id = _next_subplot_id(subplots)
 
     active_count = sum(1 for sid in subplots if _subplot_view(ctx, sid)["active"])
-    max_parallel = ctx["story"]["plot"]["pacing"]["max_parallel_subplots"]
+    max_parallel = ctx["story"]["plot"].get("pacing", {}).get("max_parallel_subplots", DEFAULT_MAX_PARALLEL_SUBPLOTS)
     make_active = active_count < max_parallel
 
     subplots[new_id] = {
@@ -875,30 +798,14 @@ def check_subplot_status(ctx: dict) -> dict:
 def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -> dict:
     """Separate LLM pass (kept apart from narration) that extracts a state diff from the
     turn just narrated: subplot progress, flags, revealed memory fragments, entity contact,
-    inventory changes, scene, and relationship-score changes."""
-    subplots_view = _all_subplots(ctx)
-    # CR-08: previously just {id: title}, giving the model a delta to report with no idea
-    # where the subplot currently stands - it couldn't tell "this beat should finish the
-    # thread" from "this nudges it." Progress/threshold let it calibrate the delta instead.
-    active_subplot_lines = "\n".join(
-        f"  {sid}: {sp['title']} - {sp['description']} [{sp['progress']}/{sp['completion_threshold']}]"
-        for sid, sp in subplots_view.items() if sp["active"]
-    ) or "  none"
-    revelations = ctx["story"].get("mechanics", {}).get("revelations", [])
-    revealed_ids = set(ctx["state"]["plot"]["revelations_revealed"].keys())
-    unrevealed_fragments = {
-        rev["id"]: rev["trigger"] for rev in revelations if rev["id"] not in revealed_ids
-    }
+    scene, and - through the bound mechanic engines - inventory, relationships and stats."""
     characters = ctx["state"]["characters"]
-    # 5.3: mechanics.relationships.axis replaces the hardcoded "-100 hostile to +100
-    # devoted" / "trust/warmth built" instruction text - interpolated into both the
-    # CURRENT RELATIONSHIPS line and the relationship_changes schema field below. Absent
-    # block means the story tracks no relationship scores at all: no CURRENT RELATIONSHIPS
-    # line, no relationship_changes field. Character discovery (new_characters) is a
-    # separate, unconditional mechanism - a story can track who's been met without scoring
-    # how they feel about the player.
-    relationships_cfg = ctx["story"].get("mechanics", {}).get("relationships")
-    relationship_scores = {name: entry.get("relationship", 0) for name, entry in characters.items()}
+    # Phase 4: relationships are the `scored_axis` engine's now (backend/mechanics/
+    # social.py) - the scale, the price list, the tiers, the cap and the eviction rule all
+    # moved there, and so did the CURRENT STANDING line and the `social` field that replaced
+    # `relationship_changes`. Nothing about them is read here any more. Character discovery
+    # (new_characters) stays a separate, unconditional mechanism: a story can track who's
+    # been met without scoring how they feel about the player.
     existing_characters = _existing_character_names(ctx)
     stats = ctx["state"]["protagonist"].get("stats", {})
     stats_block = f'\nCURRENT STATS ({", ".join(stats)}): {json.dumps(stats)}' if stats else ""
@@ -921,41 +828,31 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
     # asked about when the story actually configures one.
     tracked_entity = ctx["story"].get("mechanics", {}).get("tracked_entity")
 
-    # Phase 6 step 3 (docs/PHASE_6_HANDOFF.md §3, spec §5/§6.1/§7): beat_type/intensity and
+    # Phase 6 step 3 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §3, spec §5/§6.1/§7): beat_type/intensity and
     # leverage_gained ride along in this same call - "one extra field, no extra request"
     # (spec §9). Both gated on their own mechanics block, same conditional pattern as
     # stats/relationships_cfg above. Beat names/definitions come from the template, never a
     # constant - New Babel and example already use different vocabularies. This step only
     # extracts and stores the raw diff (last_beat, appended leverage entries); counter
-    # arithmetic, arming, and spending are docs/PHASE_6_HANDOFF.md §4's job, not this one's.
-    pacing_loop_cfg = ctx["story"].get("mechanics", {}).get("pacing_loop")
-    progression_cfg = ctx["story"].get("mechanics", {}).get("progression")
-
-    # 5.7: mechanics.failure_conditions - a story that can end badly without the player
-    # asking to. Evaluated alongside revelations (same authored-trigger shape, different
-    # effect - see _apply_failure_condition). Not offered once the story is already ending,
-    # from either cause - nothing left to fail into.
-    failure_conditions = ctx["story"].get("mechanics", {}).get("failure_conditions", [])
-    if ctx["state"]["plot"]["endgame"]["requested"]:
-        failure_conditions = []
-    failure_triggers = {c["id"]: c["trigger"] for c in failure_conditions}
+    # arithmetic, arming, and spending are docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §4's job, not this one's.
+    pacing_loop_cfg = mechanics.bound_for(ctx["story"], "pacing_loop")
 
     schema_fields = [
-        '  "subplot_progress": {"<subplot_id>": <integer 0-100, progress made this turn - this '
-        "is ADDED to the subplot's current progress shown above, and reaching its "
-        'completion_threshold completes the thread>}',
         '  "flags_set": {"<flag_name>": {"value": true, "pinned": <true if this is a '
         'foundational fact that should never be forgotten, e.g. a core revelation or '
         "identity; false if it's situational and safe to eventually forget once it's no "
         'longer recent>}}',
-        '  "memory_fragments_revealed": ["<the exact id of every UNREVEALED MEMORY FRAGMENT '
-        'TRIGGER below that the narration satisfies this turn, or [] if none>"]',
     ]
-    if tracked_entity:
-        schema_fields.append(
-            f'  "entity_interaction": <true if {tracked_entity["name"]} appeared or acted this '
-            'turn, else false>'
-        )
+    # §5.4: one field, not two, for two questions about the same scene. `entity_interaction`
+    # rides inside scene_update rather than standing alone for exactly the reason
+    # `threat_present` already does below - both ask "what was true of the scene that just
+    # ended", and neither is worth a top-level key of its own. It belonged to no §7 catalogue
+    # entry, which is why the port list never reached it: a projection made by walking the
+    # catalogue misses every field the catalogue does not mention.
+    entity_interaction_field = (
+        f', "entity_interaction": <true if {tracked_entity["name"]} appeared or acted this '
+        'turn, else false>' if tracked_entity else ""
+    )
     # spec §8: scene.threat_present is scene state, not a pacing_loop field itself, but the
     # only thing that ever reads it back is a suppress_when: ["threat_present"] rule (§10),
     # so it's only worth asking for when a story actually has the module - gating it here
@@ -969,164 +866,31 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
         '  "scene_update": {"location": "<location id from VALID LOCATION IDS above, or the '
         'same id if the protagonist has not moved>", "summary": "<1-2 sentences: where the '
         'protagonist is now and the immediate situation, as of the end of this turn>", '
-        f'"present_npcs": ["<character name>", "..."]{threat_present_field}}}'
+        f'"present_npcs": ["<character name>", "..."]'
+        f'{entity_interaction_field}{threat_present_field}}}'
     )
-    schema_fields += [
-        '  "items_gained": ["<short item description>", "..."]',
-        '  "items_lost": ["<item description, matching an existing inventory entry exactly>", "..."]',
-    ]
-    if relationships_cfg:
-        axis = relationships_cfg["axis"]
-        schema_fields.append(
-            '  "relationship_changes": {"<character name>": <integer delta this turn, typically '
-            f'-10 to +10, positive for {axis["description"]}, negative for damage done - only named '
-            'characters the player actually interacted with or was meaningfully affected by this turn>}'
-        )
     schema_fields.append(
         '  "new_characters": [{"name": "<full name>", "description": "<who they are, appearance, '
         'personality>", "role": "<their narrative role>", "relationship_to_player": "<their '
         'initial stance toward the player>", "hook": "<a concrete way they could naturally '
         'reappear or matter going forward>"}]'
     )
-    if stats:
-        schema_fields.append(
-            f'  "stat_changes": {{"<stat name, must be one of: {", ".join(stats)}>": <integer '
-            "delta this turn, positive or negative - only stats the turn's events actually "
-            "moved, never a stat name outside that fixed list>}"
-        )
-    if pacing_loop_cfg:
-        beat_names = list(pacing_loop_cfg["beats"].keys())
-        schema_fields.append(
-            f'  "beat_type": "<exactly one of: {", ".join(beat_names)} - whichever beat type '
-            'above best matches what actually happened on the page this scene>"'
-        )
-        schema_fields.append(
-            '  "intensity": <integer 1-3 for the beat above - 1: pressure present, no '
-            "immediate physical danger; 2: direct confrontation or a forced decision in the "
-            'room; 3: physical danger, active pursuit, or body-horror escalation>'
-        )
-    if progression_cfg:
-        kinds = progression_cfg.get("kinds", [])
-        hint = progression_cfg.get("prompt_hint", "")
-        label = progression_cfg.get("label", "leverage")
-        schema_fields.append(
-            f'  "leverage_gained": [{{"kind": "<one of: {", ".join(kinds)}>", "label": "<short, '
-            f'concrete description of a durable gain the protagonist did not have before this '
-            f'turn{" - " + hint if hint else ""}>"}}]'
-        )
-        # Spec §7: the ledger is a ratchet the release directive points at, so an entry that
-        # has been used up or invalidated has to stop being pointed at. Matched by exact
-        # label string against the CURRENT <LABEL> line in the prompt, exactly like
-        # items_lost against CURRENT INVENTORY - which is why that line is shown here.
-        schema_fields.append(
-            f'  "leverage_spent": ["<the exact label, copied verbatim from CURRENT '
-            f'{label.upper()} above, of every entry this turn used up or invalidated - '
-            "spent when it has been cashed in and can't be cashed again, or when events "
-            'made it worthless. Not merely mentioned or acted on. [] if none>"]'
-        )
-    # Spec §12's placement policy. Only asked when the story has a pacing_loop, since that
-    # module's directive is the only thing that ever consumes the queue - without it there
-    # is nothing to place a reveal *into* and the queue would just be dead state.
-    if pacing_loop_cfg and unrevealed_fragments:
-        schema_fields.append(
-            '  "revelations_eligible": ["<the exact id of every UNREVEALED MEMORY FRAGMENT '
-            "TRIGGER below whose condition the story has now satisfied but which the "
-            "NARRATION did NOT actually write onto the page this turn - these wait for a "
-            'better scene to land in. Never list an id you also put in '
-            'memory_fragments_revealed. [] if none>"]'
-        )
-    if failure_conditions:
-        schema_fields.append(
-            '  "failure_triggered": "<the exact id of a FAILURE CONDITION below that has now '
-            'been met this turn, or null if none have>"'
-        )
+    # Phase 4: every ported mechanic now reaches this prompt through the §3.1 contract
+    # rather than a hook story_engine calls by name. An engine contributes at most one
+    # field per turn (§5.4), in `bind` order, and may contribute none at all on a turn it
+    # has nothing to ask (§5.2) - which is what makes the field count a real budget rather
+    # than a running total of everything the schema could ever contain.
+    engine_fields = mechanics.observation_fields(ctx)
+    schema_fields += [field.schema for field in engine_fields]
+    engine_context = "".join(field.context for field in engine_fields)
+    engine_instructions = "".join(field.instruction for field in engine_fields)
     schema_str = ",\n".join(schema_fields)
-    relationships_line = ""
-    exact_name_instruction = ""
-    generic_label_instruction = ""
-    if relationships_cfg:
-        axis = relationships_cfg["axis"]
-        relationships_line = (
-            f"\nCURRENT RELATIONSHIPS (name: score from -100 {axis['negative']} to +100 "
-            f"{axis['positive']}, 0 neutral/unknown): {json.dumps(relationship_scores)}"
-        )
-        exact_name_instruction = (
-            "If a relationship_changes entry refers to someone already listed in EXISTING "
-            "CHARACTERS, its key must be that exact string, copied verbatim - never a "
-            "shortened, reordered, or paraphrased version of it (e.g. if EXISTING CHARACTERS "
-            'lists "Salome Vence (the Advocate)", use that exact string, not "Salome Vence" or '
-            '"the advocate"). This is what lets the relationship stay linked to that character\'s '
-            "record instead of silently forking into an unlinked, seemingly-new name.\n"
-        )
-        generic_label_instruction = (
-            " A generic-label character should still get a relationship_changes entry as usual,"
-            " just not a new_characters one."
-        )
-
-    # A trigger is authored as a description of an event ("the first time the protagonist
-    # attempts a non-trivial computational proof"), but narration never echoes that wording -
-    # it renders the event. Without this, the model treats the trigger list as context rather
-    # than as something to evaluate, and fires nothing: 0 of 2 across a 24-turn playthrough
-    # whose turns 18 and 23 both plainly satisfied one (docs/PHASE_0_GATE_REPORT.md §4).
-    fragment_instruction = ""
-    if unrevealed_fragments:
-        fragment_instruction = (
-            "For memory_fragments_revealed, check the NARRATION against each UNREVEALED MEMORY "
-            "FRAGMENT TRIGGER and list the id of every one the narration satisfies this turn. "
-            "Judge a trigger by what actually happens in the scene, not by whether the narration "
-            "reuses the trigger's wording - a trigger describing an act is satisfied by the "
-            "protagonist performing that act however it is written. Return [] if none apply; "
-            "never force a match.\n"
-        )
-        if pacing_loop_cfg:
-            # Spec §12: the split between "satisfied AND written" and "satisfied but not yet
-            # written" is the whole point - the first is a reveal that already happened and
-            # gets marked revealed, the second is one the pacing directive can place into a
-            # scene built to carry it. Without this sentence the model reads the two fields
-            # as near-synonyms and puts the same id in both.
-            fragment_instruction += (
-                "A trigger can be satisfied without the narration having actually delivered "
-                "the memory on the page. Put an id in memory_fragments_revealed only if the "
-                "NARRATION itself wrote the memory into the scene; if the condition is met "
-                "but the memory has not surfaced yet, put the id in revelations_eligible "
-                "instead, and never in both.\n"
-            )
-
-    failure_line = f"\nFAILURE CONDITIONS (id: trigger): {json.dumps(failure_triggers)}" if failure_conditions else ""
-
-    # Beat definitions are verbatim from the template (spec §5) - never hardcoded, since
-    # New Babel and example already use different vocabularies (4 beats vs. 2 - see
-    # docs/PHASE_6_HANDOFF.md §2 on why the spec's 4-beat default didn't survive validation).
-    beat_section = ""
-    if pacing_loop_cfg:
-        beat_lines = "\n".join(
-            f"- {name}: {info['definition']}" for name, info in pacing_loop_cfg["beats"].items()
-        )
-        tie_break = pacing_loop_cfg.get("tie_break", "")
-        beat_section = f"\nBEAT TYPES (choose exactly one for beat_type, per its definition below):\n{beat_lines}"
-        if tie_break:
-            beat_section += f"\n{tie_break}"
-
-    leverage_line = ""
-    if progression_cfg:
-        label = progression_cfg.get("label", "leverage")
-        unspent_labels = [
-            e["label"] for e in ctx["state"]["protagonist"].get("leverage", []) if not e.get("spent")
-        ]
-        leverage_line = (
-            f"\nCURRENT {label.upper()} (do not repeat in leverage_gained; copy a label "
-            f"verbatim from here for leverage_spent): {json.dumps(unspent_labels)}"
-        )
 
     prompt = f"""Given this turn of an interactive story, report what changed in the world state.
-
-ACTIVE SUBPLOTS (id: title - description [progress/threshold]):
-{active_subplot_lines}
-UNREVEALED MEMORY FRAGMENT TRIGGERS: {json.dumps(unrevealed_fragments)}
+{engine_context}
 CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}
-CURRENT INVENTORY: {json.dumps(ctx["state"]["protagonist"]["inventory"])}{relationships_line}{leverage_line}
 EXISTING CHARACTERS (do not repeat in new_characters): {', '.join(existing_characters) or 'none'}{stats_block}
-CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}{failure_line}{beat_section}
+CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}
 
 PLAYER ACTION: {player_action}
 NARRATION: {ai_response}
@@ -1135,26 +899,19 @@ Respond with ONLY a JSON object, no other text, in this exact shape:
 {{
 {schema_str}
 }}
-Only include subplot ids, flags, fragment ids, items, character names, and stats that actually
-changed this turn. Use {{}}/[] for nothing changed. Omit scene_update entirely if the
-protagonist's location and situation are unchanged from CURRENT SCENE above.
-{fragment_instruction}{exact_name_instruction}Only add an entry to new_characters when a character is given an actual proper name for the
+Only include flags, ids, items, character names and stats that actually changed this turn.
+Use {{}}/[] for nothing changed. Omit scene_update entirely if the protagonist's location
+and situation are unchanged from CURRENT SCENE above.
+{engine_instructions}Only add an entry to new_characters when a character is given an actual proper name for the
 first time this turn (e.g. "Marlowe", "Elena Cho") AND isn't already in EXISTING CHARACTERS -
 never for a generic/descriptive handle (e.g. "the guard", "the advocate", "the woman at the
-terminal").{generic_label_instruction} Promoting a generic-label character to a full one later
+terminal"). Promoting a generic-label character to a full one later
 is a separate, manual step."""
 
     try:
         diff = _timed("state_update", lambda: call_llm_json(prompt), model=TIER_C_MODEL)
     except (json.JSONDecodeError, ValueError):
         return {}
-
-    subplots_state = ctx["state"]["plot"]["subplots"]
-    for subplot_id, delta in diff.get("subplot_progress", {}).items():
-        if subplot_id in subplots_state and subplots_state[subplot_id].get("active"):
-            sp = subplots_state[subplot_id]
-            threshold = _subplot_view(ctx, subplot_id)["completion_threshold"]
-            sp["progress"] = max(0, min(threshold, sp.get("progress", 0) + int(delta)))
 
     turn_count = ctx["state"]["pacing"]["turn_count"]
     flags = ctx["state"]["protagonist"]["flags"]
@@ -1169,41 +926,7 @@ is a separate, manual step."""
         flags["active"][flag_name] = value
         flags["meta"][flag_name] = {"turn_set": turn_count, "pinned": pinned}
 
-    revealed_now = set(diff.get("memory_fragments_revealed", []))
-    valid_revelation_ids = {r["id"] for r in revelations}
-    for rev_id in revealed_now:
-        if rev_id in valid_revelation_ids:
-            ctx["state"]["plot"]["revelations_revealed"][rev_id] = {"turn": turn_count}
-
-    # Spec §12 reveal placement: a revelation whose trigger is satisfied but which the
-    # narration hasn't written yet queues up for the pacing directive to place, rather than
-    # firing into whatever scene comes next. Gated on the story having a pacing_loop, since
-    # that directive is the only consumer. Lazily created, same as every other pacing key.
-    #
-    # Consumption is on *confirmed* reveal, not on directive firing. Spec §12 words it as
-    # "the directive consumes one entry per firing", but a firing is an instruction to the
-    # narrator, not a guarantee - popping unconditionally would silently drop a reveal any
-    # time the model ignored the bullet, and nothing would ever re-queue it (its trigger
-    # already fired once, in a scene now well behind us). Leaving the entry until
-    # memory_fragments_revealed actually reports it means the worst case is the next firing
-    # citing the same reveal again, which is self-correcting rather than lossy.
-    if pacing_loop_cfg:
-        reveal_queue = ctx["state"]["pacing"].setdefault("reveal_queue", [])
-        for rev_id in diff.get("revelations_eligible", []) or []:
-            if (
-                rev_id in valid_revelation_ids
-                and rev_id not in ctx["state"]["plot"]["revelations_revealed"]
-                and rev_id not in reveal_queue
-            ):
-                reveal_queue.append(rev_id)
-        # Bounded implicitly by the template's revelation count, but a revealed entry is
-        # dead weight that would otherwise sit at the head of the FIFO forever.
-        ctx["state"]["pacing"]["reveal_queue"] = [
-            rev_id for rev_id in reveal_queue
-            if rev_id not in ctx["state"]["plot"]["revelations_revealed"]
-        ]
-
-    if diff.get("entity_interaction"):
+    if (diff.get("scene_update") or {}).get("entity_interaction"):
         ctx["state"]["plot"]["entity_contact_count"] += 1
 
     # CR-01: apply rules per the schema instruction above - an invalid/unknown location is
@@ -1214,7 +937,18 @@ is a separate, manual step."""
     if isinstance(scene_update, dict):
         new_location = scene_update.get("location")
         if new_location and (not valid_locations or new_location in valid_locations):
-            scene["location"] = new_location
+            # §7.4's hard rail. The pre-action detector is a model reading prose and misses
+            # roughly a third of oblique attempts; this is a closed-set check that misses
+            # none, so a gate the narration talked its way past still does not move the
+            # player. The narration is left as written - it is the scene the player read -
+            # and only the location is refused.
+            gate_bound = mechanics.bound_for(ctx["story"], "gate")
+            blocked = (gate_bound.engine.blocking(gate_bound.cfg, ctx, new_location)
+                       if gate_bound else None)
+            if blocked is None:
+                scene["location"] = new_location
+            else:
+                print(f"[gate] {blocked['id']} refused a move to {new_location}")
         new_summary = scene_update.get("summary")
         if new_summary:
             scene["summary"] = new_summary
@@ -1223,18 +957,10 @@ is a separate, manual step."""
         if pacing_loop_cfg and "threat_present" in scene_update:
             scene["threat_present"] = bool(scene_update["threat_present"])
 
-    inventory = ctx["state"]["protagonist"]["inventory"]
-    for item in diff.get("items_gained", []):
-        if item:
-            inventory.append(item)
-    for item in diff.get("items_lost", []):
-        if item in inventory:
-            inventory.remove(item)
-
     # New, properly-named characters the narration introduced this turn (see the
     # new_characters prompt instruction above) get a real record immediately and are
-    # ready to be linked to a relationship_changes entry in the very same diff (see
-    # below) - this is the direct fix for a character that only ever existed as a bare
+    # ready to be scored by a `social` entry in the very same diff (the engine pipeline
+    # runs below) - this is the direct fix for a character that only ever existed as a bare
     # relationship name with nothing behind it. Deliberately gated on the model having
     # actually named them (see the prompt) rather than every incidental relationship, to
     # avoid spinning up records for generic background figures.
@@ -1254,134 +980,18 @@ is a separate, manual step."""
         )
         known_names.add(name)
 
-    # Gated on relationships_cfg like the schema field above - a story that opted out of
-    # score tracking shouldn't start accumulating scores just because a stray key showed up.
-    if relationships_cfg:
-        for char_name, delta in diff.get("relationship_changes", {}).items():
-            if not char_name:
-                continue
-            entry = characters.setdefault(char_name, {"relationship": 0, "first_seen_turn": turn_count})
-            entry["relationship"] = max(-100, min(100, entry.get("relationship", 0) + int(delta)))
-            # Meeting an authored or previously-seeded character in play (a relationship_changes
-            # entry for them means the model narrated an actual interaction this turn) is what
-            # flips them off generate_pacing_nudge's "CHARACTERS TO WEAVE IN" line - name-keying
-            # makes this a direct write, no separate id-matching scan needed (unlike v1's
-            # npc_id-linking pass, which only had a name to go on the first time).
-            entry["introduced"] = True
-
-    # Bounded like flags_active: if a story accumulates more named/discovered characters
-    # than this, drop the least narratively significant ones first (closest to neutral),
-    # not the oldest - a strongly-loved or strongly-hated character should never be the one
-    # that gets evicted. An authored character (present in ctx["story"]["world"]
-    # ["characters"]) is never evicted, regardless of score - CR-06's "authored: true"
-    # flag is no longer needed for this; presence in the template *is* the flag.
-    # 5.3: mechanics.relationships.limit is the real per-story dial now; RELATIONSHIPS_LIMIT
-    # is just what a story without mechanics.relationships (or without an explicit limit)
-    # degrades to.
-    limit = (relationships_cfg or {}).get("limit", RELATIONSHIPS_LIMIT)
-    authored_names = set(ctx["story"]["world"].get("characters", {}).keys())
-    if len(characters) > limit:
-        removable = sorted(
-            (n for n in characters if n not in authored_names),
-            key=lambda n: abs(characters[n].get("relationship", 0)),
-        )
-        for name in removable[:len(characters) - limit]:
-            del characters[name]
-
-    # 5.2: mechanics.stats.floor/.ceiling replaces the old global STAT_FLOOR=0 constant -
-    # per-story bounds, since one story's scale might be a 0-10 attribute and another's a
-    # negative-capable meter (debt, temperature). ceiling is null/absent by default
-    # (unbounded); floor falls back to the old global default for a story that doesn't
-    # author mechanics.stats at all. Only ever adjusts a stat that's already in
-    # protagonist.stats (seeded once, at character creation, from the chosen class's
-    # starting_stats - see apply_creation_choice) - the model can't introduce a new stat
-    # axis outside that fixed, story-authored set.
-    stats_cfg = ctx["story"].get("mechanics", {}).get("stats", {})
-    floor = stats_cfg.get("floor", STAT_FLOOR)
-    ceiling = stats_cfg.get("ceiling")
-    for stat_name, delta in diff.get("stat_changes", {}).items():
-        if stat_name in stats:
-            new_value = max(floor, stats[stat_name] + int(delta))
-            if ceiling is not None:
-                new_value = min(ceiling, new_value)
-            stats[stat_name] = new_value
-
-    # Phase 6 steps 3-4 (docs/PHASE_6_HANDOFF.md §3/§4, spec §9 steps 3-4): store the raw
-    # beat classification as pacing.last_beat, then run the counter arithmetic - the beat's
-    # feeds counter accumulates intensity, every counter in its resets goes to 0 (clearing
-    # any rule watching one of those counters back to unarmed), and any rule whose watched
-    # counter has now crossed its effective threshold (§13) gets armed. Lazy-init
-    # throughout: a save from before this module existed has none of these keys yet, and
-    # per CLAUDE.md's "Keeping LLM Context Bounded" this project never writes a migration
-    # for that - .setdefault/.get instead, same as every other lazily-added field.
-    if pacing_loop_cfg:
-        beat_type = diff.get("beat_type")
-        if beat_type in pacing_loop_cfg["beats"]:
-            try:
-                intensity = max(1, min(3, int(diff.get("intensity"))))
-            except (TypeError, ValueError):
-                intensity = 1
-            pacing_state = ctx["state"]["pacing"]
-            pacing_state["last_beat"] = {"type": beat_type, "intensity": intensity}
-
-            beat_def = pacing_loop_cfg["beats"][beat_type]
-            counters = pacing_state.setdefault("counters", dict(pacing_loop_cfg.get("counters", {})))
-            armed = pacing_state.setdefault("armed", {})
-            rule = _pacing_rule(pacing_loop_cfg)
-
-            feeds = beat_def.get("feeds")
-            if feeds:
-                counters[feeds] = counters.get(feeds, 0) + intensity
-            for reset_counter in beat_def.get("resets", []):
-                counters[reset_counter] = 0
-                if rule and rule["watch"] == reset_counter:
-                    armed.pop(rule["id"], None)
-
-            if rule:
-                threshold = _rule_effective_threshold(rule, _current_act(ctx))
-                if threshold is not None and counters.get(rule["watch"], 0) >= threshold:
-                    armed.setdefault(rule["id"], {"deferrals": 0})
-
-    if progression_cfg:
-        leverage = ctx["state"]["protagonist"].setdefault("leverage", [])
-        kinds = progression_cfg.get("kinds", [])
-        next_number = _next_leverage_number(leverage)
-        for gain in diff.get("leverage_gained", []):
-            label = gain.get("label")
-            kind = gain.get("kind")
-            if not label or (kinds and kind not in kinds):
-                continue
-            leverage.append({
-                "id": f"lev_{next_number:03d}",
-                "kind": kind,
-                "label": label,
-                "acquired_turn": turn_count,
-                "spent": False,
-            })
-            next_number += 1
-
-        # Spec §7: mark spent, don't remove - a spent entry is retained for callbacks and
-        # for the record (see LEVERAGE_LIMIT). Matched by exact label string against an
-        # entry that is still unspent, mirroring items_lost against inventory: the model is
-        # shown the unspent labels verbatim in the prompt for exactly this reason. Applied
-        # after gains, again mirroring inventory's gained-then-lost order, so a gain cashed
-        # in within the same turn resolves correctly.
-        for label in diff.get("leverage_spent", []) or []:
-            for entry in leverage:
-                if entry["label"] == label and not entry.get("spent"):
-                    entry["spent"] = True
-                    entry["spent_turn"] = turn_count
-                    break
-
-        _evict_spent_leverage(leverage)
-
-    # 5.7: applied last, after every other effect of this turn has already landed - a
-    # failing turn's subplot progress/flags/items/etc. still get recorded before the ending
-    # machinery takes over.
-    if failure_conditions:
-        condition = next((c for c in failure_conditions if c["id"] == diff.get("failure_triggered")), None)
-        if condition:
-            _apply_failure_condition(ctx, condition)
+    # Phase 5: the beat classification, its counter arithmetic and the leverage ledger all
+    # moved behind the registry (beat_counter / spendable_ledger). They now resolve inside
+    # run_observation_pipeline below with every other engine, rather than as two hand-written
+    # blocks that ran before it.
+    # Phase 4: one call for every ported mechanic, replacing the hand-sequenced per-mechanic
+    # apply blocks that used to live inline here. Each engine reads its own field back out of
+    # the diff into typed events (§8.2), the events are appended to the save's log, and every
+    # bound engine resolves against the whole stream in `resolve_order` (§6.2). The sequence
+    # that used to be the physical order of statements in this function is declared data now
+    # - including "failure last", which was a comment and a statement position and is now
+    # triggered_ending's resolve_order of 90.
+    mechanics.run_observation_pipeline(ctx, diff)
 
     return diff
 
@@ -1423,7 +1033,7 @@ def generate_new_subplot(ctx: dict):
         return None
 
     subplots_view = _all_subplots(ctx)
-    max_parallel = ctx["story"]["plot"]["pacing"]["max_parallel_subplots"]
+    max_parallel = ctx["story"]["plot"].get("pacing", {}).get("max_parallel_subplots", DEFAULT_MAX_PARALLEL_SUBPLOTS)
     live_count = sum(1 for sp in subplots_view.values() if sp["status"] != "completed")
     if live_count >= max_parallel:
         return None
@@ -1561,6 +1171,12 @@ def generate_character_from_relationship(ctx: dict, name: str):
     if entry is None:
         return None
     score = entry.get("relationship", 0)
+    # The scale comes from the engine for the same reason _section_characters' does - this
+    # was a third hardcoded copy of "-100 hostile to +100 devoted", handed to the model as
+    # the frame for a character's whole stance toward the player while a story that authored
+    # a -50..50 confiding/wary axis got the wrong one.
+    bound = mechanics.bound_for(ctx["story"], "relationships")
+    score_scale = bound.engine.axis_hint(bound.cfg).lstrip("; ") if bound else "standing"
     summary = ctx["state"]["history"]["compressed_summary"] or "The story has just begun."
     recent = "\n".join(ctx["state"]["history"]["recent_turns"][-RECENT_TURN_LIMIT:])
 
@@ -1576,7 +1192,7 @@ RECENT EXCHANGES:
 {recent}
 
 CHARACTER NAME/LABEL: {name}
-CURRENT RELATIONSHIP SCORE (-100 hostile to +100 devoted, 0 neutral): {score}
+CURRENT RELATIONSHIP SCORE ({score_scale}, 0 neutral): {score}
 
 Respond with ONLY a JSON object, no other text:
 {{
@@ -1673,21 +1289,26 @@ Respond with ONLY a JSON object, no other text:
     return final_arc
 
 
-def _apply_failure_condition(ctx: dict, condition: dict):
-    """5.7: a mechanics.failure_conditions entry firing is evaluated in the state-update
-    pass alongside revelations (same authored-trigger shape, different effect) - routes
-    into the same endgame machinery handle_end_story_request uses, just entered
-    automatically rather than by player request, and with no LLM call needed since the
-    closing description is the condition's own authored ending_prompt rather than
-    something to generate. No-ops if the story is already ending (whichever condition or
-    request got there first wins)."""
+def _apply_failure_effect(ctx: dict, effect):
+    """Applies the triggered_ending engine's `failure.trigger` effect (phase 4).
+
+    Registered from here rather than from backend/mechanics/failure.py, and that seam is
+    deliberate: §7.6 requires a failure to route into the *existing* endgame machinery
+    rather than a new code path, that machinery is _begin_endgame (shared with the player's
+    own end-the-story request), and duplicating it inside the engine to keep the module
+    self-contained would trade a real invariant - one ending path - for a cosmetic one.
+    The engine decides that the story ends and supplies the authored arc; this decides
+    nothing and only routes.
+
+    No LLM call: the closing description is the condition's own authored ending_prompt.
+    No-ops if the story is already ending, so whichever condition or request got there
+    first wins."""
     if ctx["state"]["plot"]["endgame"]["requested"]:
         return
-    final_arc = {
-        "title": condition.get("title") or "The Ending",
-        "description": condition["ending_prompt"],
-    }
-    _begin_endgame(ctx, final_arc, cause=condition["id"])
+    _begin_endgame(ctx, effect.payload["final_arc"], cause=effect.payload["cause"])
+
+
+mechanics.register_effect("failure.trigger", _apply_failure_effect)
 
 
 def check_and_advance_act(ctx: dict):
@@ -1709,7 +1330,7 @@ def check_and_advance_act(ctx: dict):
 
     pacing_state = ctx["state"]["pacing"]
     completed_recently = pacing_state["subplots_completed_this_act"] >= 1
-    act_check_frequency = ctx["story"]["plot"]["pacing"].get("act_check_frequency", DEFAULT_ACT_CHECK_FREQUENCY)
+    act_check_frequency = ctx["story"]["plot"].get("pacing", {}).get("act_check_frequency", DEFAULT_ACT_CHECK_FREQUENCY)
     due_for_check = pacing_state.get("turns_since_act_check", 0) >= act_check_frequency
     if not completed_recently and not due_for_check:
         return None
@@ -1717,6 +1338,20 @@ def check_and_advance_act(ctx: dict):
 
     current_act = _current_act(ctx)
     if not current_act:
+        return None
+
+    # §2.2: necessary conditions belong to the engine, sufficiency stays with the director.
+    # An authored `requires` that is not met means no Tier B call, no verdict to validate and
+    # no advancement - and the director is still free to say no once it *is* met, so §2.1 is
+    # intact: the model can always refuse, it just cannot approve prematurely.
+    #
+    # This is also the cheapest call in the system to skip: phase 0 measured
+    # act_advancement_check at 12.29s p50, the second most expensive step there is.
+    #
+    # Evaluated through mechanics.gate.satisfied rather than a bound engine, because a
+    # `requires` is authored on the *act* and a story may carry act preconditions with no
+    # mechanics.gate block at all - declare-to-bind would leave it with nothing to ask.
+    if not mechanics.gate.satisfied(current_act.get("requires"), ctx):
         return None
 
     summary = ctx["state"]["history"]["compressed_summary"] or "The story has just begun."
@@ -1841,7 +1476,7 @@ def generate_pacing_nudge(ctx: dict) -> str:
             ]
             nudge_parts.append(f"BACKGROUND SUBPLOTS: {', '.join(other_titles)}")
 
-    max_parallel = ctx["story"]["plot"]["pacing"]["max_parallel_subplots"]
+    max_parallel = ctx["story"]["plot"].get("pacing", {}).get("max_parallel_subplots", DEFAULT_MAX_PARALLEL_SUBPLOTS)
     if len(active_subplots) < max_parallel:
         inactive_subplots = [(sid, sp) for sid, sp in subplots_view.items() if sp["status"] == "not_started"]
         if inactive_subplots:
@@ -1908,10 +1543,16 @@ def _section_identity(ctx: dict) -> str:
     # narrator - it only held because the hand-authored opening scene establishes the voice
     # and RECENT EXCHANGES sustains it from there.
     pov_str = f" | POV: {narration_cfg['pov']}" if narration_cfg.get("pov") else ""
-    return (
-        f"TITLE: {meta['title']} | GENRE: {meta['genre']} | TONE: {meta['tone']}{pov_str}\n"
-        f"CONTENT RULES: {', '.join(meta['content_rules'])}"
-    )
+    # P-4: genre/tone/content_rules are each optional. An absent one contributes no segment
+    # at all rather than an empty label - P-2's "no empty headers" applied at field level.
+    head = f"TITLE: {meta['title']}"
+    for label, key in (("GENRE", "genre"), ("TONE", "tone")):
+        if meta.get(key):
+            head += f" | {label}: {meta[key]}"
+    head += pov_str
+    if meta.get("content_rules"):
+        head += f"\nCONTENT RULES: {', '.join(meta['content_rules'])}"
+    return head
 
 
 def _section_world_rules(ctx: dict) -> str:
@@ -1947,17 +1588,18 @@ def _section_roster(ctx: dict) -> str | None:
     space (see _character_record) - this section is what actually surfaces the merged
     result to the narrator. A bare relationship-only stub (no description, not authored) is
     left out - it has no identity worth restating beyond the name the model itself chose.
-    Bounded implicitly by RELATIONSHIPS_LIMIT/mechanics.relationships.limit, since
-    ctx["state"]["characters"] is already capped there at write time (see
-    update_progress_from_turn) - no separate cap needed here."""
-    relationships_cfg = ctx["story"].get("mechanics", {}).get("relationships")
+    Bounded implicitly by the scored_axis engine's `limit`, since ctx["state"]["characters"]
+    is already capped there at write time - no separate cap needed here. A story with no
+    relationship engine bound has no scores to show, so names and descriptions are all this
+    renders."""
+    bound = mechanics.bound_for(ctx["story"], "relationships")
     lines = []
     for name in sorted(_all_character_names(ctx)):
         record = _character_record(ctx, name)
         if not record["description"] and not record["authored"]:
             continue
         score_part = ""
-        if relationships_cfg and record["relationship"] is not None:
+        if bound and record["relationship"] is not None:
             score_part = f" ({record['relationship']:+d})"
         line = f"- {name}{score_part}"
         if record["description"]:
@@ -1965,10 +1607,10 @@ def _section_roster(ctx: dict) -> str | None:
         lines.append(line)
     if not lines:
         return None
-    axis_hint = ""
-    if relationships_cfg:
-        axis = relationships_cfg["axis"]
-        axis_hint = f"; standing is -100 {axis['negative']} to +100 {axis['positive']}"
+    # The scale is the engine's to state, not this function's: it is the same authored
+    # scale the observation pass and the PLAYER line quote, and three hand-written copies of
+    # "-100 hostile to +100 devoted" is how they would drift apart.
+    axis_hint = bound.engine.axis_hint(bound.cfg) if bound else ""
     return f"KNOWN CHARACTERS (use these exact names{axis_hint}):\n" + "\n".join(lines)
 
 
@@ -2034,7 +1676,7 @@ def _section_pacing_or_endgame(ctx: dict) -> str | None:
             '"THE END" on\nits own line. Do not include an "OPTIONS:" block or numbered choices.'
         )
     pacing_state = ctx["state"]["pacing"]
-    nudge_frequency = ctx["story"]["plot"]["pacing"]["nudge_frequency"]
+    nudge_frequency = ctx["story"]["plot"].get("pacing", {}).get("nudge_frequency", DEFAULT_NUDGE_FREQUENCY)
     if pacing_state["turns_since_nudge"] >= nudge_frequency:
         pacing_state["turns_since_nudge"] = 0
         return generate_pacing_nudge(ctx)
@@ -2042,24 +1684,24 @@ def _section_pacing_or_endgame(ctx: dict) -> str | None:
 
 
 def _section_pacing_directive(ctx: dict) -> str | None:
-    """Phase 6 step 5 (docs/PHASE_6_HANDOFF.md §4; spec §9 step 5, §10, §11): fires at most
+    """Phase 6 step 5 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §4; spec §9 step 5, §10, §11): fires at most
     one pacing directive per turn, for whichever rule step 4's counter update (see
     update_progress_from_turn) armed. A single-turn addition like _section_pacing_or_endgame
     above - placed with the other volatile sections, never the cacheable prefix (spec §9) -
     and nothing here persists beyond bookkeeping (deferrals, last_fired_rule) for next
     turn's eligibility check.
 
-    v1 scope: exactly one rule per story (_pacing_rule) - no cross-rule arbitration.
+    v1 scope: exactly one rule per story (beat_counter.rule) - no cross-rule arbitration.
 
     last_fired_rule is consumed here (popped, not just read): it should suppress a
     just_fired-gated rule for exactly the one turn immediately after it fired, not forever -
     reading it destructively is what gives it that one-turn lifetime regardless of whether
     this turn's rule is even armed to make use of it.
     """
-    pacing_loop_cfg = ctx["story"].get("mechanics", {}).get("pacing_loop")
-    if not pacing_loop_cfg:
+    bound = mechanics.bound_for(ctx["story"], "pacing_loop")
+    if bound is None:
         return None
-    rule = _pacing_rule(pacing_loop_cfg)
+    rule = bound.engine.rule(bound.cfg)
     if not rule:
         return None
 
@@ -2070,7 +1712,7 @@ def _section_pacing_directive(ctx: dict) -> str | None:
     if entry is None:
         return None  # not armed - the watched counter hasn't crossed threshold
 
-    threshold = _rule_effective_threshold(rule, _current_act(ctx))
+    threshold = bound.engine.effective_threshold(rule, _current_act(ctx))
     if threshold is None:
         return None  # disabled for this act, e.g. "finale": null
 
@@ -2129,24 +1771,10 @@ def _section_scene(ctx: dict) -> str:
 
 
 def _section_revelations(ctx: dict) -> str | None:
-    # CR-03: only revealed fragments' content ever reaches the narrator here; the state-update
-    # prompt (update_progress_from_turn) sees only unrevealed triggers - neither pass sees the
-    # other half. Capped to the most recently revealed MEMORY_FRAGMENT_PROMPT_LIMIT so this
-    # doesn't grow unbounded over a long game.
-    revelations = ctx["story"].get("mechanics", {}).get("revelations", [])
-    revealed_map = ctx["state"]["plot"]["revelations_revealed"]
-    revealed_fragments = sorted(
-        (r for r in revelations if r["id"] in revealed_map),
-        key=lambda r: revealed_map[r["id"]].get("turn", 0),
-        reverse=True,
-    )
-    if not revealed_fragments:
-        return None
-    memory_lines = "\n".join(f"- {r['content']}" for r in revealed_fragments[:MEMORY_FRAGMENT_PROMPT_LIMIT])
-    return (
-        "REVEALED MEMORIES (the protagonist already knows these; reference them naturally, "
-        f"do not re-reveal them as though they were new):\n{memory_lines}"
-    )
+    # CR-03 lives in the triggered_reveal engine now: only revealed content reaches the
+    # narrator, only unrevealed triggers reach the observation pass, and neither pass sees
+    # the other half. This keeps the placement only.
+    return mechanics.prompt_sections(ctx).get("revelations.memories")
 
 
 def _section_protagonist(ctx: dict) -> str:
@@ -2174,22 +1802,23 @@ def _section_protagonist(ctx: dict) -> str:
         if option:
             label = step.get("prompt_label") or step.get("label", step["key"].title())
             creation_str += f" | {label}: {option['name']}"
-    # Internal-only: stats exist for you to reason about and adjust, never to be shown to
-    # the player as numbers - reflect their effect narratively (strain, confidence, risk)
-    # instead of stating a value. Conditional on the story actually using stats at all, so
-    # a story without them gets no irrelevant instruction clutter.
-    stats_str = f" | Stats (opaque to the player): {protagonist['stats']}" if protagonist.get("stats") else ""
-    # 5.3: absent mechanics.relationships means the story tracks no relationship scores at
-    # all - omitted here rather than shown as an always-empty dict, matching how it vanishes
-    # from the state-update schema (update_progress_from_turn).
-    relationships_part = ""
-    if story.get("mechanics", {}).get("relationships"):
-        relationships_str = {name: entry.get("relationship", 0) for name, entry in ctx["state"]["characters"].items()}
-        relationships_part = f" | Relationships: {relationships_str}"
+    # Internal-only by default: stats exist for you to reason about and adjust, never to be
+    # shown to the player as numbers - reflect their effect narratively (strain, confidence,
+    # risk) instead of stating a value. Conditional on the story actually using stats at all,
+    # so a story without them gets no irrelevant instruction clutter.
+    # 5.4/phase 2: the visible dial and both wordings belong to the bounded_counter engine;
+    # this only places the fragment it returns. An unbound story contributes nothing.
+    # Phase 4: both engine-owned fragments come from one lookup. An unbound story
+    # contributes neither, and a bound one whose roster is still empty contributes no
+    # relationships part - omitted rather than shown as an always-empty dict, matching how
+    # it vanishes from the observation schema (update_progress_from_turn).
+    sections = mechanics.prompt_sections(ctx)
+    stats_str = sections.get("stats.player_line", "")
+    inventory_part = sections.get("inventory.player_line", "")
+    relationships_part = sections.get("relationships.player_line", "")
     return (
         f"PLAYER: {protagonist['name']}{creation_str} | Traits: {', '.join(protagonist['traits'])}"
-        f"{stats_str} | Inventory: {', '.join(protagonist['inventory']) or 'nothing'}"
-        f"{relationships_part} | Flags: {protagonist['flags']['active']}"
+        f"{stats_str}{inventory_part}{relationships_part} | Flags: {protagonist['flags']['active']}"
     )
 
 
@@ -2276,12 +1905,15 @@ def _section_footer(ctx: dict) -> str:
     # minimum-count fallback too (see app.py's call sites).
     option_pov = narration_cfg.get("option_pov") or narration_cfg.get("pov", "first-person")
     option_count = narration_cfg.get("option_count", 3)
-    stats_instruction = (
-        "\nThe PLAYER line's Stats are for your own internal reasoning only - never state a "
-        "stat's raw numeric value to the player. Reflect what it means narratively instead "
-        "(strain, fatigue, confidence, risk) without quoting the number."
-        if protagonist.get("stats") else ""
-    )
+    # 5.4/phase 2: all three wordings - opaque, visible, and the P-7 readout token - belong
+    # to the bounded_counter engine now (see its _footer). This keeps only the placement.
+    # Phase 4 adds the scored_axis tier block on the same footing: what a standing entitles
+    # a character to do is a rule the narrator has to be handed, and it belongs beside the
+    # other engine-owned instructions rather than inside the roster listing.
+    sections = mechanics.prompt_sections(ctx)
+    stats_instruction = sections.get("stats.footer", "")
+    standing_instruction = sections.get("relationships.tiers", "")
+    carry_instruction = sections.get("inventory.footer", "")
 
     if endgame["requested"]:
         instruction_footer = (
@@ -2295,13 +1927,22 @@ def _section_footer(ctx: dict) -> str:
             f"{_options_block_instruction(option_count, option_pov)}"
         )
 
-    return f"""Stay strictly within the established world, tone, and rules above.{stats_instruction}
+    return f"""Stay strictly within the established world, tone, and rules above.{stats_instruction}{standing_instruction}{carry_instruction}
 You may lightly mark up emphasis in your prose using exactly these three markers, used
 sparingly (most sentences should have none): **text** for bold, *text* for italic
 (e.g. internal thought or stressed words), __text__ for underline. Do not nest them,
 and do not use any other markdown (no headers, lists, links, code, or single/double
 underscores for anything other than underline).
 {instruction_footer}"""
+
+
+def _section_gates(ctx: dict) -> str | None:
+    """What the world is currently refusing (§7.4), so the prose agrees with the rail.
+
+    Its own section rather than a clause in the footer because it is *situational* - it
+    changes as the player picks up a key or talks their way past a clerk - and it belongs
+    beside the scene it constrains, not among the standing format instructions."""
+    return mechanics.prompt_sections(ctx).get("gate.closed")
 
 
 SECTIONS = [
@@ -2318,6 +1959,7 @@ SECTIONS = [
     _section_pacing_or_endgame,
     _section_pacing_directive,
     _section_scene,
+    _section_gates,
     _section_revelations,
     _section_protagonist,
     _section_footer,
@@ -2329,8 +1971,15 @@ def build_system_prompt(ctx: dict) -> str:
     return f"You are the narrator of an interactive story.\n\n{body}\n"
 
 
-_OPTIONS_HEADING_RE = re.compile(r"OPTIONS\s*:\s*\n?", re.IGNORECASE)
-_OPTION_LINE_RE = re.compile(r"^\s*\d+[.)]\s*(.+?)\s*\|\|\s*(.+)$", re.MULTILINE)
+# Both regexes are deliberately more tolerant than the format build_system_prompt actually
+# asks for (a bare "OPTIONS:" line, "action || prose" per option) - observed real model output
+# has dropped the colon and, separately, written a single "|" instead of "||". Either miss used
+# to make parse_narration_and_options fall back to (whole_text, []), leaking the entire options
+# block into the narration shown to the player instead of just failing one option line. The
+# heading is still anchored to its own line (not a bare substring search) so a narration that
+# happens to use the word "options" mid-sentence can't be mistaken for the section heading.
+_OPTIONS_HEADING_RE = re.compile(r"^\s*OPTIONS\s*:?\s*$", re.IGNORECASE | re.MULTILINE)
+_OPTION_LINE_RE = re.compile(r"^\s*\d+[.)]\s*(.+?)\s*\|\|?\s*(.+)$", re.MULTILINE)
 
 
 def parse_narration_and_options(text: str, option_count: int = 3):
@@ -2383,7 +2032,7 @@ def split_turn_entry(entry: str):
 def all_turns(ctx: dict) -> list:
     """The complete chronological turn sequence for a save, oldest first - full_transcript
     (unbounded, disk-only, only populated once turns roll out of recent_turns) followed by
-    recent_turns (the live window). See CLAUDE.md's 'Keeping LLM Context Bounded' section."""
+    recent_turns (the live window). See docs/ARCHITECTURE.md's 'Keeping LLM Context Bounded' section."""
     return ctx["state"]["history"].get("full_transcript", []) + ctx["state"]["history"]["recent_turns"]
 
 
@@ -2406,7 +2055,7 @@ def export_narrative(ctx: dict, include_actions: bool = False) -> str:
 
 def _enforce_word_cap(text: str, max_words: int) -> str:
     """SUMMARY_MAX_WORDS is an instruction the model overshoots - 2,912 words against a
-    2,000 cap after 24 turns (docs/PHASE_0_GATE_REPORT.md §1). Truncating here is what makes
+    2,000 cap after 24 turns (docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md §1). Truncating here is what makes
     the documented bound real rather than aspirational. The trim back to a sentence boundary
     matters because this text is fed verbatim into every later prompt and into the next
     rollover's CURRENT SUMMARY, where a mid-clause cut would compound."""
@@ -2416,6 +2065,27 @@ def _enforce_word_cap(text: str, max_words: int) -> str:
     truncated = " ".join(words[:max_words])
     cut = max(truncated.rfind(". "), truncated.rfind("! "), truncated.rfind("? "))
     return truncated[:cut + 1] if cut > 0 else truncated
+
+
+def _stat_readout_cfg(ctx: dict) -> dict | None:
+    """The story's live `readout` config, or None. Phase 2: the bounded_counter engine owns
+    this; these three functions stay as the names the rest of the codebase already calls."""
+    bound = mechanics.bound_for(ctx["story"], "stats")
+    return bound.engine.readout(bound.cfg) if bound else None
+
+
+def render_stat_readout(ctx: dict) -> str | None:
+    """The authoritative stat line, built from state rather than transcribed by the model -
+    the worked example of P-7. See mechanics/resource.py for why."""
+    bound = mechanics.bound_for(ctx["story"], "stats")
+    return bound.engine.line(bound.cfg, ctx) if bound else None
+
+
+def apply_stat_readouts(ctx: dict, text: str) -> str:
+    """Substitute the authored token with the true figures, and rewrite any figure line the
+    model wrote by hand anyway. Delegates to every bound engine's render(), so a later
+    mechanic with its own deterministic substitution needs no change here."""
+    return mechanics.render_all(ctx, text)
 
 
 def update_state_after_turn(
@@ -2435,6 +2105,21 @@ def update_state_after_turn(
 
     # Separate state-update pass: subplot progress, flags, memory fragments, entity contact
     update_progress_from_turn(ctx, player_action, ai_response)
+
+    # The engine pipeline runs inside update_progress_from_turn above, where the diff it
+    # reads actually is. A second unconditional run_turn_pipeline(ctx) used to sit here - a
+    # phase 1 placeholder from when no mechanic was ported and resolving twice was provably
+    # a no-op. It stopped being a no-op the moment an engine could produce an effect without
+    # an observation to trigger it: `per_turn` drift ticked twice a turn, which is how this
+    # was found. Resolve once per turn, at the point the observations arrive.
+
+    # Stat readouts are substituted *after* the state update, so the figures a scene shows
+    # are the ones it ended on - "the readout is the aftermath", per the story's own rules.
+    # Rewrites the stored turn in place rather than the live ai_response, so scrollback
+    # keeps each scene's historical numbers instead of re-rendering today's.
+    if _stat_readout_cfg(ctx):
+        history_turns = ctx["state"]["history"]["recent_turns"]
+        history_turns[-1] = apply_stat_readouts(ctx, history_turns[-1])
 
     # Retire non-pinned flags that have aged out of the recent-turns window
     archive_stale_flags(ctx)
@@ -2528,7 +2213,7 @@ def next_pending_creation_step(ctx: dict) -> dict:
     """The first character-creation step (from the story's template-authored
     character_creation list - see apply_creation_choice) the player hasn't completed yet,
     or None once they're all done (or the story doesn't define any). A story opts into
-    this mechanic entirely by authoring that list - stories/new_babel/template.json has
+    this mechanic entirely by authoring that list - new_babel's template.json has
     a "class" step and a "starting_place" step, in that order; a story that doesn't
     define character_creation at all (e.g. the cozy-mystery example story, where a class/
     race pick wouldn't fit the genre) skips this entirely, same as before the mechanic
@@ -2611,7 +2296,7 @@ def handle_steer_command(
     an emergent direction, etc.) without leaving the session. Reuses plot_manager.py
     as-is rather than duplicating its command parsing - it already loads/saves the same
     save file (via --user/--story), so the next turn picks up whatever changed
-    immediately. CLI-only: there's no web equivalent (see CLAUDE.md)."""
+    immediately. CLI-only: there's no web equivalent (see docs/ARCHITECTURE.md)."""
     print(STEER_WARNING)
     args = shlex.split(steer_args) if steer_args.strip() else []
     # Absolute path, not a bare "plot_manager.py" - unlike a plain `import`, subprocess argv
@@ -2669,6 +2354,79 @@ def _generate_and_apply_turn(
     return ctx["state"]["plot"]["endgame"]["concluded"]
 
 
+def detect_gate_refusal(ctx: dict, player_action: str) -> dict | None:
+    """Whether this action reaches for something the world is currently refusing (§7.4), and
+    the sentence to tell the player if so. None means the turn proceeds normally.
+
+    **The engine decides, the model only recognises.** `Precondition.unmet` evaluates every
+    gate's predicate first, and a gate whose predicate is *met* is never shown to the model at
+    all - so the model can never grant or invent a refusal, only spot that this action is
+    reaching for a door the engine has already established is shut. That is the §7.4 split,
+    and it is what keeps `refusal_hint` from becoming `refusal_text`: the template sets the
+    tone, the model writes the sentence.
+
+    **Tier C, and only where a story authors gates.** Costs ~1.7s against narration's ~14.4s,
+    and a story with no `gate` block makes no call at all (P-2). When it does fire it
+    *replaces* narration plus the state pass, so a refused turn is cheaper than a normal one.
+
+    **Why this is a model call at all**, when §4 originally specified a free pre-action check:
+    matching a free-text action to a gated target with string matching does not work. Measured
+    over 119 real player actions across both flagship saves, actions name a location in ~2% of
+    turns (`new_babel`, 1 of 48) and the apparent 55% on `the_missing_core` is almost entirely
+    false positives - `hold`, `hand`, `behind` and a bare `s` from "The Ninth-Hand's" matching
+    ordinary prose. A gate that fires on "I hold the cutter steady" refuses the player for
+    nothing, which is worse than one that never fires."""
+    bound = mechanics.bound_for(ctx["story"], "gate")
+    if bound is None:
+        return None
+    unmet = bound.engine.unmet(bound.cfg, ctx)
+    if not unmet:
+        return None
+
+    scene = ctx["state"]["scene"]
+    # Numbered, never keyed by id: measured on a live run, the model wrote a gate's own id
+    # into the player-facing sentence ("the cold gate reads you and stays shut"). An id is a
+    # system identifier that happens to be a noun phrase, so instructing the model not to use
+    # it is weaker than never showing it one.
+    gate_lines = "\n".join(
+        f"{n}. {bound.engine.target_name(g, ctx)} - tone for the refusal: "
+        f"{g.get('refusal_hint', 'it simply does not work')}"
+        for n, g in enumerate(unmet, 1)
+    )
+    prompt = f"""A player of an interactive story has typed an action. Some things in this world
+are currently closed to them. Decide whether this action is an attempt to do one of them.
+
+CURRENT SCENE ({scene.get('location')}): {scene.get('summary')}
+
+CLOSED TO THE PLAYER RIGHT NOW:
+{gate_lines}
+
+PLAYER ACTION: {player_action}
+
+Answer only about whether the action REACHES FOR one of the closed things above. Moving toward
+it, asking to be let in, or trying to work around it all count. Merely mentioning it, thinking
+about it, or acting somewhere else does not. If the action does not reach for any of them,
+gate_id must be null - that is the normal answer and you should give it freely.
+
+Reply with JSON only:
+{{"blocked": <the NUMBER above this action reaches for, or null>,
+  "sentence": "<if blocked is not null: one or two sentences, in second person present tense,
+  telling the player what stops them. Match the tone given for that number. Never explain the
+  rule, never mention conditions or requirements, and never refer to a gate, a check or a
+  number - write only what the protagonist sees and feels. Empty string if blocked is null>"}}"""
+
+    result = _timed("gate_check", lambda: call_llm_json(prompt), model=TIER_C_MODEL)
+    try:
+        index = int((result or {}).get("blocked"))
+    except (TypeError, ValueError):
+        return None
+    if not 1 <= index <= len(unmet):
+        return None
+    match = unmet[index - 1]
+    sentence = (result.get("sentence") or "").strip()
+    return {"gate": match["id"], "sentence": sentence or match.get("refusal_hint", "")}
+
+
 def take_turn(
     player_action: str,
     user_id: str = DEFAULT_USER_ID,
@@ -2683,6 +2441,14 @@ def take_turn(
             final_arc = handle_end_story_request(ctx)
             state_store.save_state(ctx, user_id, story_slug)
             print(f"\n[The story is moving toward its conclusion: {final_arc['title']}]\n")
+
+        # §4's pre-action gate check, and the only thing before it is the end-story command
+        # (which is the player asking to stop, not an action the world may refuse). Ahead of
+        # the snapshot on purpose: a refused turn takes no snapshot because there is no turn
+        # to regenerate, so `pending_regenerate` still points at the last real one.
+        refusal = detect_gate_refusal(ctx, player_action)
+        if refusal:
+            raise ActionRefused(refusal["sentence"], refusal["gate"])
 
         pre_turn_snapshot = copy.deepcopy(ctx["state"])
         pre_turn_snapshot.pop("pending_regenerate", None)

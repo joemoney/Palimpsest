@@ -22,10 +22,18 @@ import uuid
 import filelock
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import mechanics
 import migrate_v1
 from frozen_dict import assert_unmutated, freeze, thaw
 
 STORIES_DIR = "stories"
+# Private story content lives in a single git submodule - one folder per story - rather
+# than in this repo. It is a second *root* and not a story: list_stories() skips it
+# naturally, since stories/private/template.json does not exist. Mounted inside stories/
+# on purpose, so docker-compose.yml's existing `./stories:/app/stories` bind mount carries
+# it without a second mount. A clone that never ran `git submodule update --init` just sees
+# an empty directory and gets the public catalog, which is the point.
+STORIES_PRIVATE_DIR = os.path.join("stories", "private")
 DATA_DIR = "data"
 SAVES_DIR = os.path.join(DATA_DIR, "saves")
 ACCOUNTS_DB_PATH = os.path.join(DATA_DIR, "accounts.db")
@@ -51,20 +59,54 @@ def _validate_slug(value: str, label: str) -> str:
 # Story catalog (templates)
 # ---------------------------------------------------------------------------
 
+def story_roots() -> list:
+    """The directories a story may live in, in precedence order. Read through a function
+    rather than referenced as a constant so that a test redirecting STORIES_DIR /
+    STORIES_PRIVATE_DIR to a tmp dir is picked up by every caller - module-level constants
+    would have been captured once at import."""
+    return [STORIES_DIR, STORIES_PRIVATE_DIR]
+
+
+def _story_dir(story_slug: str) -> str:
+    """The directory holding a slug's template, searching roots in order. Falls back to the
+    public root's path when the slug exists nowhere, so the caller raises its own
+    FileNotFoundError against a sensible path rather than getting None back."""
+    for root in story_roots():
+        if os.path.isfile(os.path.join(root, story_slug, "template.json")):
+            return os.path.join(root, story_slug)
+    return os.path.join(STORIES_DIR, story_slug)
+
+
 def list_stories() -> list:
-    """Every story template available to start, read straight off disk - the
-    templates/ directory listing *is* the catalog, no separate index to keep
-    in sync."""
+    """Every story template available to start, read straight off disk - the stories
+    directory listing *is* the catalog, no separate index to keep in sync.
+
+    Scans every root in story_roots(). A slug present in more than one root is taken from
+    the first, so the public repo always wins over a private submodule that shadows it -
+    a shadowing slug is a content mistake, and resolving it silently in favour of the
+    committed copy is the outcome that is debuggable."""
     stories = []
-    if not os.path.isdir(STORIES_DIR):
-        return stories
-    for slug in sorted(os.listdir(STORIES_DIR)):
-        template_path = os.path.join(STORIES_DIR, slug, "template.json")
-        if os.path.isfile(template_path):
-            with open(template_path, "r") as f:
-                data = json.load(f)
-            stories.append({"slug": slug, **data.get("meta", {})})
-    return stories
+    seen = set()
+    roots = story_roots()
+    # A root nested inside another root (stories/private inside stories) is a directory the
+    # outer scan would otherwise treat as a slug. That is not hypothetical: before the
+    # submodule was restructured to one folder per story, its root held a template.json
+    # directly, so scanning stories/ found stories/private/template.json and offered the
+    # whole private submodule as a single story called "private".
+    nested = {os.path.basename(r) for r in roots}
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for slug in sorted(os.listdir(root)):
+            if slug in seen or os.path.join(root, slug) in roots or slug in nested:
+                continue
+            template_path = os.path.join(root, slug, "template.json")
+            if os.path.isfile(template_path):
+                with open(template_path, "r") as f:
+                    data = json.load(f)
+                seen.add(slug)
+                stories.append({"slug": slug, **data.get("meta", {})})
+    return sorted(stories, key=lambda s: s["slug"])
 
 
 def load_template_raw(story_slug: str) -> dict:
@@ -73,7 +115,7 @@ def load_template_raw(story_slug: str) -> dict:
     this exists for the handful of callers that need a mutable copy - the migrator building
     a new save from scratch, an admin/debug script, etc."""
     _validate_slug(story_slug, "story_slug")
-    template_path = os.path.join(STORIES_DIR, story_slug, "template.json")
+    template_path = os.path.join(_story_dir(story_slug), "template.json")
     with open(template_path, "r") as f:
         return json.load(f)
 
@@ -82,8 +124,15 @@ def load_template(story_slug: str) -> dict:
     """A story's authored content, frozen (see frozen_dict.freeze) - this is what
     ctx["story"] is set to. Re-read fresh from disk on every call, deliberately never
     cached: this is what makes a template edit reach every existing save without any
-    explicit migration step."""
-    return freeze(load_template_raw(story_slug))
+    explicit migration step.
+
+    Validates the mechanics block on the way through: a template naming a mechanic engine
+    this build doesn't have raises here (ENGINE_V2_SPEC §3.2) rather than failing quietly
+    forty turns into a playthrough. Costs one dict scan per load and is silent for every
+    template that predates the registry."""
+    raw = load_template_raw(story_slug)
+    mechanics.validate(raw)
+    return freeze(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +146,9 @@ def new_save_state(story: dict, story_slug: str) -> dict:
     ever read back out of `story` again except through the merge-view helpers in
     story_engine.py (e.g. resolving a seeded subplot's title from the template)."""
     subplots = {}
-    for sid, seed in story["plot"]["subplots"].items():
+    # P-4: plot.subplots is optional - a single-thread story (courtroom drama, one-room
+    # horror) has a main thread and nothing else, and must not have to author an empty dict.
+    for sid, seed in story["plot"].get("subplots", {}).items():
         subplots[sid] = {
             "progress": 0,
             "status": "active" if seed.get("starts_active") else "not_started",
@@ -107,21 +158,46 @@ def new_save_state(story: dict, story_slug: str) -> dict:
     acts = story["plot"]["main_thread"]["acts"]
     initial_scene = story["plot"].get("initial_scene", {})
 
+    # Engine-owned runtime state, one bucket per bound mechanic engine (ENGINE_V2_SPEC
+    # §8.2). P-2 all the way down: a story with no registry-managed mechanics gets no
+    # "mechanics" key at all, not an empty dict - which is why every save written today is
+    # byte-identical to one written before the registry existed.
+    engine_state = {}
+    for bound in mechanics.bind(story):
+        initial = bound.engine.init_state(bound.cfg, {"story": story, "state": None})
+        if initial:
+            engine_state[bound.slot] = initial
+
     return {
         "schema_version": CURRENT_SCHEMA_VERSION,
         "story_slug": story_slug,
         "story_version": story.get("story_version"),
 
+        # P-4: protagonist is itself an optional block - a story that authors no traits,
+        # no starting inventory and no default_name should not have to include an empty one.
         "protagonist": {
             "name": "",
-            "traits": list(story["protagonist"].get("traits", [])),
-            "inventory": list(story["protagonist"].get("starting_inventory", [])),
-            "stats": {},
+            "traits": list(story.get("protagonist", {}).get("traits", [])),
+            # thaw, not list(): phase 4's tagged_items engine lets a story author an item
+            # as a record ({"id", "label", "tags", "uses"}) rather than a bare string, and
+            # a shallow copy would seed the save with FrozenDicts straight out of the
+            # template - immutable, so spending a use would raise on the first turn and
+            # only until the save round-tripped through disk, which is the worst shape a
+            # bug can have. A story seeding plain strings is unaffected.
+            "inventory": thaw(story.get("protagonist", {}).get("starting_inventory", [])),
+            # P-2/P-4: stats used to be seedable only through character_creation, which made
+            # them accidentally dependent on an unrelated optional module - a survival or
+            # horror story wanting a stat scale but no class picker had no way to start one.
+            # protagonist.stats is the baseline; apply_creation_choice still merges a chosen
+            # option's starting_stats on top of it, so stories using both are unchanged.
+            "stats": dict(story.get("protagonist", {}).get("stats", {})),
             "creation_choices": {},
             "flags": {"active": {}, "meta": {}, "archive": {}},
         },
 
         "characters": {},
+
+        **({"mechanics": engine_state} if engine_state else {}),
 
         "scene": {
             "location": initial_scene.get("location", ""),
@@ -191,7 +267,9 @@ def _reconcile(state: dict, story: dict) -> dict:
       silently, since there's nothing left to have revealed.
     - a stat name absent from character_creation -> no action; the value is kept.
     """
-    valid_revelation_ids = {r["id"] for r in story.get("mechanics", {}).get("revelations", [])}
+    bound = mechanics.bound_for(story, "revelations")
+    entries = bound.engine.entries(bound.cfg) if bound else []
+    valid_revelation_ids = {r["id"] for r in entries}
     revealed = state["plot"].get("revelations_revealed", {})
     for rev_id in list(revealed):
         if rev_id not in valid_revelation_ids:
@@ -215,28 +293,48 @@ def _lock(user_id: str, story_slug: str) -> filelock.FileLock:
     return filelock.FileLock(path)
 
 
+def _load_existing_state(user_id: str, story_slug: str, story: dict) -> dict | None:
+    """The read side of load_state, split out so peek_state can reuse it without the
+    clone-on-first-play write. Returns None if the player has never saved this story."""
+    path = _save_path(user_id, story_slug)
+    with _lock(user_id, story_slug):
+        if not os.path.isfile(path):
+            return None
+        with open(path, "r") as f:
+            raw_state = json.load(f)
+        if raw_state.get("schema_version", 1) < CURRENT_SCHEMA_VERSION:
+            raw_state = migrate_v1.migrate(raw_state, story_slug, load_template_raw(story_slug))
+            with open(path, "w") as f:
+                json.dump(raw_state, f, indent=2)
+        return _reconcile(raw_state, story)
+
+
 def load_state(user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_SLUG) -> dict:
     """Loads a user's save for a story, cloning a fresh runtime state from the story's
     authored pools on first play. Returns {"story": ctx, "state": ctx} - see module
     docstring. Locked so a concurrent request for the same save can't race the
     clone-on-first-play step, even across gunicorn worker processes."""
     story = load_template(story_slug)
-    path = _save_path(user_id, story_slug)
-    with _lock(user_id, story_slug):
-        if os.path.isfile(path):
-            with open(path, "r") as f:
-                raw_state = json.load(f)
-            if raw_state.get("schema_version", 1) < CURRENT_SCHEMA_VERSION:
-                raw_state = migrate_v1.migrate(raw_state, story_slug, load_template_raw(story_slug))
-                with open(path, "w") as f:
-                    json.dump(raw_state, f, indent=2)
-            state = _reconcile(raw_state, story)
-        else:
+    state = _load_existing_state(user_id, story_slug, story)
+    if state is None:
+        path = _save_path(user_id, story_slug)
+        with _lock(user_id, story_slug):
             state = new_save_state(story, story_slug)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w") as f:
                 json.dump(state, f, indent=2)
-        return {"story": story, "state": state}
+    return {"story": story, "state": state}
+
+
+def peek_state(user_id: str, story_slug: str) -> dict | None:
+    """Read-only counterpart to load_state, for contexts - like the story list's info
+    panel - that need to know how far a save has progressed without the side effect of
+    creating one. Returns None if the player has never started this story."""
+    story = load_template(story_slug)
+    state = _load_existing_state(user_id, story_slug, story)
+    if state is None:
+        return None
+    return {"story": story, "state": state}
 
 
 def save_state(ctx: dict, user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_SLUG):
@@ -342,12 +440,16 @@ def _result_path(user_id: str, story_slug: str) -> str:
     return _save_path(user_id, story_slug) + ".result"
 
 
-def write_turn_result(user_id: str, story_slug: str, ok: bool, error: str | None = None):
+def write_turn_result(user_id: str, story_slug: str, ok: bool, error: str | None = None,
+                      refusal: dict | None = None):
+    """`refusal` is a third outcome, not a kind of error: the turn ran correctly and the world
+    said no (§7.4). It carries the sentence to show and the gate that produced it, and it means
+    no state was written, so the caller re-renders nothing."""
     path = _result_path(user_id, story_slug)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp_path = path + f".tmp{os.getpid()}"
     with open(tmp_path, "w") as f:
-        json.dump({"ok": ok, "error": error}, f)
+        json.dump({"ok": ok, "error": error, "refusal": refusal}, f)
     os.replace(tmp_path, path)
 
 

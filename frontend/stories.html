@@ -4,15 +4,39 @@
 {% block content %}
 <section class="story-list">
   {% for story in stories %}
-  <a href="{{ url_for('play', story_slug=story.slug) }}">
-    <div class="card">
-      <div style="font-weight:700;">{{ story.title or story.slug }}</div>
-      <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">{{ story.genre or '' }}</div>
-      {% if story.synopsis %}
-      <p class="story" style="font-size:0.9rem; margin-top:10px;">{{ story.synopsis }}</p>
-      {% endif %}
+  <div class="card story-list-item">
+    <button type="button" class="story-title-button"
+            onclick="document.getElementById('story-info-{{ story.slug }}').showModal()">
+      {{ story.title or story.slug }}
+    </button>
+  </div>
+  <dialog id="story-info-{{ story.slug }}" class="story-info-modal">
+    <div class="story-art-placeholder" aria-hidden="true">Cover art coming soon</div>
+    <h3>{{ story.title or story.slug }}</h3>
+    {% if story.genre %}<div class="story-genre">{{ story.genre }}</div>{% endif %}
+    {% if story.synopsis %}<p class="story" style="font-size:0.95rem;">{{ story.synopsis }}</p>{% endif %}
+
+    {% if story.save_stats %}
+    <div class="story-save-stats">
+      <div class="story-stat-row">
+        <div class="story-stat"><span>Turn</span><strong>{{ story.save_stats.turn_count }}</strong></div>
+        {% if story.save_stats.act_title %}
+        <div class="story-stat"><span>Current act</span><strong>{{ story.save_stats.act_title }}</strong></div>
+        {% endif %}
+      </div>
+      <p class="story-stat-summary">{{ story.save_stats.summary }}</p>
     </div>
-  </a>
+    {% else %}
+    <p class="story-not-started">Not started yet.</p>
+    {% endif %}
+
+    <form method="dialog" style="flex-direction:row; justify-content:flex-end; gap:10px; margin-top:16px;">
+      <button type="button" class="button-secondary" onclick="this.closest('dialog').close()">Close</button>
+      <a href="{{ url_for('play', story_slug=story.slug) }}" class="button-link">
+        {{ 'Continue' if story.save_stats else 'Begin' }}
+      </a>
+    </form>
+  </dialog>
   {% else %}
   <div class="card">No stories are available yet.</div>
   {% endfor %}

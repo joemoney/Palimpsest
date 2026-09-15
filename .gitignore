@@ -23,3 +23,10 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Private story content now lives in the stories/private/ submodule, not here. What is
+# left at this path is the vestigial .git of the_missing_core's former standalone repo,
+# kept only because it still holds that story's one baseline commit. It carries no
+# template.json, so list_stories() does not see it. Safe to delete once you no longer
+# want that commit.
+stories/the_missing_core/

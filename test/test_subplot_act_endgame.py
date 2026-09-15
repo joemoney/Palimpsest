@@ -15,8 +15,8 @@ se = load_story_engine()
 
 responses = CannedResponses([
     # 1) update_progress_from_turn: push subplot_001 to completion
-    {"subplot_progress": {"subplot_001": 100}, "flags_set": {"learned_basic_computation": True},
-     "memory_fragments_revealed": ["frag_0001"]},
+    {"subplot_beats": {"subplot_001": "resolved"}, "flags_set": {"learned_basic_computation": True},
+     "revelations": {"revealed": ["frag_0001"], "eligible": []}},
     # 2) generate_new_subplot (replacement for subplot_001)
     {"title": "Test New Subplot", "description": "A freshly invented thread.",
      "priority": "high", "ties_to_main_plot": "ties in somehow"},
@@ -36,9 +36,10 @@ assert se._subplot_view(ctx, "subplot_001")["progress"] == 0
 # immutable) so this test can exercise the reveal path regardless of whether
 # DEFAULT_STORY_SLUG's own template happens to define any.
 story_dict = se.state_store.thaw(ctx["story"])
-story_dict["mechanics"]["revelations"] = [
-    {"id": "frag_0001", "trigger": "test trigger", "content": "test content"},
-]
+story_dict["mechanics"]["revelations"] = {
+    "engine": "triggered_reveal",
+    "entries": [{"id": "frag_0001", "trigger": "test trigger", "content": "test content"}],
+}
 ctx["story"] = se.state_store.freeze(story_dict)
 
 # 1+2: one turn worth of progress -> completes subplot_001 -> auto-generates a replacement.

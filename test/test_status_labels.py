@@ -26,7 +26,8 @@ NON_TURN_LABELS = {"steering_seed_generation", "relationship_promotion"}
 # Written by app.py before the background thread starts, not by _timed().
 APP_WRITTEN_LABELS = {"queued"}
 
-source = open(os.path.join(os.path.dirname(se.__file__), "story_engine.py")).read()
+with open(os.path.join(os.path.dirname(se.__file__), "story_engine.py"), encoding="utf-8") as f:
+    source = f.read()
 call_site_labels = set(re.findall(r'_timed\(\s*"(\w+)"', source))
 assert "narration" in call_site_labels and "state_update" in call_site_labels, call_site_labels
 

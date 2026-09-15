@@ -6,6 +6,9 @@ testing the fake rather than the app. story_engine's LLM calls are still
 monkeypatched (no network), and state_store's storage is redirected to a temp
 directory (never the real stories/ or data/).
 
+It also needs the private story submodule at stories/private/ checked out, and skips
+gracefully when it isn't.
+
 NOTE: unlike the rest of test/, this one needs the real `flask` package (and
 its dependencies) installed - `pip install -r requirements.txt` - since it's
 specifically verifying the real Flask integration. It cannot run in an
@@ -43,7 +46,17 @@ try:
     # routes exercise the full opening-scene/take_turn machinery, which needs
     # the real schema (plot.opening_scene, player.flags_active, etc.), not a
     # minimal stub template.
-    real_template_path = os.path.join(REPO_ROOT, "stories", "new_babel", "template.json")
+    # stories/private/ is a git submodule of private story content (see state_store's
+    # STORIES_PRIVATE_DIR). Built from REPO_ROOT rather than ss.STORIES_PRIVATE_DIR, which
+    # load_state_store has already redirected to this test's tmp dir. A public clone that
+    # never ran `git submodule update --init` doesn't have it, so skip rather than fail -
+    # same contract as the flask check above, for the same reason.
+    real_template_path = os.path.join(REPO_ROOT, "stories", "private", "new_babel",
+                                      "template.json")
+    if not os.path.isfile(real_template_path):
+        print("SKIPPED: stories/private/ (private story submodule) is not checked out - "
+              "run `git submodule update --init` to run this test for real.")
+        sys.exit(0)
     with open(real_template_path) as f:
         template = json.load(f)
     story_dir = os.path.join(ss.STORIES_DIR, "new_babel")
@@ -81,7 +94,7 @@ try:
         "OPTIONS:\n1. Rest. || I rest.\n2. Move on. || I move on."
         "\n3. Look around. || I look around.",
     ]
-    state_update = {"subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [], "entity_interaction": False}
+    state_update = {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []}, "entity_interaction": False}
     call_queue = CannedResponses(narrations)
     json_queue = CannedResponses([state_update] * len(narrations))
     se.call_llm = call_queue
@@ -224,6 +237,37 @@ try:
     assert resp.get_json() == {"label": None, "progress": None}
     print("OK: GET /api/status is cleared back to None after the turn completes")
 
+    # --- §7.4: a refused action returns 200 with OOB swaps only. No scene block, because no
+    # turn happened - the result fetch targets #scene-list, so a body here would append the
+    # refusal to the transcript as though the story had moved on. ---
+    story = ss.thaw(ss.load_state(alice_id, "new_babel")["story"])
+    story["mechanics"]["gate"] = {"engine": "precondition", "gates": [
+        {"id": "vault", "target": "loc_vault", "requires": {"item_tag": "never_carried"},
+         "refusal_hint": "The door does not argue."}]}
+    real_load = ss.load_state
+    ss.load_state = lambda u, s, *a, **k: dict(real_load(u, s, *a, **k), story=ss.freeze(story))
+    turns_before = real_load(alice_id, "new_babel")["state"]["pacing"]["turn_count"]
+    se.call_llm_json = CannedResponses([{"blocked": 1, "sentence": "The door does not move."}])
+
+    resp = client.post("/play/new_babel/api/turn", data={"action": "I try the vault door"})
+    assert resp.status_code == 202, resp.status_code
+    wait_for_idle(alice_id)
+    resp = client.get("/play/new_babel/api/turn/result")
+    assert resp.status_code == 200, resp.status_code
+    assert b'id="refusal-text"' in resp.data and b"The door does not move." in resp.data
+    assert b'class="scene-block"' not in resp.data, \
+        "a refusal must not append anything to the transcript"
+    assert b'id="controls"' in resp.data and b'hx-swap-oob="true"' in resp.data, \
+        "the controls have to come back, or the player is left with a disabled form"
+    assert real_load(alice_id, "new_babel")["state"]["pacing"]["turn_count"] == turns_before, \
+        "a refused action must not consume a turn"
+    ss.load_state = real_load
+    # Restore the shared queue: the refusal above swapped in a single-response stub, and the
+    # tests below still need the normal state-update answer for every turn they take.
+    se.call_llm_json = CannedResponses([state_update] * 10)
+    print("OK: a refused action returns the refusal fragment, appends no scene, and "
+          "consumes no turn")
+
     # --- a turn already in flight for this save makes /api/turn and /api/regenerate refuse
     # to start a second one, rather than racing it - the turn-status beacon doubles as a
     # cheap in-flight lock, not just a display hint for the busy indicator. Simulated
@@ -335,9 +379,13 @@ try:
     wait_for_idle(carol_id)
     resp = carol_client.get("/play/new_babel/api/turn/result")
     assert resp.status_code == 200
-    assert seen_labels == ["narration", "state_update"], seen_labels
-    print("OK: the status beacon shows 'narration' during the narration call and "
-          "'state_update' during the following state-update call")
+    # `gate_check` leads because new_babel authors a gate whose predicate is unmet for this
+    # save - the pre-action detector (§7.4) runs before narration and writes its own beacon.
+    # It is in the sequence rather than stripped from it deliberately: the beacon order IS the
+    # thing under test, and a story with gates genuinely has three steps, not two.
+    assert seen_labels == ["gate_check", "narration", "state_update"], seen_labels
+    print("OK: the status beacon shows 'gate_check', then 'narration' during the narration "
+          "call, then 'state_update' during the following state-update call")
     se.call_llm = call_queue
     se.call_llm_json = json_queue
 

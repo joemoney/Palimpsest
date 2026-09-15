@@ -26,8 +26,9 @@ responses = CannedResponses([
         "role": "potential ally", "relationship_to_player": "guarded",
         "hook": "Crosses paths with the player at the next supply drop.",
     }},
-    # 2) update_progress_from_turn's state-update pass, once the player meets her
-    {"relationship_changes": {"Vesper Kade": 5}},
+    # 2) update_progress_from_turn's observation pass, once the player meets her. Phase 4:
+    # a social beat with an authored register, not a number the model picked.
+    {"social": [{"target": "Vesper Kade", "register": "kindness_shown", "reciprocated": True}]},
 ])
 se.call_llm_json = responses
 
@@ -52,7 +53,7 @@ print("OK: generate_pacing_nudge surfaces an un-introduced seeded character's ho
 
 se.update_progress_from_turn(ctx, "talk to Vesper", "narration mentioning Vesper Kade")
 assert ctx["state"]["characters"]["Vesper Kade"]["introduced"] is True
-print("OK: meeting the character in a turn auto-flips introduced via relationship_changes")
+print("OK: meeting the character in a turn auto-flips introduced via a social beat")
 
 nudge_after = se.generate_pacing_nudge(ctx)
 assert "Vesper Kade" not in nudge_after, nudge_after

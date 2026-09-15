@@ -12,7 +12,7 @@ This engine is story-agnostic — `stories/<slug>/` holds one story's seed
 content and its own `README.md` with that story's pitch, setting, and design
 rationale. Adding a new story is a content change (drop in
 `stories/<new-slug>/template.json` + `README.md`), not a code change — see
-"Multi-User, Multi-Story Architecture" in `CLAUDE.md`.
+"Multi-User, Multi-Story Architecture" in `docs/ARCHITECTURE.md`.
 
 ### Public vs. private stories
 
@@ -25,16 +25,18 @@ meant to be. Two kinds of `stories/<slug>/` entries exist side by side:
   this repo is runnable and demoable with nothing more than a clone — see
   [`stories/example/README.md`](stories/example/README.md). Also the
   reference to copy from when authoring a new story's `template.json`.
-- **`stories/new_babel/`** — a **git submodule** pointing at a private
-  companion repo, not committed directly here. *The Attention Economy*, a
-  Lovecraftian-cyberpunk reincarnation story — see
-  [`stories/new_babel/README.md`](stories/new_babel/README.md) once checked
-  out. This repo's `.gitmodules` records the private repo's name and URL
-  (so its existence is visible), but its content is only readable by
-  someone with access to that repo.
+- **`stories/private/`** — a single **git submodule** pointing at a private
+  companion repo, holding every private story, one folder each
+  (`stories/private/<slug>/template.json`). It is a second story *root*, not a
+  story: the engine scans both (`state_store.story_roots`), and
+  `stories/private/` itself is skipped since it has no `template.json` of its
+  own. This repo's `.gitmodules` records the private repo's name and URL (so
+  its existence is visible), but its content is only readable by someone with
+  access to that repo.
 
-A plain `git clone` of this repo leaves `stories/new_babel/` as an empty
-directory. To pull it in (if you have access):
+A plain `git clone` of this repo leaves `stories/private/` as an empty
+directory, and the catalog is just the public stories. To pull it in (if you
+have access):
 ```bash
 git submodule update --init --recursive
 ```
@@ -65,7 +67,7 @@ flagship model, reasoning on; Tier C: fastest available model) —
 `TIER_AB_MODEL`/`TIER_C_MODEL` are freely swappable via `.env` if you want
 to try a different OpenRouter model for either one — the Gemini fail-safe
 means an unreachable or misconfigured experiment won't take the whole app
-down. See `CLAUDE.md`'s "Backend / Model Notes" for the full
+down. See `docs/ARCHITECTURE.md`'s "Backend / Model Notes" for the full
 `TIER_AB_PROVIDER`/`TIER_AB_MODEL`/`TIER_C_PROVIDER`/`TIER_C_MODEL` picture.
 Boots straight into `stories/example/`'s opening with no flags needed — the
 CLI defaults to a local single-player save against the public example story
@@ -246,9 +248,9 @@ here for when the story needs a deliberate push.
 ## File Structure
 - `stories/<slug>/template.json` — authored seed content for one story (meta,
   world, player, characters, plot, history_log). `stories/example/` is
-  committed here directly (public); `stories/new_babel/` is a private git
-  submodule — see "Public vs. private stories" above. Adding a new story is
-  a content change, not a code change.
+  committed here directly (public); `stories/private/<slug>/` comes from a
+  private git submodule — see "Public vs. private stories" above. Adding a new
+  story is a content change, not a code change, in either root.
 - `backend/` — all engine/server Python code:
   - `state_store.py` — the storage layer: story catalog, per-user save
     load/save, and account creation/login.

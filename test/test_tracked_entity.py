@@ -12,7 +12,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _llm_stubs import RecordingLLM, load_story_engine  # noqa: E402
+from _llm_stubs import CannedResponses, RecordingLLM, load_story_engine  # noqa: E402
 
 se = load_story_engine()
 
@@ -24,8 +24,8 @@ assert "TRACKED ENTITY" not in se.build_system_prompt(ctx)
 print("OK: no tracked_entity -> no TRACKED ENTITY block in the narration prompt")
 
 recorder = RecordingLLM(lambda p: {
-    "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+    "subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 })
 se.call_llm_json = recorder
 se.update_progress_from_turn(ctx, "look around", "narration text")
@@ -55,14 +55,42 @@ assert "Prior contact this playthrough: 2 times." in narration_prompt
 print("OK: a configured tracked_entity's name/description/pacing_note/contact count all "
       "reach the narration prompt")
 recorder = RecordingLLM(lambda p: {
-    "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+    "subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 })
 se.call_llm_json = recorder
 se.update_progress_from_turn(ctx, "look around", "narration text")
 assert '"entity_interaction"' in recorder.prompts[-1]
 assert "The Warden" in recorder.prompts[-1]
 print("OK: a configured tracked_entity adds entity_interaction, using its name")
+
+# --- and it rides inside scene_update, not as a field of its own (§5.4) ---
+# The counter increment had no test at all until the fold: every assertion above is about
+# prompt *text*, and "entity_interaction" appears in the prompt either way, so moving where
+# the model is asked to put it could have broken the count silently.
+assert '"entity_interaction"' in recorder.prompts[-1].split('"scene_update"')[1].split("\n")[0], \
+    "entity_interaction must be asked for inside the scene_update object, not beside it"
+before = ctx["state"]["plot"]["entity_contact_count"]
+se.call_llm_json = CannedResponses([{
+    "subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
+    "scene_update": {"location": "", "summary": "unchanged", "present_npcs": [],
+                     "entity_interaction": True},
+}])
+se.update_progress_from_turn(ctx, "look around", "narration text")
+assert ctx["state"]["plot"]["entity_contact_count"] == before + 1, \
+    "a reported encounter inside scene_update must still increment entity_contact_count"
+
+se.call_llm_json = CannedResponses([{
+    "subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
+    "scene_update": {"location": "", "summary": "unchanged", "present_npcs": []},
+}])
+se.update_progress_from_turn(ctx, "look around", "narration text")
+assert ctx["state"]["plot"]["entity_contact_count"] == before + 1, \
+    "a scene_update that omits entity_interaction must not increment anything"
+print("OK: entity_interaction rides inside scene_update and still counts encounters there, "
+      "and an absent one counts nothing")
 
 ctx["state"]["pacing"]["subplots_completed_this_act"] = 1
 ctx["state"]["plot"]["entity_contact_count"] = 3
@@ -75,8 +103,8 @@ print("OK: a configured tracked_entity adds the encounters line, using its name 
 # --- a save/template without tracked_entity at all doesn't crash either path ---
 old_ctx = se.state_store.load_state("trackedentitytest2", se.state_store.DEFAULT_STORY_SLUG)
 se.call_llm_json = lambda p, **kw: {
-    "subplot_progress": {}, "flags_set": {}, "memory_fragments_revealed": [],
-    "items_gained": [], "items_lost": [], "relationship_changes": {}, "new_characters": [],
+    "subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
+    "inventory": {"gained": [], "used": []}, "social": [], "new_characters": [],
 }
 se.update_progress_from_turn(old_ctx, "do something", "narration text")
 print("OK: a save/template without tracked_entity at all doesn't crash")

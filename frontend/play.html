@@ -25,6 +25,12 @@
 <fieldset id="controls" class="post-narration{{ ' hidden' if animate else '' }}">
 {% include "_controls.html" %}
 </fieldset>
+<dialog id="refusal-modal">
+  <p id="refusal-text" class="story"></p>
+  <form method="dialog" style="margin-top:16px;">
+    <button type="submit" style="width:100%;">Close</button>
+  </form>
+</dialog>
 <dialog id="llm-error-modal">
   <p class="story">The story engine couldn't reach the AI model just now — usually a
   temporary rate limit or quota issue. Nothing was lost; it's safe to try again in a
@@ -287,7 +293,21 @@
     resultTarget = null;
     resultSwap = null;
     htmx.ajax("GET", "/play/" + STORY_SLUG + "/api/turn/result", { target: target, swap: swap })
-      .then(hideBusyIndicator);
+      .then(hideBusyIndicator)
+      .then(showRefusalIfAny);
+  }
+
+  // §7.4: the world refused the action. The turn did not happen and nothing was written,
+  // so there is no new scene - just the sentence, and the same controls back. Rendered
+  // through renderStatic so the three narration markers work here exactly as they do in a
+  // scene, escaping included.
+  function showRefusalIfAny() {
+    var el = document.getElementById("refusal-text");
+    if (!el || !el.getAttribute("data-text")) { return; }
+    renderStatic(el);
+    el.removeAttribute("data-text");
+    var modal = document.getElementById("refusal-modal");
+    if (modal && !modal.open) { modal.showModal(); }
   }
 
   document.body.addEventListener("htmx:beforeRequest", function (evt) {
