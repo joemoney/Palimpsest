@@ -87,7 +87,8 @@
   "protagonist": {
     "default_name": "Traveller",
     "traits": [],
-    "starting_inventory": []
+    "starting_inventory": [],
+    "stats": {"unease": 0, "welcome": 8}
   },
   "mechanics": {
     "subplots": {
@@ -200,6 +201,32 @@
         "corroboration"
       ],
       "prompt_hint": "A durable gain is something the player can use later: a contradiction they can now cite, someone who will speak to them candidly, a door or record they can now reach, a second source for something they'd only heard once."
+    },
+    "stats": {
+      "engine": "bounded_counter",
+      "floor": 0,
+      "ceiling": 10,
+
+      "axes": {
+        "unease": {
+          "ceiling": 100,
+          "per_turn": 1,
+          "costs": {
+            "contradiction.noticed":   6,
+            "account.changed":         8,
+            "warned.off":              4,
+            "reassured":              -5
+          }
+        },
+        "welcome": {
+          "costs": {
+            "pressed.someone":        -2,
+            "pressed.hard":           -4,
+            "went.where.told.not.to": -3,
+            "accepted.hospitality":    1
+          }
+        }
+      }
     }
   },
   "plot": {
