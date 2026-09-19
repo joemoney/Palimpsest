@@ -54,9 +54,9 @@ DEFAULT_MAX_PARALLEL_SUBPLOTS = 3
 # minimal template must still run).
 DEFAULT_SCENE_WORD_MIN = 470
 DEFAULT_SCENE_WORD_MAX = 500
-# OpenRouter's "provider": {"sort": "throughput"} (see _call_llm_openrouter) can route a
-# request to whichever backing provider is fastest for the model, and that provider's own
-# default max_tokens isn't something this app controls or can rely on - one observed in
+# OpenRouter's "provider": {"sort": ...} routing (see _call_llm_openrouter) can send a
+# request to any of the model's backing providers, and the one it picks has its own
+# default max_tokens, which isn't something this app controls or can rely on - one observed in
 # production truncated a narration reply mid-sentence, well short of the ~500-word scene
 # plus its trailing OPTIONS block (~150 more words), with no OPTIONS block at all surviving.
 # Set generously above the largest real payload (narration + options, or a state-update JSON
@@ -97,12 +97,12 @@ TIER_AB_PROVIDER = os.getenv("TIER_AB_PROVIDER", "openrouter")
 TIER_AB_MODEL = os.getenv("TIER_AB_MODEL", "deepseek/deepseek-v4-pro-20260813")
 TIER_C_PROVIDER = os.getenv("TIER_C_PROVIDER", "openrouter")
 TIER_C_MODEL = os.getenv("TIER_C_MODEL", "deepseek/deepseek-v4-flash-0731")
-# Optional pin overriding the default "sort": "throughput" OpenRouter routing (see
-# _call_llm_openrouter) for TIER_AB_MODEL specifically - an explicit tradeoff of throughput
-# for a cheaper upstream, opted into per-deployment rather than a blanket default, since
-# "sort": "throughput" exists precisely because the wrong upstream can be much slower for
-# the same price. Only ever applied to TIER_AB_MODEL, never TIER_C_MODEL's own calls, and
-# unset means unchanged (throughput-sorted) behavior.
+# Optional pin to one named OpenRouter upstream for TIER_AB_MODEL specifically, overriding
+# its default "sort": "price" routing (see _call_llm_openrouter). Rarely wanted: price-sort
+# already routes to the cheapest upstream and, unlike this pin, keeps fallbacks enabled, so
+# pinning buys nothing on cost and gives up the reroute that survives a rate-limited
+# upstream. Only ever applied to TIER_AB_MODEL, never TIER_C_MODEL's own calls (which
+# always throughput-sort), and unset - the default - means price-sorted.
 TIER_AB_OPENROUTER_PROVIDER = os.getenv("TIER_AB_OPENROUTER_PROVIDER", "").strip() or None
 for _provider in (TIER_AB_PROVIDER, TIER_C_PROVIDER):
     if _provider not in ("openrouter", "google"):
@@ -186,7 +186,7 @@ class LLMUnavailableError(Exception):
 # request to measure this against at all; these constants stay in place regardless, since
 # they're still what makes an individual call give up and hand off to the fail-safe rather
 # than hanging indefinitely.)
-OPENROUTER_TOTAL_TIMEOUT = 100
+OPENROUTER_TOTAL_TIMEOUT = 200
 GOOGLE_TOTAL_TIMEOUT = 60
 _openrouter_executor = concurrent.futures.ThreadPoolExecutor(
     max_workers=8, thread_name_prefix="openrouter-call"
@@ -211,7 +211,8 @@ def _trim_to_last_sentence(text: str) -> str:
     return text[:last_end].rstrip() if last_end else text
 
 
-def _call_llm_openrouter(prompt: str, model: str, reasoning: bool = False, json_mode: bool = False) -> str:
+def _call_llm_openrouter(prompt: str, model: str, reasoning: bool = False, json_mode: bool = False,
+                          sort: str = None) -> str:
     def do_request():
         # deepseek-v4-flash-0731 (TIER_C_MODEL) alone is resold through 29 different
         # OpenRouter providers, with measured throughput ranging 6-109 tok/s and TTFT
@@ -220,19 +221,38 @@ def _call_llm_openrouter(prompt: str, model: str, reasoning: bool = False, json_
         # slow end (see git log: an 83s state-update call was the dominant cost in a
         # 132s turn). This asks OpenRouter to prefer whichever provider is currently
         # fastest for the requested model, instead of leaving that to chance - same
-        # model, same price, just routed better. Applies to every OpenRouter call
-        # (every tier) EXCEPT the TIER_AB_OPENROUTER_PROVIDER pin below, since sorting
-        # by throughput can only help absent a deliberate reason to override it.
-        provider_route = {"sort": "throughput"}
-        if model == TIER_AB_MODEL and TIER_AB_OPENROUTER_PROVIDER:
-            # Deliberate opt-in tradeoff (see TIER_AB_OPENROUTER_PROVIDER above): pin
-            # TIER_AB_MODEL to one specific upstream instead of the fastest one, e.g. to
-            # chase a cheaper provider knowing it'll be slower. allow_fallbacks: False
-            # means a request fails outright (LLMUnavailableError, same as any other
-            # OpenRouter failure) rather than silently landing on a different, possibly
-            # pricier upstream if the pinned one is down - call_llm's Gemini fail-safe is
-            # still the safety net for that case, same as for any other primary failure.
+        # model, same price, just routed better. TIER_C_MODEL keeps this: it runs every
+        # single turn and is the tier where a slow upstream is most visible.
+        #
+        # TIER_AB_MODEL sorts by price instead. Its calls are the expensive ones (long
+        # narration prompts) and the spread between cheapest and median upstream is ~2.3x,
+        # while its latency matters less - narration is already the slowest part of a turn
+        # and Tier B calls are rare. Sorting rather than pinning is what keeps fallbacks
+        # alive: "sort" leaves allow_fallbacks at its default true, so a cheapest upstream
+        # that rate-limits (observed 2026-09-15, baidu/fp8 returning 429 mid-turn) rolls to
+        # the next-cheapest instead of failing the turn.
+        #
+        # `sort` (the explicit param) overrides all of that for one call site rather than
+        # the whole tier: summary_rollover is TIER_AB_MODEL but doesn't fit the "latency
+        # matters less" argument above - real production calls kept tripping
+        # OPENROUTER_TOTAL_TIMEOUT on it even after that was raised to 200s. Wins outright
+        # over even the TIER_AB_OPENROUTER_PROVIDER pin below, since asking for it by name
+        # at the call site is a stronger, more specific instruction than the tier default.
+        if sort is not None:
+            provider_route = {"sort": sort}
+        elif model != TIER_AB_MODEL:
+            provider_route = {"sort": "throughput"}
+        elif TIER_AB_OPENROUTER_PROVIDER:
+            # Escape hatch (see TIER_AB_OPENROUTER_PROVIDER above): pin to one named
+            # upstream. allow_fallbacks: False means a request fails outright
+            # (LLMUnavailableError, same as any other OpenRouter failure) rather than
+            # silently landing on a different, possibly pricier upstream if the pinned one
+            # is down - which also means this reintroduces the single-upstream rate-limit
+            # exposure that price-sorting avoids. Only worth setting to force a specific
+            # upstream's behaviour, not to chase cost.
             provider_route = {"order": [TIER_AB_OPENROUTER_PROVIDER], "allow_fallbacks": False}
+        else:
+            provider_route = {"sort": "price"}
         body = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
@@ -350,6 +370,7 @@ def call_llm(
     provider: str = None,
     reasoning: bool = False,
     json_mode: bool = False,
+    sort: str = None,
 ) -> str:
     """Sends prompt to the given (or default) provider and returns the raw text response.
     Defaults to Tier A (TIER_AB_MODEL/TIER_AB_PROVIDER, reasoning off) - narration
@@ -359,6 +380,10 @@ def call_llm(
     generate_character_from_relationship) pass model=TIER_AB_MODEL,
     provider=TIER_AB_PROVIDER, reasoning=True explicitly instead - see "LLM tier
     configuration" above for which call site is which tier.
+
+    `sort` overrides _call_llm_openrouter's own tier-based provider routing for this one
+    call, ignored entirely under the google provider (OpenRouter-only, same as json_mode).
+    None (the default) leaves the existing per-tier default alone.
 
     Under TESTING_FORCE_GOOGLE (the offline test suite's whole-process override), provider
     and model are both replaced with "google"/GEMINI_MODEL regardless of what was passed in
@@ -385,7 +410,7 @@ def call_llm(
     try:
         if provider == "google":
             return _call_llm_google(prompt, model)
-        return _call_llm_openrouter(prompt, model, reasoning=reasoning, json_mode=json_mode)
+        return _call_llm_openrouter(prompt, model, reasoning=reasoning, json_mode=json_mode, sort=sort)
     except LLMUnavailableError as primary_error:
         if provider == "google" and model == GEMINI_MODEL:
             raise  # this WAS the fail-safe call - nothing left to fall back to
@@ -401,6 +426,7 @@ def call_llm_json(
     model: str = TIER_C_MODEL,
     provider: str = None,
     reasoning: bool = False,
+    sort: str = None,
 ) -> dict:
     """Call the LLM expecting a single JSON object back, tolerating markdown code fences.
     Defaults to Tier C (TIER_C_MODEL/TIER_C_PROVIDER) - update_progress_from_turn is the
@@ -410,9 +436,10 @@ def call_llm_json(
     provider=TIER_AB_PROVIDER, reasoning=True explicitly; handle_end_story_request (Tier A)
     passes the same model/provider with reasoning left at its default False. Always requests
     OpenRouter's response_format: json_object mode underneath (see _call_llm_openrouter) - a
-    no-op under the google provider, which has no equivalent knob in this codebase."""
+    no-op under the google provider, which has no equivalent knob in this codebase.
+    `sort` is passed straight through to call_llm - see its docstring."""
     provider = provider or TIER_C_PROVIDER
-    raw = call_llm(prompt, model=model, provider=provider, reasoning=reasoning, json_mode=True).strip()
+    raw = call_llm(prompt, model=model, provider=provider, reasoning=reasoning, json_mode=True, sort=sort).strip()
     if raw.startswith("```"):
         lines = raw.splitlines()
         if lines and lines[0].startswith("```"):
@@ -1912,6 +1939,10 @@ def _section_footer(ctx: dict) -> str:
     # other engine-owned instructions rather than inside the roster listing.
     sections = mechanics.prompt_sections(ctx)
     stats_instruction = sections.get("stats.footer", "")
+    # bounded_counter's own tier block, on the same footing as scored_axis's below it: a
+    # figure sitting in an authored band is a rule the narrator has to honour this turn,
+    # not a number to recite. Placed after the stats footer it belongs to.
+    stat_tier_instruction = sections.get("stats.tiers", "")
     standing_instruction = sections.get("relationships.tiers", "")
     carry_instruction = sections.get("inventory.footer", "")
 
@@ -1927,7 +1958,7 @@ def _section_footer(ctx: dict) -> str:
             f"{_options_block_instruction(option_count, option_pov)}"
         )
 
-    return f"""Stay strictly within the established world, tone, and rules above.{stats_instruction}{standing_instruction}{carry_instruction}
+    return f"""Stay strictly within the established world, tone, and rules above.{stats_instruction}{stat_tier_instruction}{standing_instruction}{carry_instruction}
 You may lightly mark up emphasis in your prose using exactly these three markers, used
 sparingly (most sentences should have none): **text** for bold, *text* for italic
 (e.g. internal thought or stressed words), __text__ for underline. Do not nest them,
@@ -1973,12 +2004,18 @@ def build_system_prompt(ctx: dict) -> str:
 
 # Both regexes are deliberately more tolerant than the format build_system_prompt actually
 # asks for (a bare "OPTIONS:" line, "action || prose" per option) - observed real model output
-# has dropped the colon and, separately, written a single "|" instead of "||". Either miss used
-# to make parse_narration_and_options fall back to (whole_text, []), leaking the entire options
-# block into the narration shown to the player instead of just failing one option line. The
-# heading is still anchored to its own line (not a bare substring search) so a narration that
-# happens to use the word "options" mid-sentence can't be mistaken for the section heading.
-_OPTIONS_HEADING_RE = re.compile(r"^\s*OPTIONS\s*:?\s*$", re.IGNORECASE | re.MULTILINE)
+# has dropped the colon, separately written a single "|" instead of "||", and separately again
+# wrapped the heading in one of the emphasis markers the prompt's own markup rule permits
+# ("**OPTIONS:**") - the model treating its own section heading as prose worth emphasising.
+# Any miss here used to make parse_narration_and_options fall back to (whole_text, []) or,
+# worse, match a later real "OPTIONS:" instead (the one generate_missing_options appends
+# because it never found this one), leaking the model's own heading and options into the
+# narration shown to the player while a duplicate block rendered as buttons underneath it.
+# The heading is still anchored to its own line (not a bare substring search) so a narration
+# that happens to use the word "options" mid-sentence can't be mistaken for the section
+# heading.
+_OPTIONS_HEADING_RE = re.compile(r"^\s*(?:\*\*|__)?\s*OPTIONS\s*:?\s*(?:\*\*|__)?\s*$",
+                                  re.IGNORECASE | re.MULTILINE)
 _OPTION_LINE_RE = re.compile(r"^\s*\d+[.)]\s*(.+?)\s*\|\|?\s*(.+)$", re.MULTILINE)
 
 
@@ -2156,7 +2193,13 @@ NEW EVENTS:
 Respond with ONLY the updated summary text, under {SUMMARY_MAX_WORDS} words, no preamble."""
         updated_summary = _timed(
             "summary_rollover",
-            lambda: call_llm(summary_prompt, model=TIER_AB_MODEL, provider=TIER_AB_PROVIDER),
+            # sort="throughput": this is TIER_AB_MODEL, but doesn't fit the tier's usual
+            # "latency matters less" reasoning (see _call_llm_openrouter) - its prompt is
+            # the whole overflowing batch of turns plus the existing summary, and real
+            # production calls kept tripping OPENROUTER_TOTAL_TIMEOUT even after that was
+            # raised to 200s. Fastest upstream over cheapest, for this call only.
+            lambda: call_llm(summary_prompt, model=TIER_AB_MODEL, provider=TIER_AB_PROVIDER,
+                              sort="throughput"),
             model=TIER_AB_MODEL,
         )
         history["compressed_summary"] = _enforce_word_cap(

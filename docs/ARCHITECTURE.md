@@ -200,25 +200,45 @@ treatment as these existing ones:
   (every `call_llm_json` call site), not gated behind a specific tier; a
   no-op under the `google` provider, which has no equivalent knob in this
   codebase.
-- **OpenRouter provider routing**: every OpenRouter call sends `"provider":
-  {"sort": "throughput"}` by default — `TIER_C_MODEL` alone is resold through
-  ~29 upstreams with measured throughput from 6-109 tok/s, and a request
-  landing on the slow end once dominated a 132s turn, so the default asks
-  OpenRouter for whichever upstream is fastest right now rather than leaving
-  it to chance. `TIER_AB_OPENROUTER_PROVIDER` (`.env`, unset by default) is an
-  opt-in override of that default, scoped to `TIER_AB_MODEL` only — set it to
-  a specific OpenRouter provider slug (e.g. `baidu/fp8`) to pin routing to one
-  named upstream via `{"order": [slug], "allow_fallbacks": false}` instead of
-  throughput-sorting, a deliberate throughput-for-cost tradeoff made per
-  deployment rather than a new default (verified 2026-09-13: Baidu's
-  `baidu/fp8` endpoint for `deepseek-v4-pro-20260813` priced at
-  $0.00000058/$0.00000173 per prompt/completion token, the cheapest of ~19
-  listed upstreams, next cheapest ~$0.00000066). `allow_fallbacks: false`
-  means a pinned-but-down upstream fails the request outright
-  (`LLMUnavailableError`) rather than silently rerouting to a pricier
-  upstream — the Gemini fail-safe below is what actually recovers that case,
-  same as any other primary-call failure. Never applies to `TIER_C_MODEL`,
-  which always throughput-sorts regardless of this setting.
+- **OpenRouter provider routing**: every OpenRouter call sends a `"provider"`
+  block, but the two tiers sort on different axes. `TIER_C_MODEL` sends
+  `{"sort": "throughput"}` — it alone is resold through ~29 upstreams with
+  measured throughput from 6-109 tok/s, it runs every single turn, and a
+  request landing on the slow end once dominated a 132s turn, so it asks for
+  whichever upstream is fastest right now rather than leaving it to chance.
+  `TIER_AB_MODEL` sends `{"sort": "price"}` — its calls carry the long
+  narration prompts, the spread between cheapest and median upstream is ~2.3x
+  (verified 2026-09-15: `baidu/fp8` and `alibaba` joint-cheapest for
+  `deepseek-v4-pro-20260813` at ~$0.00000058/$0.00000174 per
+  prompt/completion token, of 21 listed upstreams, most others $0.00000132+),
+  and its latency matters less since narration is already the slowest part of
+  a turn and Tier B calls are rare.
+
+  Sorting rather than pinning is deliberate. `"sort"` leaves
+  `allow_fallbacks` at its default `true`, so a cheapest-but-rate-limited
+  upstream rerouts to the next-cheapest instead of failing the turn — this
+  replaced a `baidu/fp8` pin that started returning 429 mid-turn on
+  2026-09-15 (narration landed, a later Tier B call failed) while unpinned
+  `TIER_C_MODEL` calls were unaffected. `TIER_AB_OPENROUTER_PROVIDER` (`.env`,
+  unset by default) still exists to pin `TIER_AB_MODEL` to one named upstream
+  via `{"order": [slug], "allow_fallbacks": false}`, but is rarely wanted:
+  price-sort already reaches the cheapest upstream, so pinning buys nothing on
+  cost while reintroducing that single-upstream rate-limit exposure — and on a
+  deployment with `GEMINI_FAILSAFE_ENABLED=false` there is nothing underneath
+  to catch it. Never applies to `TIER_C_MODEL`, which always throughput-sorts
+  regardless of this setting.
+
+  `call_llm`/`call_llm_json` also take an optional `sort` parameter that
+  overrides the tier default for one call site rather than the whole tier —
+  wins outright over even the `TIER_AB_OPENROUTER_PROVIDER` pin, since naming
+  it at the call site is a more specific instruction than the tier default.
+  `summary_rollover` (`update_state_after_turn`) is the one caller: it's
+  `TIER_AB_MODEL` but its prompt is the whole overflowing batch of turns plus
+  the running summary, and real production calls kept tripping
+  `OPENROUTER_TOTAL_TIMEOUT` even after that was raised to 200s — the "Tier B
+  latency matters less" argument above doesn't hold for this specific call,
+  so it passes `sort="throughput"` explicitly rather than inheriting
+  `TIER_AB_MODEL`'s price-sort.
 - **Gemini fail-safe**: if a tier's primary call raises `LLMUnavailableError`,
   `call_llm` retries once against the operator's own free-tier `GEMINI_MODEL`
   via a direct Google call, before giving up. This IS a genuine runtime
@@ -236,9 +256,9 @@ treatment as these existing ones:
   attempted, not some separate raw argument, since `TESTING_FORCE_GOOGLE`
   silently substitutes `GEMINI_MODEL` in — comparing the wrong one caused a
   wasted duplicate retry.
-  `OPENROUTER_TOTAL_TIMEOUT` (100s) and `GOOGLE_TOTAL_TIMEOUT` (60s) are both
+  `OPENROUTER_TOTAL_TIMEOUT` (200s) and `GOOGLE_TOTAL_TIMEOUT` (60s) are both
   sized so the worst case — primary times out, then the fail-safe also times
-  out — stays under gunicorn's `--timeout` (Dockerfile `CMD`, 220s), for the
+  out — stays under gunicorn's `--timeout` (Dockerfile `CMD`, 320s), for the
   same reason the single-call version of this margin mattered before: a
   double-timeout needs to be caught here first, cleanly, rather than by
   gunicorn's harder `SIGABRT`. (`app.py`'s `take_turn`/`regenerate_turn` now
@@ -667,15 +687,17 @@ do it there. See `frontend/play.html`'s and `frontend/_controls.html`'s own
 comments for the exact mechanics.
 
 Side effect worth knowing: since gunicorn's own `--timeout` (Dockerfile
-`CMD`, 220s) only measures a worker's request-handling responsiveness, and
+`CMD`, 320s) only measures a worker's request-handling responsiveness, and
 the kickoff request now returns in well under a second, that timeout no
 longer applies to the turn's own processing at all — closing a second,
 separate historical failure mode where a turn that ran long enough to hit
 it got the whole worker `SIGABRT`-killed mid-turn, losing the save
-entirely. The turn-status beacon's own `TURN_STATUS_STALE_SECONDS` (240s,
+entirely. The turn-status beacon's own `TURN_STATUS_STALE_SECONDS` (300s,
 `state_store.py`) backstop still exists for the cases that remain (a
 container restart, an unhandled exception in the background thread, an OOM
-kill).
+kill) — sized to clear `OPENROUTER_TOTAL_TIMEOUT` plus one Gemini fail-safe
+retry (260s), since the beacon it watches resets at the start of every
+`_timed()` label, not once per turn.
 
 **Inline narration formatting** (`frontend/play.html`): the LLM is instructed
 (`story_engine.py`'s `build_system_prompt`) to mark up emphasis with exactly

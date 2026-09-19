@@ -159,6 +159,37 @@ assert ctx["state"]["protagonist"]["stats"]["days_out"] == 3, \
     "drift is per turn, not per observed event"
 print("OK: per_turn drift ticks exactly once a turn - with no events, with one, and with two")
 
+# --- per_turn_interval slows drift's cadence without weakening its guarantee -------------
+# Observed in production (the_missing_core): a -1-every-turn signature drift spent most of
+# a 90-turn save pinned at its own floor, because nothing the model could name moved it back
+# up as often as drift pushed it down. The interval doesn't change what fires - still no
+# escaping it, still fires with no events observed - only how often; report() below doesn't
+# touch pacing itself, so turn_count is driven by hand the same way update_state_after_turn
+# would.
+INTERVAL = {
+    "engine": "bounded_counter", "floor": 0, "ceiling": 20,
+    "axes": {"signature": {"per_turn": -1, "per_turn_interval": 5}},
+}
+ctx = se.state_store.load_state("intervalstats", se.state_store.DEFAULT_STORY_SLUG)
+with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(stats=dict(INTERVAL)))
+ctx["state"]["protagonist"]["stats"] = {"signature": 10}
+for turn_count in range(1, 11):
+    ctx["state"]["pacing"]["turn_count"] = turn_count
+    report(ctx)
+    expected = 10 - turn_count // 5
+    assert ctx["state"]["protagonist"]["stats"]["signature"] == expected, \
+        f"turn {turn_count}: expected {expected}, got {ctx['state']['protagonist']['stats']['signature']}"
+print("OK: per_turn_interval=5 ticks only on turns 5 and 10, not the eight turns between")
+
+# --- an axis with no interval authored keeps today's every-turn cadence ------------------
+ctx = priced_ctx({"warmth": 5, "supplies": 5, "days_out": 0})
+for turn_count in range(1, 4):
+    ctx["state"]["pacing"]["turn_count"] = turn_count
+    report(ctx)
+assert ctx["state"]["protagonist"]["stats"]["days_out"] == 3, \
+    "no authored per_turn_interval must mean every turn, unchanged from before the dial existed"
+print("OK: an unauthored interval still drifts every turn (P-2)")
+
 # --- a story with stats but no costs keeps the delta map ---------------------------------
 ctx = se.state_store.load_state("unpricedstats", se.state_store.DEFAULT_STORY_SLUG)
 with_story(ctx, lambda s: s.setdefault("mechanics", {}).update(

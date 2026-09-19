@@ -26,7 +26,8 @@ tracked as its own item rather than folded into one of the five ports.
 """
 import re
 
-from . import Effect, MechanicEngine, ObservationField, register, register_effect
+from . import (TURN_SCRATCH, Effect, MechanicEngine, ObservationField, register,
+               register_effect)
 
 # Only used when a bound story omits `floor` - not a global default any more, since an
 # unbound story has no floor at all rather than falling back to one.
@@ -39,10 +40,13 @@ class BoundedCounter(MechanicEngine):
     # Before relationships/inventory: a later engine reading a stat threshold should see
     # this turn's value, not last turn's.
     resolve_order = 20
-    # §5.4. Largest real section today is the_missing_core's readout footer at 433 chars;
-    # 600 leaves headroom for a longer axis list without being vacuous. What reaches a
-    # prompt must stay bounded even though the disk record need not.
-    prompt_budget = 600
+    # §5.4. Three instructions now: the absolute-token half (477 chars), the delta_block
+    # marker half (399) when a story authors one, and the tier block - which, unlike the
+    # other two, DOES scale, with one authored line per axis currently sitting in a tier
+    # that wrote guidance. the_missing_core's five tiers are one line at a time (only the
+    # reached tier renders), but a story tiering every axis at once pays for all of them.
+    # Measured, not asserted: re-run scripts/measure_baseline.py after changing any of them.
+    prompt_budget = 1400
 
     # --- configuration -------------------------------------------------------------
 
@@ -74,9 +78,14 @@ class BoundedCounter(MechanicEngine):
         return table
 
     def drift(self, cfg):
-        """Per-axis `per_turn`, for the axes that have one. §7.1: a deadline that only
-        arrives when the model remembers to decrement it is not a deadline."""
-        return {axis: (spec or {}).get("per_turn")
+        """Per-axis `(per_turn, interval)`, for the axes that have a `per_turn`. §7.1: a
+        deadline that only arrives when the model remembers to decrement it is not a
+        deadline. `per_turn_interval` (default 1, every turn) lets a story make that
+        arrival slower than every turn - a signature that fades over a week reads
+        differently authored as -1 every turn than as -1 every 5 - without weakening the
+        guarantee that it still arrives on its own: the interval is a cadence, not a
+        chance."""
+        return {axis: ((spec or {}).get("per_turn"), (spec or {}).get("per_turn_interval", 1))
                 for axis, spec in self.axes(cfg).items()
                 if (spec or {}).get("per_turn")}
 
@@ -85,11 +94,41 @@ class BoundedCounter(MechanicEngine):
         opaque reading is what every story predating the dial relies on."""
         return bool(cfg.get("visible", False))
 
+    def tiers(self, cfg, axis):
+        """Authored `axes.<axis>.tiers`, sorted so `tier_for` can scan deterministically.
+
+        The same shape scored_axis uses for relationships (`at`/`label`/`narration`), ported
+        here because a stat crossing a threshold is the same kind of fact as a standing
+        crossing one: a band the narration has to honour, not a number to recite. Only the
+        upward direction, unlike scored_axis - a stat has a floor and climbs away from it,
+        so there is no "at or below" case to disambiguate."""
+        return sorted((self.axes(cfg).get(axis) or {}).get("tiers") or [], key=lambda t: t["at"])
+
+    def tier_for(self, cfg, axis, value):
+        """The tier `value` currently sits in on `axis`, or None if it has reached none."""
+        best = None
+        for tier in self.tiers(cfg, axis):
+            if value >= tier["at"] and (best is None or tier["at"] >= best["at"]):
+                best = tier
+        return best
+
     def readout(self, cfg):
         """`readout` is only live when it actually names labels - an empty one renders
         nothing and must not trigger the token instruction."""
         cfg_readout = cfg.get("readout")
         return cfg_readout if cfg_readout and cfg_readout.get("labels") else None
+
+    def delta_block(self, cfg):
+        """`readout.delta_block`, or None. P-7 one level up from the `token`: the token
+        renders *absolutes* (what the sheet says now), this renders *deltas* (what moved
+        this turn) and composes the surrounding wrapper too, so the model writes neither the
+        figure nor the frame around it - only a marker and, at most, a short clause.
+
+        P-2: a story that authors none keeps today's behaviour, where the model writes the
+        whole block itself. A block naming no marker is not live, for the same reason an
+        empty `readout` is not."""
+        block = (self.readout(cfg) or {}).get("delta_block")
+        return block if block and block.get("marker") else None
 
     @staticmethod
     def current(ctx):
@@ -196,10 +235,15 @@ class BoundedCounter(MechanicEngine):
                     except (TypeError, ValueError):
                         continue
 
-        # §7.1: drift ticks every turn whether or not anything was observed, which is what
-        # makes a deadline arrive rather than a number the model remembers to decrement.
-        for axis, per_turn in self.drift(cfg).items():
-            move(axis, per_turn, "per_turn")
+        # §7.1: drift ticks on its authored cadence whether or not anything was observed,
+        # which is what makes a deadline arrive rather than a number the model remembers to
+        # decrement. turn_count is already the post-increment "this is turn N" value by the
+        # time resolve() runs (see update_state_after_turn), so interval=5 ticks on turn 5,
+        # 10, 15... - a story that authors no interval keeps today's every-turn cadence.
+        turn_count = ctx["state"]["pacing"]["turn_count"]
+        for axis, (per_turn, interval) in self.drift(cfg).items():
+            if turn_count % interval == 0:
+                move(axis, per_turn, "per_turn")
         return effects
 
     # --- prompt ---------------------------------------------------------------------
@@ -213,8 +257,26 @@ class BoundedCounter(MechanicEngine):
             return {}
         visible = self.visible(cfg)
         shown = "SHOWN to the player by this story" if visible else "opaque to the player"
-        return {"player_line": f" | Stats ({shown}): {stats}",
-                "footer": self._footer(cfg, visible)}
+        sections = {"player_line": f" | Stats ({shown}): {stats}",
+                    "footer": self._footer(cfg, visible)}
+        if (tiers := self._tier_footer(cfg, ctx)):
+            sections["tiers"] = tiers
+        return sections
+
+    def _tier_footer(self, cfg, ctx):
+        """One authored line per axis currently sitting in a tier that wrote guidance.
+
+        Same rule scored_axis's own tier footer follows: a `label`-only tier already says
+        everything it has to say wherever the figure is displayed, so repeating it here
+        would be prompt spend for nothing."""
+        stats = self.current(ctx)
+        lines = []
+        for axis, value in stats.items():
+            tier = self.tier_for(cfg, axis, value)
+            if tier and tier.get("narration"):
+                label = (self.readout(cfg) or {}).get("labels", {}).get(axis, axis).upper()
+                lines.append(f"- {label} ({tier['label']}): {tier['narration']}")
+        return f"\nWHERE THE FIGURES STAND NOW:\n" + "\n".join(lines) if lines else ""
 
     def _report_clause(self, cfg):
         """What to tell the narrator to report changes *through*. Naming the wrong field is
@@ -249,6 +311,25 @@ class BoundedCounter(MechanicEngine):
             f"is replaced with the true current figures after your reply. Writing the "
             f"numbers out by hand instead will show the player values that are wrong. "
             f"Report what actually changed through {self._report_clause(cfg)} as normal."
+        ) + self._delta_block_footer(cfg)
+
+    def _delta_block_footer(self, cfg):
+        """The marker instruction, and only when a delta_block is authored (P-2).
+
+        It describes the marker and the clause, and deliberately does not restate what the
+        clause may be *about* beyond naming whose voice it is - that is the story's rule to
+        make, and the word cap is what this side enforces."""
+        block = self.delta_block(cfg)
+        if not block:
+            return ""
+        marker, cap = block["marker"], block.get("clause_max_words")
+        limit = f", at most {cap} words" if cap else ""
+        return (
+            f"\nWhere a change actually lands in the scene, put [[{marker}]] on its own line "
+            f"- or [[{marker}: <clause>]] to carry one short remark in its own voice{limit}. "
+            f"Never write the surrounding heading, a label or a figure yourself: the block is "
+            f"composed from what genuinely moved this turn, so a marker on a turn where "
+            f"nothing moved renders nothing at all, and an over-long clause is dropped whole."
         )
 
     # --- render ---------------------------------------------------------------------
@@ -266,6 +347,24 @@ class BoundedCounter(MechanicEngine):
                  for key, label in readout["labels"].items() if key in stats]
         return readout.get("separator", " - ").join(parts) if parts else None
 
+    @staticmethod
+    def _degraded_token_re(token):
+        """A line that is *only* the token's bare word, optionally bracketed and/or
+        wrapped in one of the three emphasis markers - observed in production
+        (the_missing_core, turn 100): the model wrote `**STATS**` instead of copying
+        `[[STATS]]` literally, the same instinct that turned a bare `OPTIONS:` heading
+        bold elsewhere (see parse_narration_and_options's own tolerance). Anchored to the
+        whole line and to the token's exact bare word, so ordinary prose that happens to
+        mention the word can't be mistaken for the placeholder."""
+        # [ \t]*, not \s* - MULTILINE's ^/$ already anchor to line boundaries; \s* would
+        # additionally match newlines and could swallow the blank lines around the match,
+        # shifting the surrounding narration's paragraph breaks for no reason.
+        bare = re.escape(re.sub(r"[^A-Za-z0-9]", "", token))
+        return re.compile(
+            rf"^[ \t]*(?:\*\*|__)?[ \t]*\[{{0,2}}[ \t]*{bare}[ \t]*\]{{0,2}}[ \t]*(?:\*\*|__)?[ \t]*$",
+            re.IGNORECASE | re.MULTILINE,
+        )
+
     def render(self, cfg, ctx, text):
         """Substitute the token, and - as a backstop - rewrite any figure line the model
         wrote by hand anyway. The backstop keys on a line carrying two or more configured
@@ -273,18 +372,108 @@ class BoundedCounter(MechanicEngine):
         Without it the guarantee would hold only while the model cooperated, which is the
         assumption P-7 exists to remove."""
         readout = self.readout(cfg)
-        line = self.line(cfg, ctx)
-        if not readout or line is None:
+        if not readout:
             return text
-        text = text.replace(readout.get("token", "[[STATS]]"), line)
-        labels = [re.escape(l) for l in readout["labels"].values()]
-        label_hit = r"(?:" + "|".join(labels) + r")\**\s*-?\s*\d+"
-        handwritten = re.compile(rf"^.*?{label_hit}.*?{label_hit}.*$", re.MULTILINE)
-        return handwritten.sub(lambda m: line, text)
+        line = self.line(cfg, ctx)
+        if line is not None:
+            token = readout.get("token", "[[STATS]]")
+            if token in text:
+                text = text.replace(token, line)
+            else:
+                # The literal token never appeared at all - try the degraded shape before
+                # falling through to the handwritten-figures backstop below, which can't
+                # catch this: a bare mis-styled heading carries no label+number pairs to key
+                # on, so without this the player sees a dangling "**STATS**" with nothing
+                # under it and no figures at all, worse than either a token or the truth.
+                text = self._degraded_token_re(token).sub(lambda m: line, text)
+            labels = [re.escape(l) for l in readout["labels"].values()]
+            label_hit = r"(?:" + "|".join(labels) + r")\**\s*-?\s*\d+"
+            handwritten = re.compile(rf"^.*?{label_hit}.*?{label_hit}.*$", re.MULTILINE)
+            text = handwritten.sub(lambda m: line, text)
+        # Strictly after the backstop above. A composed delta block carries two or more
+        # label+number pairs on one line, which is the exact shape that regex rewrites into
+        # the absolute line - substituting the marker first would feed it its own output.
+        return self._render_delta_block(cfg, ctx, text)
+
+    def _delta_body(self, cfg, ctx):
+        """The priced half of the block: what actually moved this turn, after clamping.
+
+        Read back from TURN_SCRATCH rather than re-priced from the event log, because the
+        event log records what the model *named* and the costs table what it is *worth* -
+        neither knows that an axis was already on its floor and only moved 2 of the 5 it
+        was charged. Showing the charge instead of the movement would be P-7 telling the
+        player a number that is not true, which is the whole thing it exists to stop.
+
+        Label order follows the authored `labels` dict, like `line()`."""
+        block, labels = self.delta_block(cfg), self.readout(cfg)["labels"]
+        deltas = (ctx.get(TURN_SCRATCH) or {}).get("stat_deltas") or {}
+        fmt = block.get("fact_format", "{label} {signed}")
+        parts = [fmt.format(label=label, signed=f"{deltas[axis]:+d}")
+                 for axis, label in labels.items() if deltas.get(axis)]
+        return block.get("separator", " ").join(parts) if parts else None
+
+    def _clause_cap(self, cfg, ctx):
+        """How many words of its own the model may add to the block this turn.
+
+        A constant unless `clause_max_words_axis` names an axis, in which case that axis's
+        current tier decides it and the block-level value is the floor for any value below
+        the lowest authored tier. This is what makes terseness a *measurement* rather than
+        an instruction: a voice that is allowed four words cannot write a paragraph, however
+        the prompt is worded, so the register cannot drift the way a prose rule about it
+        would. A tier that authors no cap of its own leaves the block-level one in force."""
+        block = self.delta_block(cfg)
+        cap = block.get("clause_max_words")
+        axis = block.get("clause_max_words_axis")
+        if not axis:
+            return cap
+        tier = self.tier_for(cfg, axis, self.current(ctx).get(axis, 0))
+        return (tier or {}).get("clause_max_words", cap)
+
+    def _render_delta_block(self, cfg, ctx, text):
+        """Replace the model's marker with the engine-composed block, or with nothing.
+
+        Nothing is the common case and the point of the design: no priced movement means no
+        block, so "a status readout requires a reason" stops being a rule the model has to
+        remember and becomes a property of how the text is assembled. An over-long clause is
+        dropped rather than truncated - a sentence cut mid-phrase reads as a bug, and the cap
+        exists to make a tactical briefing structurally impossible, which dropping achieves
+        and truncating does not."""
+        block = self.delta_block(cfg)
+        if not block:
+            return text
+        marker = re.escape(block["marker"])
+        pattern = re.compile(rf"\[\[\s*{marker}\s*(?::\s*([^\]]*?))?\s*\]\]")
+        if not pattern.search(text):
+            return text
+        body = self._delta_body(cfg, ctx)
+        cap = self._clause_cap(cfg, ctx)
+
+        def replace(match):
+            if body is None:
+                return ""
+            clause = (match.group(1) or "").strip()
+            if clause and cap and len(clause.split()) > int(cap):
+                clause = ""
+            joined = block.get("separator", " ").join([body] + ([clause] if clause else []))
+            return block.get("wrapper", "{body}").format(body=joined)
+
+        return re.sub(r"\n{3,}", "\n\n", pattern.sub(replace, text)).strip()
 
 
 def _apply_set(ctx, effect):
-    ctx["state"]["protagonist"].setdefault("stats", {})[effect.payload["axis"]] = effect.payload["value"]
+    stats = ctx["state"]["protagonist"].setdefault("stats", {})
+    axis, value = effect.payload["axis"], effect.payload["value"]
+    before = stats.get(axis)
+    stats[axis] = value
+    # Record what the move actually came to, for delta_block to read back. Drift is excluded
+    # because the story's own rule scopes a readout to things that happened in the room - it
+    # lists "a figure actually moved" beside gaining an unlock and the System issuing a
+    # directive, all events - and per_turn is ambient by construction. Including it would
+    # qualify every single turn on any story with a drifting axis, which is the opposite of
+    # "and that is most scenes".
+    if isinstance(before, int) and not effect.reason.startswith("per_turn"):
+        deltas = ctx.setdefault(TURN_SCRATCH, {}).setdefault("stat_deltas", {})
+        deltas[axis] = deltas.get(axis, 0) + (value - before)
 
 
 ENGINE = register(BoundedCounter())

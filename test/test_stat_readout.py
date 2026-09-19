@@ -70,6 +70,30 @@ prose = "You climb 3 rungs and the SYNC of the hull hums under your glove."
 assert se.apply_stat_readouts(ctx, prose) == prose, "a single label in prose must not trigger the backstop"
 print("OK: prose mentioning one label and a number is left alone")
 
+# --- the degraded token: the model bolds the placeholder into a bare heading instead of
+# copying it literally. Observed in production (the_missing_core, turn 100): the model
+# wrote "**STATS**" where the prompt asked for "[[STATS]]" verbatim, and the exact-string
+# replace missed it - the backstop above couldn't catch it either, since a bare heading
+# carries no label+number pairs to key on. The player saw a dangling "**STATS**" with
+# nothing under it and no figures at all. ---
+degraded = "Scene text.\n\n**STATS**\n\nMore text."
+fixed = se.apply_stat_readouts(ctx, degraded)
+assert fixed == "Scene text.\n\n**SYNC** 34 - **REACH** 40 - **FRAME** 29\n\nMore text.", fixed
+print("OK: a bolded bare heading ('**STATS**') is recognised as the degraded token")
+
+# --- other emphasis markers and bracket styles the same drift could plausibly produce ---
+for variant in ("STATS", "__STATS__", "[STATS]", "**[STATS]**", "stats"):
+    text = f"Before.\n\n{variant}\n\nAfter."
+    fixed = se.apply_stat_readouts(ctx, text)
+    assert "**SYNC** 34" in fixed and variant not in fixed, f"variant {variant!r} was not recognised"
+print("OK: bracket-dropped and case-varied forms of the token are all recognised")
+
+# --- the degraded match is anchored to the whole line, not a bare substring search ---
+prose_with_word = "Descant reads out the stats without being asked."
+assert se.apply_stat_readouts(ctx, prose_with_word) == prose_with_word, \
+    "the word 'stats' inside ordinary prose must never be mistaken for the placeholder"
+print("OK: the word appearing inside prose (not alone on its own line) is left untouched")
+
 # --- the narration prompt tells the model to use the token and never write a number ---
 prompt = se.build_system_prompt(ctx)
 assert "[[STATS]]" in prompt, "the prompt must name the token the model is supposed to emit"

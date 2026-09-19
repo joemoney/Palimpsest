@@ -394,7 +394,7 @@ def clear_turn_status(user_id: str, story_slug: str):
 # clear_turn_status() lives in story_engine.py's take_turn/regenerate_last_turn `finally`
 # blocks, so it only runs if that Python frame gets to unwind. It doesn't if the thread
 # running it is killed out from under it - historically gunicorn's own --timeout (Dockerfile
-# CMD, 220s) hard-killing a worker that ran long enough was the main way that happened (a
+# CMD, 320s) hard-killing a worker that ran long enough was the main way that happened (a
 # request that chains multiple slow _timed() calls in one turn could exceed it even though
 # any one call is individually bounded - see Dockerfile's comment on --timeout). app.py's
 # take_turn/regenerate_turn now run that whole call chain on a background thread instead of
@@ -404,10 +404,14 @@ def clear_turn_status(user_id: str, story_slug: str):
 # kill), so this backstop stays. Left unhandled, a beacon from a turn like that never gets
 # cleared, which - since app.py's take_turn/regenerate_turn treat "a beacon exists" as "a
 # turn is already running" - would otherwise soft-lock that save out of every future turn
-# forever, not just the one that actually failed. 240s is deliberately not tied to any
-# single call's own timeout constant - it's a backstop for "the process/thread is simply
-# gone," not a latency budget.
-TURN_STATUS_STALE_SECONDS = 240
+# forever, not just the one that actually failed. 300s is deliberately not tied to any
+# single call's own timeout constant as a design choice - it's a backstop for "the
+# process/thread is simply gone," not a latency budget - but it still has to clear the
+# tallest legitimate single-label span or it fires on a turn that is still genuinely
+# running: one _timed() call's own worst case (OPENROUTER_TOTAL_TIMEOUT + the Gemini
+# fail-safe's GOOGLE_TOTAL_TIMEOUT, story_engine.py) currently tops out at 260s, and this
+# beacon resets at the start of every _timed() label, not once per turn.
+TURN_STATUS_STALE_SECONDS = 300
 
 
 def read_turn_status(user_id: str, story_slug: str) -> dict | None:

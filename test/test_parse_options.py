@@ -80,6 +80,31 @@ def test_more_than_three_options_truncates_to_three():
     assert [o["action"] for o in options] == ["First", "Second", "Third"]
 
 
+def test_bold_heading_is_recognised_not_leaked_as_narration():
+    # Observed in production (the_missing_core, turn 83): the model wrapped its own
+    # heading in the **bold** marker the prompt's markup rule permits for emphasis.
+    # Before this was tolerated, the search matched nothing here and fell through to
+    # generate_missing_options's own real "OPTIONS:" heading later in the pipeline,
+    # leaking this whole block - heading and options both - into displayed narration.
+    text = (
+        "She shivers once.\n\n**OPTIONS:**\n\n"
+        "1. Ask Bayat directly || I want to hear it in her own words.\n"
+        "2. Go below and rig the ship || I check the clamps again.\n"
+        "3. Return to the Ninth-Hand || I climb into my own hold."
+    )
+    narration, options = se.parse_narration_and_options(text)
+    assert narration == "She shivers once."
+    assert len(options) == 3
+    assert options[0]["action"] == "Ask Bayat directly"
+
+
+def test_underline_heading_is_recognised():
+    text = "Narration.\n\n__OPTIONS:__\n1. First || I do it.\n2. Second || I do it.\n3. Third || I do it."
+    narration, options = se.parse_narration_and_options(text)
+    assert narration == "Narration."
+    assert len(options) == 3
+
+
 def run_all():
     tests = [v for k, v in globals().items() if k.startswith("test_") and callable(v)]
     for t in tests:

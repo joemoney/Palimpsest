@@ -132,6 +132,30 @@ assert se.call_llm("some prompt", model="some/other-model") == "ok"
 print("OK: an explicit model= override is passed through to the request body")
 
 
+# --- sort= overrides TIER_AB_MODEL's usual price-sort for one call, without touching the
+# tier-wide default any other TIER_AB_MODEL call site still gets ---
+def _fake_post_default_sort(url, headers=None, json=None, timeout=None):
+    assert json["provider"] == {"sort": "price"}
+    return _FakeResponse(200, {"choices": [{"message": {"content": "ok"}}]})
+
+
+se.requests.post = _fake_post_default_sort
+assert se.call_llm("some prompt", model=se.TIER_AB_MODEL, provider=se.TIER_AB_PROVIDER) == "ok"
+print("OK: TIER_AB_MODEL with no sort= override still price-sorts, unchanged")
+
+
+def _fake_post_sort_override(url, headers=None, json=None, timeout=None):
+    assert json["provider"] == {"sort": "throughput"}
+    return _FakeResponse(200, {"choices": [{"message": {"content": "ok"}}]})
+
+
+se.requests.post = _fake_post_sort_override
+assert se.call_llm("some prompt", model=se.TIER_AB_MODEL, provider=se.TIER_AB_PROVIDER,
+                    sort="throughput") == "ok"
+print("OK: sort='throughput' overrides TIER_AB_MODEL's price-sort for this one call "
+      "(summary_rollover's own reason for using it)")
+
+
 # --- an HTTP error response is wrapped as LLMUnavailableError ---
 def _fake_post_http_error(url, headers=None, json=None, timeout=None):
     return _FakeResponse(429, {})

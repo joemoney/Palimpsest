@@ -25,15 +25,19 @@ EXPOSE 8000
 # while cwd stays /app (the repo root) - state_store.py's STORIES_DIR/DATA_DIR are plain
 # relative paths ("stories"/"data") that need cwd to stay at the repo root to resolve.
 # --timeout is deliberately longer than story_engine.py's own worst-case call chain: a
-# failed primary call (OPENROUTER_TOTAL_TIMEOUT=100s or GOOGLE_TOTAL_TIMEOUT=60s, whichever
+# failed primary call (OPENROUTER_TOTAL_TIMEOUT=200s or GOOGLE_TOTAL_TIMEOUT=60s, whichever
 # tier's provider) followed by the Gemini fail-safe retry (another GOOGLE_TOTAL_TIMEOUT=60s)
-# tops out at 160s. If gunicorn's own timeout were equal to or shorter than that combined
+# tops out at 260s. If gunicorn's own timeout were equal to or shorter than that combined
 # figure, a slow-but-real double-timeout could hit gunicorn's harder SIGABRT before
 # story_engine's own clean timeout handling ever gets a chance to run, killing the worker
-# mid-request with no response sent to the client and the turn's state never saved.
+# mid-request with no response sent to the client and the turn's state never saved. This
+# still matters even though take_turn/regenerate_turn now run their whole call chain on a
+# background thread (see app.py's _start_turn_job): app.py's Plot Manager "seed-generate"
+# command calls generate_steering_seed inline, on the request thread, so it still measures
+# directly against this timeout.
 # --access-logfile - (stdout, captured by `docker logs`) plus %(L)s (request duration in
 # seconds) in the format string - there was previously no access log at all, only error-level
 # output, so a hung/slow request left no trace unless it happened to crash outright.
 CMD ["gunicorn", "--pythonpath", "backend", "--bind", "0.0.0.0:8000", "--workers", "3", \
-     "--timeout", "220", "--access-logfile", "-", \
+     "--timeout", "320", "--access-logfile", "-", \
      "--access-logformat", "%(t)s %(h)s \"%(r)s\" %(s)s %(L)ss", "app:app"]

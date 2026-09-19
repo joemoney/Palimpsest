@@ -139,6 +139,14 @@ class BoundEngine:
         return f"BoundEngine({self.slot}={self.engine.name})"
 
 
+# A per-turn scratch namespace on `ctx`, cleared at the top of every run_turn_pipeline.
+# It sits on ctx rather than ctx["state"] precisely because only ctx["state"] is written to
+# disk - an engine that needs to hand something to its own render() pass this turn can put
+# it here without adding a save field or a migration. Effects stay absolute (§6.1); this is
+# how an applier reports what a move actually came to *after* clamping, which no one can
+# re-derive later from state alone.
+TURN_SCRATCH = "_turn"
+
 # (slot, name) -> engine instance. Keyed by both so two engines may serve one slot - a
 # story picks between them with mechanics.<slot>.engine.
 _REGISTRY = {}
@@ -417,6 +425,7 @@ def run_turn_pipeline(ctx, observations=None):
     """The whole engine-side half of a turn (§4): record what was observed, resolve it into
     effects, apply them. Called unconditionally from story_engine.update_state_after_turn;
     with no bound engines it records nothing, resolves nothing and applies nothing."""
+    ctx[TURN_SCRATCH] = {}
     record_events(ctx["state"], observations)
     apply_effects(ctx, resolve_all(ctx, observations))
 
