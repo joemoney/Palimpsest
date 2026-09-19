@@ -1,10 +1,17 @@
 # Palimpsest
 
-An AI-powered Choose-Your-Own-Adventure engine (inspired by apps like OOC)
-where an LLM narrates a branching story constrained by a persistent
-world-state JSON object. The goal is to keep AI-generated narrative
-on-theme and coherent over long sessions without hand-scripting every
-branch.
+An AI-powered Choose-Your-Own-Adventure engine where an LLM narrates a
+branching story constrained by a persistent world-state JSON object. The goal
+is to keep AI-generated narrative on-theme and coherent over long sessions
+without hand-scripting every branch.
+
+The engine is **modular**: every mechanic (stats, relationships, inventory,
+revelations, gates, subplots, pacing, progression) is a separate, pluggable
+engine. Stories declare which ones they use; unused features contribute
+nothing. This makes it possible to author radically different genres — a
+survival game with resource management, a mystery with clue reveals, a
+relationship-driven narrative — from the same code by mixing and matching
+mechanics.
 
 ## Stories
 
@@ -245,18 +252,56 @@ You rarely need any of this by hand - subplots regenerate automatically as
 old ones complete, and acts are open-ended with no fixed count - but it's
 here for when the story needs a deliberate push.
 
+## Architecture
+
+The core engine is **modular**: every mechanic (stats, relationships, inventory,
+revelations, gates, subplots, pacing, progression) is a separate engine under
+`backend/mechanics/`, registered dynamically from the template's `mechanics`
+block. When a story declares `"engine": "bounded_counter"` inside
+`protagonist.stats`, the engine loads that module; omit the declaration and the
+feature doesn't exist in that story — no state, no prompt lines, nothing.
+
+This move — from monolithic `story_engine` to the **mechanic registry** (v2,
+phases 1–6) — makes it possible to author wildly different story types (a
+survival game with resource management, a mystery with clue reveals, a
+relationship-driven narrative) from the same code by mixing and matching
+mechanics, and to extend the system without editing the narrative engine.
+
+State-update is where mechanics live: a turn's narration + player action flows
+through `run_observation_pipeline()`, each engine reads its own field from the
+diff, events are logged, and then resolved in dependency order to produce
+effects. Effects carry absolute values (not deltas), so "set fuel to 12"
+replays correctly every time. See `docs/ARCHITECTURE.md` § *The Mechanic
+Registry* for the full picture and `docs/SCHEMA_V2_SPEC.md` for the template
+schema.
+
+Saves are still schema v2, unchanged — the v2→v3 cutover was never needed
+because templates moved to v3 (new declare-to-bind `mechanics` blocks) while
+saves stayed put, so every existing save loads against v3 templates without
+migration.
+
 ## File Structure
 - `stories/<slug>/template.json` — authored seed content for one story (meta,
-  world, player, characters, plot, history_log). `stories/example/` is
+  world, player, characters, plot, history_log, and a v3-format `mechanics`
+  block declaring which engines this story uses). `stories/example/` is
   committed here directly (public); `stories/private/<slug>/` comes from a
   private git submodule — see "Public vs. private stories" above. Adding a new
   story is a content change, not a code change, in either root.
 - `backend/` — all engine/server Python code:
   - `state_store.py` — the storage layer: story catalog, per-user save
     load/save, and account creation/login.
-  - `story_engine.py` — reference implementation: builds the system prompt,
-    calls the Gemini API for narration, runs a separate state-update pass,
-    drives automatic subplot/act generation and the player-triggered ending.
+  - `story_engine.py` — turn orchestration: builds the system prompt,
+    calls the LLM for narration, runs the observation pipeline through each
+    mechanic engine, and drives automatic subplot/act generation and the
+    player-triggered ending. Narration (Tier A) and state-update (Tier B/C
+    depending on the call) are separate LLM calls.
+  - `mechanics/` — the mechanic registry, one module per engine:
+    `__init__.py` (the contract), `bounded_counter.py` (stats),
+    `scored_axis.py` (relationships), `tagged_items.py` (inventory),
+    `triggered_reveal.py` (revelations), `triggered_ending.py` (failure
+    conditions), `weighted_threads.py` (subplots), `beat_counter.py`
+    (pacing/director), `spendable_ledger.py` (progression costs), and
+    `precondition.py` (gates). Every module registers itself on import.
   - `plot_manager.py` / `subplot_manager.py` — mid-adventure steering; both a
     CLI and, since `app.py` imports and calls their functions directly, the
     web Plot/Subplot Manager pages.
@@ -269,12 +314,22 @@ here for when the story needs a deliberate push.
   `htmx.min.js` the play page uses).
 - `data/` — runtime-only (gitignored): per-user saves and the accounts
   database.
+- `docs/` — architecture and design docs:
+  - `ARCHITECTURE.md` — how the engine actually works (as built).
+  - `SCHEMA_V2_SPEC.md` — template/save schema and design principles.
+  - `Narrative_Pacing_Loop_Spec_v4.md` — the pacing/director system.
+  - `Web_UI_Spec.md` — web UI design intent.
+  - `Narrative_Engine_Spec.md` — what the engine stores but never prompts.
+  - `ENGINE_V2_SPEC.md` — the mechanic registry design (v2 was the plan;
+    phases 1–6 built it as described).
+  - `analysis_and_plans/` — incident notes, measurement reports, phase summaries.
 - `test/` — offline regression tests (stubbed LLM/deps, no network or
   pip-installed packages required to run most of them — see
   `test/_llm_stubs.py`). Run with `python test/run_all.py`.
 
 ## Roadmap
-- [x] Cloud LLM backend (Gemini, via `google-generativeai`)
+- [x] Cloud LLM backend (Gemini via `google-generativeai`, OpenRouter via
+      `requests`; three cost/latency tiers with automatic fail-safe to Gemini)
 - [x] Separate state-update pass after each narration call (subplot
       progress, flags, memory-fragment reveals, entity interactions)
 - [x] Pacing/director meta-instruction injected every N turns
@@ -282,16 +337,15 @@ here for when the story needs a deliberate push.
       fixed count, with a player-triggered ending sequence
 - [x] `app.py` wired to `story_engine.py` — login, story picker, play
 - [x] Multi-user, multi-story storage architecture (`state_store.py`)
-- [x] World/setting content filled in (New Babel, now split into a private
-      companion repo; The Last Ferry to Millbrook as the public example)
+- [x] World/setting content filled in (three story templates: one public, two
+      in a private companion repo)
 - [x] The LLM's 3 choices render as clickable buttons (each paired with a
       first-person prose rendition, submitted as the actual player action),
       plus a free-text box as a 4th "steer your own way" option
 - [x] Public repo / private story-content split via git submodule
 - [x] State-update pass extended to cover inventory (`items_gained`/
-      `items_lost`) and relationship scores (`relationship_changes`,
-      -100 to 100, bounded to the 20 most significant), not just
-      flags/subplot-progress — both now also fed into narration prompts
+      `items_lost`), relationship scores (`relationship_changes`), stats,
+      flags, and revelations — all fed into narration prompts
 - [x] Regenerate button for the latest scene — re-rolls the most recent
       narration/options in place, replaying the same player action against
       a state rolled back to just before that turn
@@ -305,6 +359,19 @@ here for when the story needs a deliberate push.
       existing relationship-only name. `player.relationships[name]` now
       carries an explicit `npc_id` link to its `characters` entry instead of
       being tied together only by matching name strings
+- [x] **Mechanic registry** (v2, phases 1–6) — every mechanic (stats,
+      relationships, inventory, revelations, gates, subplots, pacing,
+      progression) moved from monolithic `story_engine` into separate,
+      dynamically-loaded engines. Stories declare which they use; unused ones
+      contribute nothing. Makes it possible to author radically different
+      genres from the same code.
+- [x] **Priced stats via event vocabulary** — stories can author a closed
+      set of events that prices stat changes, replacing the open delta map.
+      Enables consistency and limits unforeseen side effects on a priced axis.
+- [x] **Asynchronous turn-taking** — `/api/turn` and `/api/regenerate` now
+      return 202 immediately and kick the turn onto a background thread, with
+      the client polling for the result. Fixes a production Cloudflare tunnel
+      timeout on long turns.
 - [ ] Revert to an earlier scene (similar to a Claude conversation fork) —
       roll the save back to a prior turn, discarding everything after it,
       so a player can back up and try a different path
@@ -322,3 +389,9 @@ here for when the story needs a deliberate push.
       needed (not the common case), committed via a new `insert_location()`
       into `world.locations` with `connected_to` back to the current
       location, rather than a freestanding generator
+- [ ] Engine v3 — further isolate narration/mechanics, lift state shape into
+      a separate schema from the template, allow real-time stat/mechanic
+      validation, and resolve even more architecture debt. (v2 was built as
+      planned; v3 design is in `docs/ENGINE_V2_SPEC.md` and phase order in
+      `docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md`; actual build
+      deferred.)
