@@ -302,6 +302,21 @@ story is reliably playable end to end during the schema-v3 migration regardless 
 playable v3 system exists - nothing else about the gate changes. Covered by
 `test_play_closure.py`.
 
+**Known gap: layout can't reach the server until a story's content clears lint.**
+`frontend/author_board.html` autosaves `_storyboard.positions` (node x/y) to `localStorage`,
+keyed per story, on every edit - client-only, per UI feedback, so dragging/auto-layout
+survives a refresh without waiting on a server round trip. But the *only* path from there to
+disk is still the one Save button, which is all-or-nothing: `/api/save` reruns the full
+schema+lint check (content and layout together) and refuses to write anything at all while
+any error blocks it. Since every real story still fails L08 ("no catch-all") until it has
+`mechanics.endings` content, **there is currently no way to land a fresh layout on disk for
+`example`, New Babel or The Missing Core** - not through the board, not through the raw
+escape hatch, both run the identical check. Layout work is safe only in whichever single
+browser made it, until step 8 clears that story's lint errors. Decoupling layout from the
+content lint gate (e.g. letting `/api/save` write `_storyboard.positions` unconditionally,
+independent of whether the rest of the save is blocked) would close this but hasn't been
+built - flagged here rather than fixed, on request.
+
 **Goal.** Open a real story on the board, edit everything in fact 2's table, and save without
 losing anything.
 
