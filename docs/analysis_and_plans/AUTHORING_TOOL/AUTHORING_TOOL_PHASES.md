@@ -649,6 +649,22 @@ depends on:
 
 Detailed phasing waits until S5 settles what the simulator is simulating.
 
+**One §7 recipe pulled forward, on request, ahead of the rest of this phase.**
+`backend/author_assist.py` implements exactly the "Ending → waypoints" `derive` recipe -
+given a destination ending's `arc`/`criteria`/`hint`, propose 2-4 waypoints. Not the full §7
+spec: one recipe, no Assist tab (a plain button on the ending's Detail panel instead), no
+`instruction` param, no diff/Accept-Edit-Discard UI (a flat Accept per suggestion), no
+40-entry `assist_log.json`. Still matches the spec's real constraints that matter for safety:
+canon is never in the assembled context (the input-side leak protection §7 describes), and
+it uses its own key (`OPENROUTER_API_KEY_TOOL_ASSIST`) and its own cheap/fast model
+(`AUTHOR_ASSIST_MODEL`, default `deepseek/deepseek-v4-flash-0731`) - never
+`story_engine.py`'s `call_llm`/`call_llm_json`, the gameplay tiers, or the Gemini fail-safe,
+since a storyboard suggestion has nothing to do with a live turn. `POST /author/<slug>/assist`
+takes `{model, ending_id}`, returns a suggestion fragment; accepting one is pure client-side
+(pushes onto the board model, same as any other edit) - nothing is saved until the author
+hits Save. Covered by `test_author_assist.py` (offline, `requests.post` monkeypatched) and
+`test_author_routes.py`.
+
 ---
 
 ## Decisions for the author

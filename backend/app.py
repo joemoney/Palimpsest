@@ -9,6 +9,7 @@ from functools import wraps
 from dotenv import load_dotenv
 from flask import Flask, Response, redirect, render_template, request, session, url_for
 
+import author_assist
 import author_lint
 import author_model
 import label_sheet
@@ -848,6 +849,30 @@ def author_save(story_slug):
     if _author_enabled_or_404():
         return ("Not found.", 404)
     return _author_validate_response(story_slug, request.form.get("model", ""), save_on_success=True)
+
+
+@app.route("/author/<story_slug>/assist", methods=["POST"])
+@login_required
+def author_assist_waypoints(story_slug):
+    """AI assist (Authoring_Tool_Spec.md sect7) - v1 is exactly the "Ending -> waypoints"
+    derive recipe. Never touches disk: this only ever proposes content for the client's
+    in-memory model to accept or discard, the same as every other board edit."""
+    if _author_enabled_or_404():
+        return ("Not found.", 404)
+    try:
+        raw = state_store.load_template_raw(story_slug)
+        model = json.loads(request.form.get("model", ""))
+    except (ValueError, FileNotFoundError, json.JSONDecodeError, TypeError):
+        return render_template("_author_assist_waypoints.html", error="Could not read the current board state.")
+    ending_id = request.form.get("ending_id", "")
+    node = next((n for n in model.get("nodes", []) if n.get("id") == ending_id), None)
+    if not node or node.get("kind") != "ending" or node.get("ekind") != "destination":
+        return render_template("_author_assist_waypoints.html", error="No such destination ending.")
+    try:
+        waypoints = author_assist.suggest_ending_waypoints(raw, node)
+    except author_assist.AssistError as e:
+        return render_template("_author_assist_waypoints.html", error=str(e))
+    return render_template("_author_assist_waypoints.html", waypoints=waypoints, ending_id=ending_id)
 
 
 @app.route("/author/<story_slug>/raw", methods=["GET", "POST"])

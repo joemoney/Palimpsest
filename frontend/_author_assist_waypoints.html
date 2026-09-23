@@ -1,0 +1,23 @@
+{% if error %}
+<div class="card" style="border-color:#b0322c;">
+  <div style="font-weight:700; color:#b0322c;">AI assist failed</div>
+  <div style="font-size:0.85rem; margin-top:4px;">{{ error }}</div>
+</div>
+{% else %}
+<div class="card">
+  <div style="font-weight:700; margin-bottom:8px;">Suggested waypoints</div>
+  {% for wp in waypoints %}
+  <div class="wp" style="margin-bottom:8px;">
+    <div class="id">{{ wp.id }}</div>
+    <div style="font-size:13px; margin:4px 0;">{{ wp.plant }}</div>
+    {% if wp.detect %}
+    <div style="font-size:12px; color:var(--muted);">detect: {{ wp.detect }}</div>
+    {% endif %}
+    <button type="button" class="btn small" data-accept-waypoint
+            data-ending-id="{{ ending_id }}"
+            data-waypoint="{{ wp | tojson }}">Accept</button>
+  </div>
+  {% endfor %}
+  <div class="note" style="margin:6px 0 0;">Accepting adds the waypoint to this ending - nothing is saved until you hit Save.</div>
+</div>
+{% endif %}

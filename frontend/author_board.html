@@ -638,6 +638,21 @@ function renderInspector(){
       const ab=el('button','btn small','Add');ab.type='button';
       const add=()=>{const t=ni.value.trim();if(!t)return;let base=t.toLowerCase().replace(/[^a-z0-9 ]/g,'').split(/\s+/).filter(Boolean).slice(0,3).join('_')||'waypoint',id=base,k=2;while((n.waypoints||[]).some(w=>w.id===id))id=base+'_'+k++;(n.waypoints=n.waypoints||[]).push({id,plant:t});save();render()};
       ab.onclick=add;ni.onkeydown=e=>{if(e.key==='Enter')add()};r.appendChild(ni);r.appendChild(ab);insp.appendChild(r);
+
+      // AI assist (Authoring_Tool_Spec.md §7) - v1's one recipe: propose waypoints from this
+      // ending's arc/criteria/hint. A real HTMX call (D4) - only "Suggest" hits the server;
+      // "Accept" (in the returned fragment) is pure client-side, handled by the delegated
+      // click listener near the bottom of this file, since it just pushes onto `model`.
+      const assistBtn=el('button','btn small','AI: Suggest waypoints');assistBtn.type='button';
+      assistBtn.setAttribute('hx-post', `/author/${STORY_SLUG}/assist`);
+      assistBtn.setAttribute('hx-vals', `js:{model: JSON.stringify(getBoardModel()), ending_id: ${JSON.stringify(n.id)}}`);
+      assistBtn.setAttribute('hx-target', '#assist-results');
+      assistBtn.setAttribute('hx-swap', 'innerHTML');
+      assistBtn.style.marginTop='10px';
+      insp.appendChild(assistBtn);
+      const assistResults=el('div');assistResults.id='assist-results';assistResults.style.marginTop='8px';
+      insp.appendChild(assistResults);
+      if(window.htmx)htmx.process(assistBtn);
     }
   }
   if(n.kind!=='start'){
@@ -826,6 +841,25 @@ document.addEventListener('keydown',ev=>{
 $('#tLabels').onchange=e=>{opts.labels=e.target.checked;renderCanvas()};
 $('#tUnlocks').onchange=e=>{opts.unlocks=e.target.checked;renderCanvas()};
 $('#tFocus').onchange=e=>{opts.focus=e.target.checked;renderCanvas()};
+
+// Accepting an AI-assist suggestion (see the "AI: Suggest waypoints" button above) is pure
+// client-side - it just pushes onto `model`, no server call needed - so this is a plain
+// delegated click listener, not another HTMX round trip. Delegated (not bound per-button) so
+// it keeps working across every HTMX swap of #assist-results without re-wiring anything.
+document.addEventListener('click',ev=>{
+  const btn=ev.target.closest('[data-accept-waypoint]');
+  if(!btn)return;
+  const endingId=btn.dataset.endingId;
+  let wp;
+  try{wp=JSON.parse(btn.dataset.waypoint)}catch(e){return}
+  const n=node(endingId);
+  if(!n||!wp||!wp.id)return;
+  if((n.waypoints||[]).some(w=>w.id===wp.id)){say(`${wp.id} is already on this ending.`);return}
+  (n.waypoints=n.waypoints||[]).push(wp);
+  save();
+  if(sel&&sel.type==='node'&&sel.id===endingId)render();
+  say(`Added waypoint "${wp.id}".`);
+});
 
 /* ---------- auto-layout ---------- */
 function nodeHeightGuess(n){

@@ -82,6 +82,7 @@ try:
     with open(os.path.join(clean_dir, "README.md"), "w", encoding="utf-8") as f:
         f.write("# Author Route Test Story\n\n## Synopsis\n\nStale pitch, not yet synced.\n")
 
+    import author_assist  # noqa: E402
     import author_model  # noqa: E402  (picks up the same stubbed state_store path setup)
     import app as flask_app_module  # noqa: E402
 
@@ -138,6 +139,49 @@ try:
     resp = client.get("/author/does-not-exist/board")
     assert resp.status_code == 404
     print("OK: /author/<slug>/board 404s for an unknown slug")
+
+    # --- AI assist (§7 "Ending -> waypoints"): offline, requests.post monkeypatched --------
+    clean_model_for_assist = author_model.to_board_model(ss.load_template_raw("author_test_story"))
+    os.environ["OPENROUTER_API_KEY_TOOL_ASSIST"] = "test-key"
+
+    def fake_assist_post(url, headers, json, timeout):
+        class _Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"choices": [{"message": {"content": __import__("json").dumps(
+                    {"waypoints": [{"id": "new_wp", "plant": "a stranger asks the wrong question",
+                                    "detect": "someone asks about the operator by name"}]}
+                )}}]}
+        return _Resp()
+
+    author_assist.requests.post = fake_assist_post
+    resp = client.post("/author/author_test_story/assist", data={
+        "model": json.dumps(clean_model_for_assist), "ending_id": "the_end",
+    })
+    assert resp.status_code == 200
+    assert b"new_wp" in resp.data
+    assert b"a stranger asks the wrong question" in resp.data
+    assert b"data-accept-waypoint" in resp.data
+    print("OK: /author/<slug>/assist returns suggested waypoints for a destination ending")
+
+    resp = client.post("/author/author_test_story/assist", data={
+        "model": json.dumps(clean_model_for_assist), "ending_id": "does-not-exist",
+    })
+    assert resp.status_code == 200
+    assert b"No such destination ending" in resp.data
+    print("OK: /author/<slug>/assist reports an error for an unknown ending id")
+
+    os.environ.pop("OPENROUTER_API_KEY_TOOL_ASSIST", None)
+    resp = client.post("/author/author_test_story/assist", data={
+        "model": json.dumps(clean_model_for_assist), "ending_id": "the_end",
+    })
+    assert resp.status_code == 200
+    assert b"OPENROUTER_API_KEY_TOOL_ASSIST" in resp.data
+    print("OK: /author/<slug>/assist reports a clear error with no API key configured")
 
     # --- validate against the real, unmodified example story: known lint errors block save ---
     raw = ss.load_template_raw("example")
