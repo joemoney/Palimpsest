@@ -288,8 +288,11 @@ const ROLE_NOTE={spine:'Carries waypoints toward an ending.',personal:'A relatio
 
 const clone=o=>JSON.parse(JSON.stringify(o));
 // Seeded server-side from author_model.to_board_model(state_store.load_template_raw(slug)) -
-// nothing here reads or writes localStorage, and nothing touches disk until Validate/Save
-// post back to the server (AUTHORING_TOOL_PHASES.md Phase S1, decision D4).
+// content (titles, waypoints, cast...) touches disk only through an explicit Validate/Save
+// round trip (decision D4). Layout (node x/y) is the one exception - see save()/
+// applySavedLayout() below, a client-only autosave so dragging survives a refresh without
+// needing the whole template to pass lint first.
+const STORY_SLUG = {{ story_slug | tojson }};
 let model = JSON.parse(document.getElementById('board-data').textContent);
 window.getBoardModel = () => model;
 
@@ -303,11 +306,31 @@ const $=s=>document.querySelector(s);
 const canvas=$('#canvas'),world=$('#world'),svg=$('#edges'),insp=$('#inspector');
 const NS='http://www.w3.org/2000/svg';
 
-// The board keeps everything in memory until an explicit Validate/Save round-trips to the
-// server (see the toolbar buttons above) - this used to persist to localStorage in the
-// standalone prototype; here it's a deliberate no-op so every existing call site (dozens of
-// them, below) stays correct without individually being audited.
-function save(){}
+// Content stays in memory until an explicit Validate/Save round-trips to the server (see the
+// toolbar buttons above). Layout is the exception: _storyboard.positions is author-only and
+// engine-ignored (CR-03), so there's nothing to lint and no reason to make it wait on a
+// server round trip that a lint error elsewhere could block - it's persisted to localStorage
+// instead, keyed per story so switching stories can't cross-contaminate positions. Every one
+// of this file's dozens of edit call sites already calls save() after every change, so this
+// single function is what makes all of them autosave layout without touching any of them.
+const LAYOUT_KEY = 'palimpsest-author-layout-' + STORY_SLUG;
+function save(){
+  try{
+    const positions={};
+    for(const n of model.nodes)positions[n.id]={x:n.x,y:n.y};
+    localStorage.setItem(LAYOUT_KEY,JSON.stringify(positions));
+  }catch(e){}
+}
+function applySavedLayout(){
+  let saved;
+  try{saved=JSON.parse(localStorage.getItem(LAYOUT_KEY))}catch(e){saved=null}
+  if(!saved)return;
+  for(const n of model.nodes){
+    const p=saved[n.id];
+    if(p&&typeof p.x==='number'&&typeof p.y==='number'){n.x=p.x;n.y=p.y}
+  }
+}
+applySavedLayout();
 function node(id){return model.nodes.find(n=>n.id===id)}
 function say(msg){const s=$('#status');s.textContent=msg;clearTimeout(say.t);say.t=setTimeout(()=>s.textContent='',4000)}
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
