@@ -437,6 +437,19 @@ def _apply_positions(out: dict, nodes: list) -> None:
     }
 
 
+def apply_layout_only(raw: dict, nodes: list) -> dict:
+    """A deep copy of `raw` with only `_storyboard.positions` updated from `nodes` - nothing
+    else touched, not even `schema_version`'s content implications. Used when a save is
+    blocked by content lint errors but the layout (author-only, engine-ignored - CR-03)
+    should still reach disk: a box's position is never something lint has an opinion about,
+    so it shouldn't have to wait on an unrelated error elsewhere in the template
+    (AUTHORING_TOOL_PHASES.md Phase S1)."""
+    out = copy.deepcopy(raw)
+    out["schema_version"] = TEMPLATE_SCHEMA_VERSION
+    _apply_positions(out, nodes)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # D1: a playable projection for preview/playtest, independent of what mechanics.validate()
 # will accept

@@ -302,20 +302,19 @@ story is reliably playable end to end during the schema-v3 migration regardless 
 playable v3 system exists - nothing else about the gate changes. Covered by
 `test_play_closure.py`.
 
-**Known gap: layout can't reach the server until a story's content clears lint.**
-`frontend/author_board.html` autosaves `_storyboard.positions` (node x/y) to `localStorage`,
-keyed per story, on every edit - client-only, per UI feedback, so dragging/auto-layout
-survives a refresh without waiting on a server round trip. But the *only* path from there to
-disk is still the one Save button, which is all-or-nothing: `/api/save` reruns the full
-schema+lint check (content and layout together) and refuses to write anything at all while
-any error blocks it. Since every real story still fails L08 ("no catch-all") until it has
-`mechanics.endings` content, **there is currently no way to land a fresh layout on disk for
-`example`, New Babel or The Missing Core** - not through the board, not through the raw
-escape hatch, both run the identical check. Layout work is safe only in whichever single
-browser made it, until step 8 clears that story's lint errors. Decoupling layout from the
-content lint gate (e.g. letting `/api/save` write `_storyboard.positions` unconditionally,
-independent of whether the rest of the save is blocked) would close this but hasn't been
-built - flagged here rather than fixed, on request.
+**Layout is decoupled from content lint - resolved.** `frontend/author_board.html` autosaves
+`_storyboard.positions` (node x/y) to `localStorage`, keyed per story, on every edit -
+client-only, so dragging/auto-layout survives a refresh without waiting on a server round
+trip. The gap this used to leave open (no path from there to disk while any content lint
+error blocked `/api/save`, which every real story hits via L08 until it has
+`mechanics.endings` content) is closed: `author_model.apply_layout_only(raw, nodes)` patches
+only `_storyboard.positions` onto a copy of the on-disk template, and `app.py`'s
+`_author_save_layout_only` calls it whenever `/api/save` would otherwise refuse to write
+anything, skipping the write (and the story_version bump) if positions haven't actually
+changed. The fragment reports "Layout saved." alongside the blocking errors when this fires.
+Content itself is still all-or-nothing behind the full lint check, as designed - only layout
+(author-only, engine-ignored - CR-03) bypasses it. Covered in `test_author_model.py`
+(`apply_layout_only`) and `test_author_routes.py` (the route-level write/skip behaviour).
 
 **Goal.** Open a real story on the board, edit everything in fact 2's table, and save without
 losing anything.

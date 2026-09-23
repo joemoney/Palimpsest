@@ -174,14 +174,36 @@ try:
     assert after["meta"]["title"] in readme_after or "Author Route Test Story" in readme_after
     print("OK: /api/save resyncs the story's README Synopsis section")
 
-    # --- saving with a blocking error never touches the file ----------------------------------
+    # --- saving with a blocking error never writes content, but does write layout ------------
+    # (layout is author-only and engine-ignored - CR-03 - so it shouldn't have to wait on an
+    # unrelated content lint error; AUTHORING_TOOL_PHASES.md Phase S1's decoupling decision.)
     before = ss.load_template_raw("example")
-    resp = client.post("/author/example/api/save", data={"model": json.dumps(model)})
+    moved_model = json.loads(json.dumps(model))  # deep copy
+    moved_model["nodes"][0]["x"] = 999
+    moved_model["nodes"][0]["y"] = 888
+    resp = client.post("/author/example/api/save", data={"model": json.dumps(moved_model)})
     assert resp.status_code == 200
     assert b"Saved." not in resp.data
+    assert b"Layout saved." in resp.data
     after = ss.load_template_raw("example")
-    assert after == before, "a blocked save must not write anything"
-    print("OK: /api/save refuses to write when lint errors block it")
+    assert after["_storyboard"]["positions"][moved_model["nodes"][0]["id"]] == {"x": 999, "y": 888}
+    after_without_layout = dict(after)
+    after_without_layout.pop("_storyboard")
+    after_without_layout["schema_version"] = before["schema_version"]
+    after_without_layout["story_version"] = before["story_version"]
+    before_without_layout = dict(before)
+    before_without_layout.pop("_storyboard", None)
+    assert after_without_layout == before_without_layout, "a blocked save must not write content"
+    print("OK: /api/save writes layout even when content lint errors block the rest")
+
+    # --- a second blocked save with unchanged positions writes nothing at all -----------------
+    before = ss.load_template_raw("example")
+    resp = client.post("/author/example/api/save", data={"model": json.dumps(moved_model)})
+    assert resp.status_code == 200
+    assert b"Layout saved." not in resp.data
+    after = ss.load_template_raw("example")
+    assert after == before, "an unchanged layout must not trigger a pointless write"
+    print("OK: /api/save skips the layout write when positions haven't actually changed")
 
     # --- the raw JSON escape hatch: GET shows canonical text, POST round-trips through the
     # same validate pipeline -------------------------------------------------------------------

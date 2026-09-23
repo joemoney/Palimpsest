@@ -758,12 +758,24 @@ def _author_load_and_lint(story_slug: str, model_json: str):
     raw = state_store.load_template_raw(story_slug)
     written = author_model.from_board_model(raw, model)
     issues = author_lint.lint(written, model)
-    return raw, written, issues
+    return raw, written, model, issues
+
+
+def _author_save_layout_only(story_slug: str, raw: dict, model: dict) -> bool:
+    """Layout (`_storyboard.positions`) is author-only and engine-ignored (CR-03), so it
+    shouldn't have to wait on a content lint error elsewhere in the template - called only
+    when a save is otherwise blocked. Returns whether anything was actually written (a no-op
+    save that changed nothing shouldn't still bump story_version)."""
+    layout_only = author_model.apply_layout_only(raw, model.get("nodes", []))
+    if layout_only.get("_storyboard") == raw.get("_storyboard"):
+        return False
+    state_store.write_template(story_slug, layout_only)
+    return True
 
 
 def _author_validate_response(story_slug, model_json, *, save_on_success):
     try:
-        raw, written, issues = _author_load_and_lint(story_slug, model_json)
+        raw, written, model, issues = _author_load_and_lint(story_slug, model_json)
     except (ValueError, FileNotFoundError) as e:
         return render_template(
             "_author_validate_result.html", story_slug=story_slug,
@@ -773,10 +785,12 @@ def _author_validate_response(story_slug, model_json, *, save_on_success):
     errors = [i for i in issues if i["severity"] == "error"]
     warnings = [i for i in issues if i["severity"] == "warning"]
     if errors:
+        layout_saved = save_on_success and _author_save_layout_only(story_slug, raw, model)
         return render_template(
             "_author_validate_result.html", story_slug=story_slug,
             errors=errors, warnings=warnings,
             diff=_author_template_diff(raw, written), can_save=False, saved=False,
+            layout_saved=layout_saved,
         )
     if not save_on_success:
         return render_template(

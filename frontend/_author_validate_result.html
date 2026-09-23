@@ -5,6 +5,15 @@
 </div>
 {% endif %}
 
+{% if layout_saved %}
+<div class="card" style="border-color:#2e7d4f;">
+  <div style="font-weight:700; color:#2e7d4f;">Layout saved.</div>
+  <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">
+    Node positions are on disk even though the errors below still block the rest of the save.
+  </div>
+</div>
+{% endif %}
+
 {% if errors %}
 <div class="card" style="border-color:#b0322c;">
   <div style="font-weight:700; color:#b0322c;">{{ errors|length }} error{{ 's' if errors|length != 1 }} - save blocked</div>
