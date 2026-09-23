@@ -253,7 +253,7 @@ def add_emerging_theme(ctx, theme):
 # the player no chance to reject or tweak a bad generation before it's already in the save.
 
 _SEED_FIELDS = {
-    "character": ("name", "description", "role", "relationship_to_player", "hook"),
+    "character": ("name", "description", "role", "first_contact", "hook"),
     "subplot": ("title", "description", "priority", "ties_to_main_plot", "span"),
     "direction": ("title", "description"),
 }
@@ -328,7 +328,7 @@ def apply_steering_seed(ctx, seed_id, **overrides):
             ctx, fields.get("name", ""),
             description=fields.get("description", ""),
             role=fields.get("role", ""),
-            relationship_to_player=fields.get("relationship_to_player", ""),
+            first_contact=fields.get("first_contact", ""),
             hook=fields.get("hook", ""),
             introduced=False,
             origin="seed",
@@ -396,7 +396,7 @@ def discard_steering_seed(ctx, seed_id):
 # story_engine.generate_character_from_relationship + insert_character pipeline the
 # automatic paths use, just triggered manually.
 
-_RELATIONSHIP_FIELDS = ("description", "role", "relationship_to_player", "hook")
+_RELATIONSHIP_FIELDS = ("description", "role", "first_contact", "hook")
 
 
 def list_unlinked_relationships(ctx):
@@ -439,7 +439,7 @@ def promote_relationship_to_npc(ctx, name, **overrides):
 
     entry["description"] = draft.get("description", "")
     entry["role"] = draft.get("role", "")
-    entry["relationship_to_player"] = draft.get("relationship_to_player", "")
+    entry["first_contact"] = draft.get("first_contact", "")
     entry["hook"] = draft.get("hook", "")
     entry["introduced"] = True
     entry["origin"] = "relationship"
@@ -470,7 +470,7 @@ def main():
         print("  python plot_manager.py seed '<freeform note>'")
         print("  python plot_manager.py seed-list")
         print("  python plot_manager.py seed-apply <seed_id> [--name/--title '<override>']")
-        print("      [--description '<override>'] [--role '<override>'] [--relationship '<override>']")
+        print("      [--description '<override>'] [--role '<override>'] [--first-contact '<override>']")
         print("      [--hook '<override>'] [--priority '<override>'] [--ties '<override>']")
         print("      [--span 'single_act|multi_act']")
         print("  python plot_manager.py seed-discard <seed_id>")
@@ -478,7 +478,7 @@ def main():
         print("see 'overview' for which relationships are still unlinked):")
         print("  python plot_manager.py list-unlinked")
         print("  python plot_manager.py promote-relationship '<name>' [--description '<override>']")
-        print("      [--role '<override>'] [--relationship '<override>'] [--hook '<override>']")
+        print("      [--role '<override>'] [--first-contact '<override>'] [--hook '<override>']")
         print("\nModifying:")
         print("  python plot_manager.py modify-act <act_number> --title '<new title>' --description '<new desc>'")
         print("  python plot_manager.py pivot '<new title>' '<new description>' '<reason>'")
@@ -580,7 +580,7 @@ def main():
     elif command == "seed-apply":
         if len(argv) < 3:
             print("Usage: python plot_manager.py seed-apply <seed_id> [--name/--title '<override>'] "
-                  "[--description '<override>'] [--role '<override>'] [--relationship '<override>'] "
+                  "[--description '<override>'] [--role '<override>'] [--first-contact '<override>'] "
                   "[--hook '<override>'] [--priority '<override>'] [--ties '<override>'] "
                   "[--span 'single_act|multi_act']")
             return
@@ -589,7 +589,7 @@ def main():
         i = 3
         flag_map = {
             "--name": "name", "--title": "title", "--description": "description",
-            "--role": "role", "--relationship": "relationship_to_player",
+            "--role": "role", "--first-contact": "first_contact",
             "--hook": "hook", "--priority": "priority", "--ties": "ties_to_main_plot",
             "--span": "span",
         }
@@ -621,14 +621,14 @@ def main():
         if len(argv) < 3:
             print("Usage: python plot_manager.py promote-relationship '<name>' "
                   "[--description '<override>'] [--role '<override>'] "
-                  "[--relationship '<override>'] [--hook '<override>']")
+                  "[--first-contact '<override>'] [--hook '<override>']")
             return
         name = argv[2]
         kwargs = {}
         i = 3
         flag_map = {
             "--description": "description", "--role": "role",
-            "--relationship": "relationship_to_player", "--hook": "hook",
+            "--first-contact": "first_contact", "--hook": "hook",
         }
         while i < len(argv):
             if argv[i] in flag_map and i + 1 < len(argv):

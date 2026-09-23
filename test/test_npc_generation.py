@@ -31,7 +31,7 @@ se.call_llm_json = CannedResponses([
     {"title": "A New Contact", "description": "d", "priority": "medium", "ties_to_main_plot": "t",
      "span": "single_act",
      "new_character": {"name": "Odette Marsh", "description": "a fence with a grudge",
-                        "role": "black-market contact", "relationship_to_player": "wary",
+                        "role": "black-market contact", "first_contact": "wary",
                         "hook": "runs the stall behind the fish market"}},
 ])
 se.generate_new_subplot(ctx)
@@ -97,7 +97,7 @@ print("OK: list_unlinked_relationships excludes an already-full character record
 
 se.call_llm_json = CannedResponses([
     {"description": "a sharp legal mind", "role": "recurring ally",
-     "relationship_to_player": "cautiously helpful", "hook": "keeps showing up at hearings"},
+     "first_contact": "cautiously helpful", "hook": "keeps showing up at hearings"},
 ])
 result_name = plot_manager.promote_relationship_to_npc(ctx4, "the advocate", role="lead counsel")
 assert result_name == "the advocate"
@@ -182,7 +182,10 @@ assert characters["Legacy Bob"]["relationship"] == 5
 assert characters["Already Migrated"]["relationship"] == 10
 assert characters["Already Migrated"]["description"] == "a full record"
 assert characters["Already Migrated"]["introduced"] is True
+assert characters["Already Migrated"]["first_contact"] == "friendly", (
+    "D7: migrate_v1 must translate v1's relationship_to_player into first_contact")
 print("OK: migrate_v1.migrate() upgrades legacy bare-int and npc_id-linked relationships alike, "
-      "merging the linked NPC record's fields onto the same entry")
+      "merging the linked NPC record's fields onto the same entry, translating "
+      "relationship_to_player to first_contact along the way")
 
 print("\nALL CHECKS PASSED: test_npc_generation")

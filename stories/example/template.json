@@ -74,7 +74,7 @@
         "name": "Mrs. Abbott",
         "description": "Innkeeper at the Harborlight. Warm, unhurried, and the first to slip - her account of 'yesterday' doesn't always match what she said the day before.",
         "role": "innkeeper",
-        "relationship_to_player": "welcoming, protective of the town's routine"
+        "first_contact": "welcoming, protective of the town's routine"
       }
     },
     "rules": [
@@ -88,7 +88,10 @@
     "default_name": "Traveller",
     "traits": [],
     "starting_inventory": [],
-    "stats": {"unease": 0, "welcome": 8}
+    "stats": {
+      "unease": 0,
+      "welcome": 8
+    }
   },
   "mechanics": {
     "subplots": {
@@ -206,24 +209,23 @@
       "engine": "bounded_counter",
       "floor": 0,
       "ceiling": 10,
-
       "axes": {
         "unease": {
           "ceiling": 100,
           "per_turn": 1,
           "costs": {
-            "contradiction.noticed":   6,
-            "account.changed":         8,
-            "warned.off":              4,
-            "reassured":              -5
+            "contradiction.noticed": 6,
+            "account.changed": 8,
+            "warned.off": 4,
+            "reassured": -5
           }
         },
         "welcome": {
           "costs": {
-            "pressed.someone":        -2,
-            "pressed.hard":           -4,
+            "pressed.someone": -2,
+            "pressed.hard": -4,
             "went.where.told.not.to": -3,
-            "accepted.hospitality":    1
+            "accepted.hospitality": 1
           }
         }
       }

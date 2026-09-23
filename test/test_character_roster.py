@@ -17,19 +17,36 @@ from _llm_stubs import load_story_engine  # noqa: E402
 
 se = load_story_engine()
 
-# --- an authored character renders with its description; no score until actually met ---
+# --- an authored character renders with its description; no numeric score until actually
+# met, but its first_contact stance (D7) shows in its place until then ---
 ctx = se.state_store.load_state("rostertest1", se.state_store.DEFAULT_STORY_SLUG)
 prompt = se.build_system_prompt(ctx)
 assert "KNOWN CHARACTERS" in prompt
-assert "- Mrs. Abbott: Innkeeper at the Harborlight." in prompt
-assert "Mrs. Abbott (" not in prompt, "an unmet authored character must not show a score, not even (0)"
-print("OK: an authored character renders with its description and no score before being met")
+assert "- Mrs. Abbott (not yet met — welcoming, protective of the town's routine): " \
+    "Innkeeper at the Harborlight." in prompt
+assert "Mrs. Abbott (+" not in prompt, "an unmet authored character must not show a numeric score"
+print("OK: an authored character shows its first_contact stance, not a score, before being met")
 
-# --- once a relationship entry exists, the score renders alongside it ---
+# --- once a relationship entry exists, the score renders instead - the first_contact stance
+# stops appearing even though world.characters still authors one (D7: "the tiers speak
+# instead", not "alongside") ---
 ctx["state"]["characters"]["Mrs. Abbott"] = {"relationship": 12, "first_seen_turn": 1, "introduced": True}
 prompt = se.build_system_prompt(ctx)
 assert "- Mrs. Abbott (+12): Innkeeper at the Harborlight." in prompt
-print("OK: a met authored character shows both its authored description and its live score")
+assert "not yet met" not in prompt, "a scored character must not still show the first-contact stance"
+print("OK: a met authored character shows its live score, and the first_contact stance retires")
+
+# --- a story with no relationship engine bound never gets a score, so the stance shows
+# permanently - it is then the only stance the narrator ever gets (D7) ---
+no_engine_ctx = se.state_store.load_state("rostertest1b", se.state_store.DEFAULT_STORY_SLUG)
+story_dict = se.state_store.thaw(no_engine_ctx["story"])
+story_dict["mechanics"].pop("relationships", None)
+no_engine_ctx["story"] = se.state_store.freeze(story_dict)
+no_engine_ctx["state"]["characters"]["Mrs. Abbott"] = {"relationship": 12, "first_seen_turn": 1, "introduced": True}
+prompt = se.build_system_prompt(no_engine_ctx)
+assert "- Mrs. Abbott (not yet met — welcoming, protective of the town's routine): " \
+    "Innkeeper at the Harborlight." in prompt
+print("OK: with no relationship engine bound, the first_contact stance shows regardless of any stored score")
 
 # --- a bare relationship-only stub (no description, not authored) is left out of the roster
 # entirely - it has no identity worth restating beyond a name the model itself invented ---
@@ -77,7 +94,7 @@ nudge_ctx = se.state_store.load_state("rostertest4", se.state_store.DEFAULT_STOR
 story_dict = se.state_store.thaw(nudge_ctx["story"])
 story_dict["world"].setdefault("characters", {})["Aurelia Vance"] = {
     "name": "Aurelia Vance", "description": "An archivist.", "role": "archivist",
-    "relationship_to_player": "wary", "hook": "She can arrive asking after a missing ledger.",
+    "first_contact": "wary", "hook": "She can arrive asking after a missing ledger.",
 }
 nudge_ctx["story"] = se.state_store.freeze(story_dict)
 assert "Aurelia Vance - She can arrive asking after a missing ledger." in se.generate_pacing_nudge(nudge_ctx)

@@ -23,7 +23,7 @@ responses = CannedResponses([
     # 1) stage_steering_seed -> generate_steering_seed
     {"type": "character", "character": {
         "name": "Vesper Kade", "description": "A wary courier with old debts.",
-        "role": "potential ally", "relationship_to_player": "guarded",
+        "role": "potential ally", "first_contact": "guarded",
         "hook": "Crosses paths with the player at the next supply drop.",
     }},
     # 2) update_progress_from_turn's observation pass, once the player meets her. Phase 4:

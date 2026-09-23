@@ -144,7 +144,7 @@ se.call_llm_json = CannedResponses([
     {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
      "inventory": {"gained": [], "used": []}, "social": social("Marlowe", "kindness_shown"),
      "new_characters": [{"name": "Marlowe", "description": "a wiry informant", "role": "informant",
-                          "relationship_to_player": "guarded", "hook": "reachable by drone"}]},
+                          "first_contact": "guarded", "hook": "reachable by drone"}]},
 ])
 se.update_progress_from_turn(ctx2, "talk to the informant", "narration text")
 assert ctx2["state"]["characters"]["Marlowe"]["relationship"] == KINDNESS

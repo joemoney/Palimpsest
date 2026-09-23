@@ -34,14 +34,14 @@
         "name": "Miss Harriet Vane",
         "description": "Your cousin by marriage, three years your senior, and the only person at Thornfield who says what she means - in private, and never twice.",
         "role": "confidante and rival for the same attention",
-        "relationship_to_player": "affectionate, competitive, and entirely unwilling to admit the second part",
+        "first_contact": "affectionate, competitive, and entirely unwilling to admit the second part",
         "hook": "Arriving at the breakfast table having already heard whatever you hoped to tell her"
       },
       "Mr. Aldous Crane": {
         "name": "Mr. Aldous Crane",
         "description": "Newly returned from abroad with an income nobody can account for and manners that are slightly too good.",
         "role": "the question the season is organised around",
-        "relationship_to_player": "unfailingly correct, which tells you nothing",
+        "first_contact": "unfailingly correct, which tells you nothing",
         "hook": "Being seated, by someone's deliberate arrangement, exactly where he can hear you"
       }
     }

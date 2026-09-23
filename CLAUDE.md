@@ -8,18 +8,30 @@ works. For that:
 
 | Topic | Where |
 |---|---|
-| How the engine actually works, as built | `docs/ARCHITECTURE.md` |
-| The mechanic registry, as built | `docs/ARCHITECTURE.md` § *The Mechanic Registry* |
-| Template/save schema and its design principles | `docs/SCHEMA_V2_SPEC.md` |
-| Pacing loop, beats, counters, directives | `docs/Narrative_Pacing_Loop_Spec_v4.md` |
+| **The storyboard-first overhaul: what it is and why** | `docs/Design_Overhaul.md` |
+| **Authoring tool: what it is, view by view** | `docs/Authoring_Tool_Spec.md` |
+| **The mechanic change requests the overhaul is built from (CR-01–CR-12)** | `docs/Story_Mechanics_Update.md` |
+| **Authoring tool phases, gates, and the decisions (D1–D7) that bind them** | `docs/analysis_and_plans/AUTHORING_TOOL/AUTHORING_TOOL_PHASES.md` |
+| How the engine actually worked, pre-overhaul | `docs/Pre-V3 docs/ARCHITECTURE.md` |
+| The mechanic registry, as built | `docs/Pre-V3 docs/ARCHITECTURE.md` § *The Mechanic Registry* |
+| Template/save schema, pre-overhaul design principles | `docs/Pre-V3 docs/SCHEMA_V2_SPEC.md` |
+| Pacing loop, beats, counters, directives | `docs/Pre-V3 docs/Narrative_Pacing_Loop_Spec_v4.md` |
 | Web UI design intent | `docs/Web_UI_Spec.md` |
-| What the engine stores but never prompts | `docs/Narrative_Engine_Spec.md` |
-| Engine v2 / schema v3 — design, not yet built | `docs/ENGINE_V2_SPEC.md` |
-| Engine v2 phase order, gates and risks | `docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md` |
+| What the engine stores but never prompts, pre-overhaul | `docs/Pre-V3 docs/Narrative_Engine_Spec.md` |
+| Engine v2 / schema v3 — superseded by the overhaul above | `docs/Pre-V3 docs/ENGINE_V2_SPEC.md` |
+| Engine v2 phase order, gates and risks (v2 landed; this is history) | `docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md` |
+
+The five documents marked **bold** are the overhaul currently under construction and take
+precedence over everything below and under `docs/Pre-V3 docs/` where they conflict. The
+`docs/Pre-V3 docs/` files describe the engine as it stood before the overhaul; they are
+reference for what's being rebuilt, not a live spec, and most of their design principles
+(P-1…P-7, visibility rules, condition grammar) are carried forward — see
+`Story_Mechanics_Update.md` §0 for exactly what's superseded and what stands.
 
 If you are about to change something below, read the matching section of
-`docs/ARCHITECTURE.md` first — every rule here has a reason recorded there, and
-most of them were written after something broke.
+`docs/Pre-V3 docs/ARCHITECTURE.md` first, and check whether an Authoring tool decision (D1–D7,
+below) has since amended it — every rule here has a reason recorded there, and most of them
+were written after something broke.
 
 ---
 
@@ -46,7 +58,9 @@ inconsistency, especially on cheaper/smaller models). Instead, a hybrid:
    structural change on its own.
 6. **Continuous, not finite** — no built-in stopping point. Subplots and
    acts are generated on demand rather than pulled from a fixed pool — see
-   *Continuous / Long-Running Structure* in `docs/ARCHITECTURE.md`.
+   *Continuous / Long-Running Structure* in `docs/Pre-V3 docs/ARCHITECTURE.md`. Superseded
+   by the overhaul: see D6, below — a story with an authored `mechanics.endings` block does
+   have a designed endpoint now, reached only by the engine, never by the player.
 
 Start stricter than feels necessary — it's easier to loosen constraints once
 the model proves it handles structure well than to rein in a session that's
@@ -64,9 +78,14 @@ already gone off the rails.
   a subplot completing this act *or* `act_check_frequency` turns elapsing.
   Requiring the first alone structurally forced every subplot to single-act
   length, which is exactly what a `multi_act` subplot needs not to happen.
-- **The story ends only when the player asks.** Once `plot.endgame.requested` is
-  set, `generate_new_subplot` and `check_and_advance_act` both no-op. Manual
-  steering still works; only the automatic systems stop.
+- **A story ends only through `mechanics.endings`** — a committed destination
+  (including a forced commit at `commit_by`) or a confirmed terminal (Authoring
+  Tool decision D6). The player has no command to end a story; `end story` and
+  its variants are retired along with `handle_end_story_request`. Once an ending
+  is committed, `generate_new_subplot` and `check_and_advance_act` both no-op,
+  the same as `plot.endgame.requested` did before. A story with no
+  `mechanics.endings` block — none should exist post-overhaul — has no way to
+  end at all, which is why every story must author one with a catch-all.
 
 ### Keeping LLM context bounded
 - **The disk record may grow forever. What reaches a prompt must not.** Any new
@@ -112,15 +131,20 @@ already gone off the rails.
 - **Relationship scores are deltas, not absolutes**, and eviction drops whatever
   sits *closest to neutral* — a story's strongest bonds must never silently
   disappear.
-- **`relationships[name]["npc_id"]` is the only link** between a relationship and
-  a character record. Exact-name matching alone is fragile and caused a real bug;
-  once a link exists, the stored id is the source of truth.
+- **A character's name is its only identity.** `world.characters` (authored) and
+  `state.characters` (discovered) are both keyed by the same canonical name — no
+  separate `npc_id`. (An earlier version of this invariant described a
+  `npc_id`-based link; that was never how the v2 code worked and is corrected
+  here.) Exact-name matching is fragile if names can diverge, which is why
+  `_existing_character_names` and the generation prompts exist to stop the model
+  minting a second name for someone who already has one.
 - **Every NPC record is created through `story_engine.insert_character()`**, and
   every subplot through `insert_subplot()`.
-- **Adding a `character_creation` step retroactively halts every live save** for
-  that story until the player answers it. Usually right, never opt-in.
+- **Adding a `character_creation` step retroactively halts every live save** —
+  moot during the overhaul (saves are disposable at cutover, see below), but the
+  rule is correct for any story shipped afterward: usually right, never opt-in.
 
-### Mechanic registry (see `docs/ARCHITECTURE.md` § *The Mechanic Registry* for how)
+### Mechanic registry (see `docs/Pre-V3 docs/ARCHITECTURE.md` § *The Mechanic Registry* for how)
 - **Declare-to-bind: a `mechanics` block with no `"engine"` key binds nothing.** That is not
   an error — it is a mechanic the registry does not own yet — but a block that *should*
   declare one and doesn't loads **inert**: no state, no prompt line, no observation field,
@@ -154,11 +178,60 @@ already gone off the rails.
   whether to raise the modal and is ~90% accurate; `blocking()` vetoes a gated
   `scene_update.location` regardless. Trade recall for precision and never the reverse — a
   miss has a backstop, a false positive refuses a legitimate action and nothing catches it.
-- **Saves are still schema version 2.** Every phase kept storage where it was, so the v2→v3
-  cutover was never performed and existing saves load unchanged. What went to v3 is the
-  template shape. Don't relocate save state without a migration and a version bump.
+- **Saves are disposable for the duration of the overhaul.** Engine v2 kept saves at schema
+  version 2 while only the template shape moved; the Authoring Tool overhaul does not extend
+  that courtesy. Templates the board writes are `schema_version: 3` (see *Authoring tool*,
+  below); `load_template_raw` accepts 2 and 3, upgrading 2 in memory. Save format may change
+  freely with a version bump, old saves are refused at load rather than migrated, and
+  `data/saves/` is discarded as an operator action at cutover — this is not a code change and
+  nothing in the repository deletes them itself. Once the overhaul ships, restore the old
+  discipline: relocating save state again needs a migration and a version bump.
 
-### Schema (see `docs/SCHEMA_V2_SPEC.md` §1 for the full principles)
+### Authoring tool (see `docs/analysis_and_plans/AUTHORING_TOOL/AUTHORING_TOOL_PHASES.md` for
+the full reasoning behind each decision below — D1–D7 there, reproduced here as invariants)
+- **D1: the board writes final template paths, inside `mechanics`, even before the engine
+  that reads them exists.** No staging namespace. A story authoring a module this build
+  doesn't register fails `load_template()` loudly (`UnknownEngineError`) — that's correct,
+  not a bug to route around in the story. The tool itself never depends on `validate()`
+  succeeding: it reads with `load_template_raw()`, validates against the JSON Schema, and
+  builds preview/playtest from a *playable projection* (the template minus every
+  unregistered `mechanics` block) so an unbuilt module is shown as left out, never silently
+  swallowed.
+- **D2: CR-02's condition grammar lives in `backend/conditions.py`, separate from
+  `gate.satisfied()`.** Gates and `activate_when` stay fail-open (an unknown referent reads
+  as satisfied — a typo should cost a locked door, never a stuck save). `ready_when`,
+  `done_when` and `fail_when` are fail-**closed** at the same call: a typo there would
+  commit or prune an ending, and both are permanent. Every condition call site declares its
+  polarity explicitly; lint rule L10 (unknown flag/stat/fragment/character) is
+  save-blocking for every condition field, so the fail-closed path is the one an author
+  actually hits.
+- **D3: conditions, lint and prompt preview are computed server-side, through the real
+  engine modules.** No parallel JS implementation that could disagree with the engine —
+  Design_Overhaul's original JS-then-port plan is superseded by this because the deployment
+  environment has no JS runtime to test a JS evaluator against.
+- **D4: the board page (`/author/<slug>/board`) is a scoped exception to "built with HTMX,
+  declaratively."** Its canvas (SVG edges, drag, pan, zoom) is client-rendered from a JSON
+  model; every server exchange still goes through HTMX (`hx-vals` for requests,
+  `HX-Trigger` payloads or fragments for responses). No hand-written `fetch` anywhere else
+  in the app.
+- **D5: `mechanics.failure_conditions` / `triggered_ending` is retired.** Failure endings
+  become `mechanics.endings` entries with `kind: "terminal"` (stat `ready_when` plus judge
+  confirmation), not a separate engine.
+- **D6: the player cannot end the story.** See *Structure and pacing*, above — a story ends
+  only through a committed or forced `mechanics.endings` destination, or a confirmed
+  terminal.
+- **D7: `world.characters[name].relationship_to_player` is renamed `first_contact`, and is
+  narrator-visible only until that character's first scored relationship interaction** — a
+  first-contact stance, not a permanent trait; once there's a score, the relationship tiers
+  speak instead. A character created with no relationship score yet (e.g. by
+  `insert_character` — score `null`, not `0`) still shows it. `role` moves to author-only
+  visibility: it's shown in the Plot Manager and the cast card, never prompted, because it
+  routinely states where an arc is going (e.g. "the one person who might become a partner")
+  and prompting it would steer the narrator there from the first scene. `world.factions[].
+  relationship_to_player` is a distinct field and keeps its name — it's already prompted and
+  D7 doesn't touch it.
+
+### Schema (see `docs/Pre-V3 docs/SCHEMA_V2_SPEC.md` §1 for the full principles)
 - **An absent optional module means the feature does not exist** — no state, no
   prompt section, no schema field, no empty header, no zeroed counter.
 - **Read paths never assume optional structure.** `.get()`/`setdefault()`
@@ -225,7 +298,7 @@ testable without a real API key.
 
 `test/fixtures/` holds three genre-conformance templates (`regency.json`,
 `courtroom.json`, `survival.json`), exercised by `test_genre_conformance.py`.
-They are the executable form of `docs/SCHEMA_V2_SPEC.md`'s P-6 - the claim that
+They are the executable form of `docs/Pre-V3 docs/SCHEMA_V2_SPEC.md`'s P-6 - the claim that
 an author can write a wholly different genre without touching Python - and each
 uses a deliberately different subset of the optional `mechanics` modules. They
 live outside `stories/` on purpose: anything under `stories/<slug>/` is picked

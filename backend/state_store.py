@@ -46,7 +46,17 @@ DEFAULT_STORY_SLUG = "example"
 
 CURRENT_SCHEMA_VERSION = 2
 
+# The template's own top-level "schema_version" - a different axis from CURRENT_SCHEMA_VERSION
+# above, which versions the *save*. Every template on disk today declares 2. The Authoring
+# Tool overhaul writes 3 (see CLAUDE.md "Authoring tool" / AUTHORING_TOOL_PHASES.md Phase 0,
+# "Template version"): the board's loader upgrades a v2 template in memory, so the first
+# board-driven save of any story writes 3. Both are accepted at load so existing templates
+# don't need touching before the board exists; anything else is loud rather than silently
+# mis-read; this set grows by one each time schema_version bumps again.
+TEMPLATE_SCHEMA_VERSIONS = (2, 3)
+
 _SLUG_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_STORY_VERSION_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.(\d+)$")
 
 
 def _validate_slug(value: str, label: str) -> str:
@@ -117,7 +127,14 @@ def load_template_raw(story_slug: str) -> dict:
     _validate_slug(story_slug, "story_slug")
     template_path = os.path.join(_story_dir(story_slug), "template.json")
     with open(template_path, "r") as f:
-        return json.load(f)
+        raw = json.load(f)
+    version = raw.get("schema_version")
+    if version not in TEMPLATE_SCHEMA_VERSIONS:
+        raise ValueError(
+            f"{story_slug!r} template.json has schema_version {version!r}, which this build "
+            f"does not recognise. Known versions: {TEMPLATE_SCHEMA_VERSIONS}"
+        )
+    return raw
 
 
 def load_template(story_slug: str) -> dict:
@@ -133,6 +150,60 @@ def load_template(story_slug: str) -> dict:
     raw = load_template_raw(story_slug)
     mechanics.validate(raw)
     return freeze(raw)
+
+
+def _dumps_template(raw: dict) -> str:
+    """Canonical on-disk text for a template.json: 2-space indent, real unicode rather than
+    \\uXXXX escapes, one trailing newline. Every story under stories/ and stories/private/,
+    and every test/fixtures/*.json, was reformatted to match this exactly (the Authoring
+    Tool overhaul's Phase 0) precisely so that write_template's round trip - and every board
+    save after it - produces a diff that is the edit, not a wall of formatting noise."""
+    return json.dumps(raw, indent=2, ensure_ascii=False) + "\n"
+
+
+def _next_story_version(previous) -> str:
+    """YYYY-MM-DD.N, the format every template.json's story_version already uses (N
+    starting at 1, resetting each day). A previous version stamped today increments N;
+    anything else - yesterday's, malformed, or absent - starts today's sequence at 1."""
+    today = time.strftime("%Y-%m-%d")
+    match = _STORY_VERSION_RE.match(previous) if isinstance(previous, str) else None
+    if match and match.group(1) == today:
+        return f"{today}.{int(match.group(2)) + 1}"
+    return f"{today}.1"
+
+
+def write_template(story_slug: str, raw: dict, *, bump_version: bool = True) -> str:
+    """The only path that writes a story's template.json (CLAUDE.md: "all state access goes
+    through state_store.py" - this extends that to the authoring side, not just play).
+    Overwrites the story in whichever root it already lives (story_roots() order, same
+    resolution load_template_raw uses) - it edits an existing story, it does not create one
+    in a new root.
+
+    Written atomically: the new content lands in a temp file first, then `os.replace` swaps
+    it into place in one filesystem operation, under a lock scoped to this template path.
+    That's what makes it safe to call while a turn may be mid-read of the same file
+    (load_template() is re-read-from-disk-every-time, uncached, by design) - a reader never
+    observes a partial write, and two overlapping writers never interleave.
+
+    bump_version=False is the dry-run mode the Phase 0 gate is built on: `write_template(
+    slug, load_template_raw(slug), bump_version=False)` must reproduce the on-disk file
+    byte-for-byte for every real story, which is what proves the writer loses nothing
+    *before* it is ever handed a board-produced model instead of an untouched one.
+
+    Returns the story_version that was written (unchanged from `raw`'s, if bump_version is
+    False)."""
+    _validate_slug(story_slug, "story_slug")
+    raw = dict(raw)
+    if bump_version:
+        raw["story_version"] = _next_story_version(raw.get("story_version"))
+    story_dir = _story_dir(story_slug)
+    template_path = os.path.join(story_dir, "template.json")
+    tmp_path = os.path.join(story_dir, f".template.json.tmp-{uuid.uuid4().hex}")
+    with filelock.FileLock(template_path + ".lock"):
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(_dumps_template(raw))
+        os.replace(tmp_path, template_path)
+    return raw["story_version"]
 
 
 # ---------------------------------------------------------------------------

@@ -671,22 +671,30 @@ def _authored_character(ctx: dict, name: str) -> dict:
 
 def _character_record(ctx: dict, name: str) -> dict:
     """Merged view of one character: authored fields (description/role/
-    relationship_to_player/hook) come from ctx["story"]["world"]["characters"] when the
+    first_contact/hook) come from ctx["story"]["world"]["characters"] when the
     name is authored, otherwise from the runtime entry itself (a discovered character has
     nowhere else to keep them). Runtime fields (relationship score, first_seen_turn,
     introduced) always come from ctx["state"]["characters"], defaulting to "unmet" (no
     entry yet) when absent - CR-06's "a character with no relationship entry renders
-    without a score, not as 0.\""""
+    without a score, not as 0.\"
+
+    `first_contact` (renamed from `relationship_to_player` - Authoring Tool decision D7) is
+    a first-contact stance, not a permanent trait: `_section_roster` shows it only until
+    `relationship` below stops being None, i.e. until this character's first scored
+    interaction. `.get()` on a dict missing the key already returns None, so `relationship`
+    needs no explicit "not in state.characters" branch - an authored-but-unmet character (no
+    state entry at all) and an `insert_character`-created-but-unscored one (a state entry
+    with no "relationship" key yet, per D7) read identically."""
     authored = _authored_character(ctx, name) or {}
     runtime = ctx["state"]["characters"].get(name) or {}
     return {
         "name": name,
         "description": authored.get("description") or runtime.get("description", ""),
         "role": authored.get("role") or runtime.get("role", ""),
-        "relationship_to_player": authored.get("relationship_to_player") or runtime.get("relationship_to_player", ""),
+        "first_contact": authored.get("first_contact") or runtime.get("first_contact", ""),
         "hook": authored.get("hook") or runtime.get("hook", ""),
         "authored": bool(_authored_character(ctx, name)),
-        "relationship": runtime.get("relationship") if name in ctx["state"]["characters"] else None,
+        "relationship": runtime.get("relationship"),
         "first_seen_turn": runtime.get("first_seen_turn"),
         "introduced": bool(runtime.get("introduced")),
     }
@@ -716,7 +724,7 @@ def _existing_character_names(ctx: dict) -> list:
 
 
 def insert_character(ctx: dict, name: str, description: str = "", role: str = "",
-                       relationship_to_player: str = "", hook: str = "", introduced: bool = False,
+                       first_contact: str = "", hook: str = "", introduced: bool = False,
                        origin: str = "seed", seed_note: str = None) -> str:
     """Shared by every path that creates or fleshes out a discovered NPC record -
     plot_manager.apply_steering_seed, generate_new_subplot/check_and_advance_act's proposed
@@ -728,10 +736,19 @@ def insert_character(ctx: dict, name: str, description: str = "", role: str = ""
     indirection is needed to link them). Returns `name` for symmetry with the old id-
     returning version, though every caller now just discards it or uses it as the key
     directly. `origin` records which path created/touched it, purely for later human
-    review via show_plot_overview - nothing else reads it back."""
+    review via show_plot_overview - nothing else reads it back.
+
+    Deliberately no "relationship" key in the initial dict (Authoring Tool decision D7): a
+    character minted here has had no scored interaction yet, and `_character_record`/
+    `_section_roster` read a missing "relationship" key as exactly that - "not yet met" -
+    which is what lets `first_contact` show for a freshly-invented character instead of
+    being masked by a placeholder 0. The scored_axis engine's own `_apply_set` sets a real
+    value the moment an actual relationship event prices one; every read site downstream of
+    that (`entry.get("relationship", 0)` in mechanics/social.py) already defaults a missing
+    key to 0 for arithmetic, so this costs nothing there."""
     characters = ctx["state"]["characters"]
     entry = characters.setdefault(name, {
-        "relationship": 0, "first_seen_turn": ctx["state"]["pacing"]["turn_count"],
+        "first_seen_turn": ctx["state"]["pacing"]["turn_count"],
     })
     entry["introduced"] = introduced
     entry["origin"] = origin
@@ -739,8 +756,8 @@ def insert_character(ctx: dict, name: str, description: str = "", role: str = ""
         entry["description"] = description
     if role:
         entry["role"] = role
-    if relationship_to_player:
-        entry["relationship_to_player"] = relationship_to_player
+    if first_contact:
+        entry["first_contact"] = first_contact
     if hook:
         entry["hook"] = hook
     if seed_note is not None:
@@ -763,7 +780,7 @@ def _maybe_insert_generated_character(ctx: dict, generated: dict, origin: str):
         ctx, draft["name"],
         description=draft.get("description", ""),
         role=draft.get("role", ""),
-        relationship_to_player=draft.get("relationship_to_player", ""),
+        first_contact=draft.get("first_contact", ""),
         hook=draft.get("hook", ""),
         introduced=False,
         origin=origin,
@@ -898,7 +915,7 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
     )
     schema_fields.append(
         '  "new_characters": [{"name": "<full name>", "description": "<who they are, appearance, '
-        'personality>", "role": "<their narrative role>", "relationship_to_player": "<their '
+        'personality>", "role": "<their narrative role>", "first_contact": "<their '
         'initial stance toward the player>", "hook": "<a concrete way they could naturally '
         'reappear or matter going forward>"}]'
     )
@@ -1000,7 +1017,7 @@ is a separate, manual step."""
             ctx, name,
             description=draft.get("description", ""),
             role=draft.get("role", ""),
-            relationship_to_player=draft.get("relationship_to_player", ""),
+            first_contact=draft.get("first_contact", ""),
             hook=draft.get("hook", ""),
             introduced=True,
             origin="narration",
@@ -1097,7 +1114,7 @@ Respond with ONLY a JSON object, no other text:
   "priority": "<high|medium|low>",
   "ties_to_main_plot": "<how this connects to the main thread>",
   "span": "<single_act|multi_act>",
-  "new_character": <null, or {{"name": "<full name>", "description": "...", "role": "...", "relationship_to_player": "...", "hook": "..."}} if and only if this subplot genuinely requires a specific new named person to exist who isn't already listed above>
+  "new_character": <null, or {{"name": "<full name>", "description": "...", "role": "...", "first_contact": "...", "hook": "..."}} if and only if this subplot genuinely requires a specific new named person to exist who isn't already listed above>
 }}
 Most subplots should be "single_act" - resolved within roughly the current act. Only mark
 "multi_act" if the idea is substantial enough to reasonably develop over several acts -
@@ -1162,7 +1179,7 @@ Decide whether this note is best realized as a new CHARACTER, a new SUBPLOT, or 
 DIRECTION (a looser narrative hook not tied to one character or a self-contained subplot).
 Respond with ONLY a JSON object, no other text, in exactly one of these three shapes:
 
-{{"type": "character", "character": {{"name": "<full name>", "description": "<who they are, appearance, personality>", "role": "<their narrative role, e.g. 'potential romantic interest'>", "relationship_to_player": "<initial stance toward the player>", "hook": "<a concrete, specific way they could naturally enter the story soon>"}}}}
+{{"type": "character", "character": {{"name": "<full name>", "description": "<who they are, appearance, personality>", "role": "<their narrative role, e.g. 'potential romantic interest'>", "first_contact": "<initial stance toward the player>", "hook": "<a concrete, specific way they could naturally enter the story soon>"}}}}
 
 {{"type": "subplot", "subplot": {{"title": "<short subplot title>", "description": "<1-2 sentences>", "priority": "<high|medium|low>", "ties_to_main_plot": "<how this connects to the main thread>", "span": "<single_act|multi_act - multi_act only if the note clearly implies something substantial enough to develop over several acts, not a quick errand>"}}}}
 
@@ -1225,7 +1242,7 @@ Respond with ONLY a JSON object, no other text:
 {{
   "description": "<who they are, appearance, personality - inferred from how they've actually appeared so far>",
   "role": "<their narrative role>",
-  "relationship_to_player": "<their stance toward the player, consistent with the score above and what's happened>",
+  "first_contact": "<their stance toward the player, consistent with the score above and what's happened>",
   "hook": "<a concrete way they could naturally reappear or matter going forward>"
 }}"""
 
@@ -1423,7 +1440,7 @@ Respond with ONLY a JSON object, no other text:
   "next_act_title": "<title, only if ready>",
   "next_act_description": "<1-2 sentences, only if ready>",
   "completion_signals": ["<specific, checkable signal for what would resolve the NEXT act>", "..."],
-  "new_character": <null, or {{"name": "<full name>", "description": "...", "role": "...", "relationship_to_player": "...", "hook": "..."}} if and only if ready is true and the next act genuinely requires a specific new named person who isn't already listed above>
+  "new_character": <null, or {{"name": "<full name>", "description": "...", "role": "...", "first_contact": "...", "hook": "..."}} if and only if ready is true and the next act genuinely requires a specific new named person who isn't already listed above>
 }}
 completion_signals is required whenever ready is true - 2-4 specific, checkable signals for
 the act you're creating (not a restatement of its description), the same specificity as the
@@ -1618,7 +1635,14 @@ def _section_roster(ctx: dict) -> str | None:
     Bounded implicitly by the scored_axis engine's `limit`, since ctx["state"]["characters"]
     is already capped there at write time - no separate cap needed here. A story with no
     relationship engine bound has no scores to show, so names and descriptions are all this
-    renders."""
+    renders.
+
+    D7: `first_contact` is a first-contact stance, shown only up to a character's first
+    scored interaction (`record["relationship"] is None`) - after that the tiers speak for
+    them instead, and restating the opening stance would contradict whatever the score has
+    since become. Not gated on `bound`: with no relationship engine at all, `relationship`
+    can never leave None (nothing ever prices an event), so the stance is shown
+    permanently - it is then the only stance the narrator ever gets."""
     bound = mechanics.bound_for(ctx["story"], "relationships")
     lines = []
     for name in sorted(_all_character_names(ctx)):
@@ -1628,6 +1652,8 @@ def _section_roster(ctx: dict) -> str | None:
         score_part = ""
         if bound and record["relationship"] is not None:
             score_part = f" ({record['relationship']:+d})"
+        elif record["first_contact"]:
+            score_part = f" (not yet met — {record['first_contact']})"
         line = f"- {name}{score_part}"
         if record["description"]:
             line += f": {record['description']}"

@@ -22,6 +22,17 @@ def _migrate_flags(player: dict) -> dict:
     }
 
 
+# (v1 record key, v2/v3 destination key) - v1 npc_records are historical, fixed-format
+# data and always used "relationship_to_player"; the destination is the Authoring Tool
+# overhaul's renamed field (D7, "relationship_to_player" -> "first_contact"), so a save
+# migrated today lands directly in the current shape rather than needing a second rename
+# pass. The other three fields are unchanged, hence the trivial (x, x) pairs.
+_CHARACTER_FIELD_MAP = (
+    ("description", "description"), ("role", "role"),
+    ("relationship_to_player", "first_contact"), ("hook", "hook"),
+)
+
+
 def _migrate_characters(v1: dict) -> dict:
     """Merges v1's two disconnected registries - player.relationships (score, keyed by
     free-text name) and top-level characters (NPC records, keyed by a synthetic char_NNN id,
@@ -52,9 +63,9 @@ def _migrate_characters(v1: dict) -> dict:
             consumed_ids.add(npc_id)
 
         char = {"relationship": score, "first_seen_turn": 0, "introduced": bool(record.get("introduced", False))}
-        for field in ("description", "role", "relationship_to_player", "hook"):
-            if record.get(field):
-                char[field] = record[field]
+        for src_field, dest_field in _CHARACTER_FIELD_MAP:
+            if record.get(src_field):
+                char[dest_field] = record[src_field]
         result[name] = char
 
     # an NPC record that was seeded/generated but never got a relationship_changes entry
@@ -66,9 +77,9 @@ def _migrate_characters(v1: dict) -> dict:
         if not name or name in result:
             continue
         char = {"relationship": 0, "first_seen_turn": 0, "introduced": bool(record.get("introduced", False))}
-        for field in ("description", "role", "relationship_to_player", "hook"):
-            if record.get(field):
-                char[field] = record[field]
+        for src_field, dest_field in _CHARACTER_FIELD_MAP:
+            if record.get(src_field):
+                char[dest_field] = record[src_field]
         result[name] = char
 
     return result

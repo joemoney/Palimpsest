@@ -34,7 +34,7 @@
         "name": "Judge Imelda Sarris",
         "description": "Thirty years on the bench and a settled contempt for theatre that does not extend to being bored.",
         "role": "the bench - arbiter and clock",
-        "relationship_to_player": "neutral, and audibly less so each time you push",
+        "first_contact": "neutral, and audibly less so each time you push",
         "hook": "Asking, without raising her voice, where exactly this is going"
       }
     }

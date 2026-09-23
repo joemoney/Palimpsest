@@ -61,11 +61,11 @@
     {% if char.description %}
     <div style="color:var(--muted); font-size:0.9rem; margin-top:2px;">{{ char.description }}</div>
     {% endif %}
-    {% if char.role or char.relationship_to_player %}
+    {% if char.role or char.first_contact %}
     <div style="color:var(--muted); font-size:0.8rem; margin-top:4px;">
       {% if char.role %}Role: {{ char.role }}{% endif %}
-      {% if char.role and char.relationship_to_player %} &middot; {% endif %}
-      {% if char.relationship_to_player %}Relationship: {{ char.relationship_to_player }}{% endif %}
+      {% if char.role and char.first_contact %} &middot; {% endif %}
+      {% if char.first_contact %}First contact: {{ char.first_contact }}{% endif %}
     </div>
     {% endif %}
     {% if char.relationship is not none %}
@@ -121,8 +121,8 @@
       <textarea id="seed-{{ seed.id }}-desc" name="description" rows="2">{{ seed.draft.description or '' }}</textarea>
       <label for="seed-{{ seed.id }}-role">Role</label>
       <input type="text" id="seed-{{ seed.id }}-role" name="role" value="{{ seed.draft.role or '' }}">
-      <label for="seed-{{ seed.id }}-rel">Relationship to player</label>
-      <input type="text" id="seed-{{ seed.id }}-rel" name="relationship_to_player" value="{{ seed.draft.relationship_to_player or '' }}">
+      <label for="seed-{{ seed.id }}-rel">First contact (stance toward the player, until they're scored)</label>
+      <input type="text" id="seed-{{ seed.id }}-rel" name="first_contact" value="{{ seed.draft.first_contact or '' }}">
       <label for="seed-{{ seed.id }}-hook">Hook (how/when they enter)</label>
       <textarea id="seed-{{ seed.id }}-hook" name="hook" rows="2">{{ seed.draft.hook or '' }}</textarea>
       {% elif seed.type == 'subplot' %}
