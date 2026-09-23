@@ -47,7 +47,10 @@ html,body{height:100%}
 body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45}
 *{box-sizing:border-box}
 button,input,select,textarea{font:inherit;color:inherit}
-.app{display:grid;grid-template-rows:auto 1fr;height:100%}
+/* board-app, not .app: base.html's own <main> already uses .app (max-width:560px, meant for
+   narrow prose pages like login/stories) - colliding with it was squeezing this whole tool
+   into a phone-width column regardless of any width set here. */
+.board-app{display:grid;grid-template-rows:auto 1fr;height:100%}
 
 /* ---- top bar ---- */
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;padding-block:10px;padding-inline:16px;background:var(--surface);border-bottom:1px solid var(--line)}
@@ -210,18 +213,23 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 #author-results{display:grid;gap:8px}
 #author-results .card{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface)}
 
-@media (max-width:900px){
-  html,body{height:auto}
-  .app{height:auto}
-  .main{grid-template-columns:1fr}
-  .canvas{height:64vh}
-  .inspector{border-left:0;border-top:1px solid var(--line)}
-  .legend{display:none}
-}
+/* base.html's <main> is itself class="app", max-width:560px - sized for the narrow prose
+   pages (login, stories, play). This page's own container is .board-app specifically to
+   avoid colliding with that class, but it still renders *inside* that narrow <main>, so the
+   cap has to be lifted here too or nothing below ever gets the width back. */
+main.app{max-width:none}
+
+/* Desktop-oriented tool, deliberately: a drag/pan/zoom canvas plus a persistent inspector
+   sidebar doesn't degrade into a usable narrow-viewport layout, so this doesn't try - no
+   mobile breakpoint. Fills the available width (a standard 1080p monitor, not a phone);
+   below min-width the whole app scrolls horizontally rather than stacking the canvas above
+   the inspector (which the standalone prototype did; wrong call for a tool nobody uses on a
+   phone). */
+.board-app{width:100%;min-width:1100px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
-<div class="app">
+<div class="board-app">
   <header class="bar">
     <div class="brand">
       <div class="eyebrow"><a href="{{ url_for('author_catalog') }}" style="color:inherit;">&larr; Author</a> &middot; Palimpsest &middot; Storyboard</div>
