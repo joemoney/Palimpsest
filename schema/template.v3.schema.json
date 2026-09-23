@@ -1,0 +1,695 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palimpsest.internal/schema/template.v3.schema.json",
+  "title": "Palimpsest story template (schema v3)",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": 3 },
+    "story_version": { "type": "string" },
+    "meta": { "$ref": "#/$defs/meta" },
+    "narration": { "$ref": "#/$defs/narration" },
+    "world": { "$ref": "#/$defs/world" },
+    "protagonist": { "$ref": "#/$defs/protagonist" },
+    "mechanics": { "$ref": "#/$defs/mechanics" },
+    "plot": { "$ref": "#/$defs/plot" },
+    "character_creation": { "$ref": "#/$defs/character_creation" }
+  },
+  "required": ["schema_version", "story_version", "meta", "narration", "world", "protagonist", "mechanics", "plot"],
+  "patternProperties": { "^_": true },
+  "additionalProperties": false,
+
+  "$defs": {
+
+    "meta": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "genre": { "type": "string" },
+        "tone": { "type": "string" },
+        "synopsis": { "type": "string" },
+        "content_rules": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["title"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "narration": {
+      "type": "object",
+      "properties": {
+        "pov": { "type": "string" },
+        "option_pov": { "type": "string" },
+        "scene_length": {
+          "type": "object",
+          "properties": { "min": { "type": "integer" }, "max": { "type": "integer" } },
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        },
+        "style": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["pov"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "world": {
+      "type": "object",
+      "properties": {
+        "setting_summary": { "type": "string" },
+        "rules": { "type": "array", "items": { "type": "string" } },
+        "locations": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/location" }
+        },
+        "factions": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/faction" }
+        },
+        "characters": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/character" }
+        }
+      },
+      "required": ["setting_summary", "rules"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "location": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "connected_to": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["name", "description"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "faction": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "goals": { "type": "string" },
+        "relationship_to_player": { "type": "string" }
+      },
+      "required": ["name"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "character": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "role": { "type": "string" },
+        "first_contact": { "type": "string" },
+        "hook": { "type": "string" },
+        "canon": { "type": "object", "additionalProperties": { "type": "string" } }
+      },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "protagonist": {
+      "type": "object",
+      "properties": {
+        "default_name": { "type": "string" },
+        "traits": { "type": "array", "items": { "type": "string" } },
+        "starting_inventory": {
+          "type": "array",
+          "items": { "oneOf": [{ "type": "string" }, { "type": "object" }] }
+        },
+        "stats": { "type": "object", "additionalProperties": { "type": "number" } },
+        "background": { "type": "object", "additionalProperties": { "type": "string" } }
+      },
+      "required": ["default_name"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "character_creation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "prompt": { "type": "string" },
+          "prompt_label": { "type": "string" },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "tagline": { "type": "string" },
+                "starting_stats": { "type": "object", "additionalProperties": { "type": "number" } }
+              },
+              "required": ["id", "name"],
+              "patternProperties": { "^_": true },
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["key", "label", "prompt", "options"],
+        "patternProperties": { "^_": true },
+        "additionalProperties": false
+      }
+    },
+
+    "condition": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "all": { "type": "array", "items": { "$ref": "#/$defs/condition" } },
+        "any": { "type": "array", "items": { "$ref": "#/$defs/condition" } },
+        "not": { "$ref": "#/$defs/condition" },
+        "revelation": { "type": "string" },
+        "flag": { "type": "string" },
+        "item_tag": { "type": "string" },
+        "turn_gte": { "type": "number" },
+        "waypoints_done": {
+          "oneOf": [{ "const": "all" }, { "type": "array", "items": { "type": "string" } }]
+        },
+        "subplot_status": { "type": "object", "additionalProperties": { "type": "string" } },
+        "bond": { "type": "object" },
+        "stat": {
+          "type": "object",
+          "properties": {
+            "axis": { "type": "string" },
+            "at_least": { "type": "number" },
+            "at_most": { "type": "number" },
+            "gte": { "type": "number" },
+            "lte": { "type": "number" }
+          },
+          "required": ["axis"],
+          "additionalProperties": false
+        },
+        "relationship": {
+          "type": "object",
+          "properties": {
+            "character": { "type": "string" },
+            "peak_gte": { "type": "number" },
+            "gte": { "type": "number" },
+            "lte": { "type": "number" }
+          },
+          "required": ["character"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "tier": {
+      "type": "object",
+      "properties": {
+        "at": { "type": "number" },
+        "label": { "type": "string" },
+        "narration": { "type": "string" }
+      },
+      "required": ["at"],
+      "if": { "required": ["narration"] },
+      "then": { "required": ["label"] },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "stat_axis_tier": {
+      "type": "object",
+      "properties": {
+        "at": { "type": "number" },
+        "label": { "type": "string" },
+        "narration": { "type": "string" },
+        "clause_max_words": { "type": "integer" }
+      },
+      "required": ["at"],
+      "if": { "required": ["narration"] },
+      "then": { "required": ["label"] },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "mechanics": {
+      "type": "object",
+      "properties": {
+        "subplots": { "$ref": "#/$defs/engine_subplots" },
+        "inventory": { "$ref": "#/$defs/engine_inventory" },
+        "relationships": { "$ref": "#/$defs/engine_relationships" },
+        "pacing_loop": { "$ref": "#/$defs/engine_pacing_loop" },
+        "progression": { "$ref": "#/$defs/engine_progression" },
+        "stats": { "$ref": "#/$defs/engine_stats" },
+        "revelations": { "$ref": "#/$defs/engine_revelations" },
+        "failure_conditions": { "$ref": "#/$defs/engine_failure_conditions" },
+        "gate": { "$ref": "#/$defs/engine_gate" },
+        "endings": { "$ref": "#/$defs/engine_endings" },
+        "tracked_entity": { "$ref": "#/$defs/tracked_entity" }
+      },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "tracked_entity": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "pacing_note": { "type": "string" },
+        "canon": { "type": "object", "additionalProperties": { "type": "string" } }
+      },
+      "required": ["name", "description"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "engine_subplots": {
+      "type": "object",
+      "properties": {
+        "engine": { "const": "weighted_threads" },
+        "weights": { "type": "object", "additionalProperties": { "type": "number" } }
+      },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "engine_inventory": {
+      "type": "object",
+      "properties": {
+        "engine": { "const": "tagged_items" },
+        "capacity": { "type": "integer" },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "engine_relationships": {
+      "type": "object",
+      "properties": {
+        "engine": { "const": "scored_axis" },
+        "scale": {
+          "type": "object",
+          "properties": { "min": { "type": "number" }, "max": { "type": "number" } },
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        },
+        "axis": {
+          "type": "object",
+          "properties": {
+            "positive": { "type": "string" },
+            "negative": { "type": "string" },
+            "description": { "type": "string" }
+          },
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        },
+        "registers": { "type": "object", "additionalProperties": { "type": "number" } },
+        "limit": { "type": "integer" },
+        "tiers": { "type": "array", "items": { "$ref": "#/$defs/tier" } },
+        "cap_per_window": {
+          "type": "object",
+          "properties": { "turns": { "type": "integer" }, "delta": { "type": "integer" } },
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        },
+        "unreciprocated_factor": { "type": "number" }
+      },
+      "if": { "required": ["engine"] },
+      "then": { "required": ["registers"] },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "engine_pacing_loop": {
+      "type": "object",
+      "properties": {
+        "engine": { "const": "beat_counter" },
+        "beats": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "definition": { "type": "string" },
+              "feeds": { "type": "string" },
+              "resets": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["definition"],
+            "patternProperties": { "^_": true },
+            "additionalProperties": false
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "watch": { "type": "string" },
+              "threshold": {},
+              "threshold_by_act": { "type": "object", "additionalProperties": {} },
+              "max_deferrals": { "type": "integer" },
+              "suppress_when": { "type": "array", "items": { "type": "string" } },
+              "directive": { "type": "string" },
+              "reduced_directive": { "type": "string" }
+            },
+            "required": ["id", "watch"],
+            "patternProperties": { "^_": true },
+            "additionalProperties": false
+          }
+        },
+        "tie_break": { "type": "string" },
+        "counters": { "type": "object", "additionalProperties": { "type": "number" } }
+      },
+      "if": { "required": ["engine"] },
+      "then": { "required": ["beats"] },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "engine_progression": {
+      "type": "object",
+      "properties": {
+        "engine": { "const": "spendable_ledger" },
+        "label": { "type": "string" },
+        "kinds": { "type": "array", "items": { "type": "string" } },
+        "prompt_hint": { "type": "string" }
+      },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "engine_stats": {
+      "type": "object",
+      "properties": {
+        "engine": { "const": "bounded_counter" },
+        "floor": { "type": "number" },
+        "ceiling": { "type": "number" },
+        "visible": { "type": "boolean" },
+        "axes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "floor": { "type": "number" },
+              "ceiling": { "type": "number" },
+              "costs": { "type": "object", "additionalProperties": { "type": "number" } },
+              "per_turn": { "type": "number" },
+              "per_turn_interval": { "type": "integer" },
+              "tiers": { "type": "array", "items": { "$ref": "#/$defs/stat_axis_tier" } }
+            },
+            "patternProperties": { "^_": true },
+            "additionalProperties": false
+          }
+        },
+        "readout": {
+          "type": "object",
+          "properties": {
+            "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+            "token": { "type": "string" },
+            "entry_format": { "type": "string" },
+            "separator": { "type": "string" },
+            "delta_block": {
+              "type": "object",
+              "properties": {
+                "marker": { "type": "string" },
+                "clause_max_words": { "type": "integer" },
+                "clause_max_words_axis": { "type": "string" },
+                "fact_format": { "type": "string" },
+                "separator": { "type": "string" },
+                "wrapper": { "type": "string" }
+              },
+              "patternProperties": { "^_": true },
+              "additionalProperties": false
+            }
+          },
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "engine_revelations": {
+      "type": "object",
+      "properties": {
+        "engine": { "const": "triggered_reveal" },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "trigger": { "type": "string" },
+              "content": { "type": "string" },
+              "after": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["id", "trigger", "content"],
+            "patternProperties": { "^_": true },
+            "additionalProperties": false
+          }
+        }
+      },
+      "if": { "required": ["engine"] },
+      "then": { "required": ["entries"] },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "engine_failure_conditions": {
+      "type": "object",
+      "properties": {
+        "engine": { "const": "triggered_ending" },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "trigger": { "type": "string" },
+              "title": { "type": "string" },
+              "ending_prompt": { "type": "string" }
+            },
+            "required": ["id", "trigger", "ending_prompt"],
+            "patternProperties": { "^_": true },
+            "additionalProperties": false
+          }
+        }
+      },
+      "if": { "required": ["engine"] },
+      "then": { "required": ["conditions"] },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "engine_gate": {
+      "type": "object",
+      "properties": {
+        "engine": { "const": "precondition" },
+        "gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "target": { "type": "string" },
+              "requires": { "$ref": "#/$defs/condition" },
+              "refusal_hint": { "type": "string" }
+            },
+            "required": ["target"],
+            "patternProperties": { "^_": true },
+            "additionalProperties": false
+          }
+        }
+      },
+      "if": { "required": ["engine"] },
+      "then": { "required": ["gates"] },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "engine_endings": {
+      "type": "object",
+      "properties": {
+        "engine": { "const": "ending_funnel" },
+        "check_every": { "type": "integer" },
+        "budget": {
+          "type": "object",
+          "properties": {
+            "open_until": { "type": "integer" },
+            "narrow_until": { "type": "integer" },
+            "commit_by": { "type": "integer" }
+          },
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        },
+        "steer_top": { "type": "integer" },
+        "finale_turns": {
+          "type": "object",
+          "properties": { "min": { "type": "integer" }, "max": { "type": "integer" } },
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/ending_entry" } }
+      },
+      "if": { "required": ["engine"] },
+      "then": { "required": ["entries"] },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "waypoint": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "plant": { "type": "string" },
+        "detect": { "type": "string" },
+        "done_when": { "$ref": "#/$defs/condition" }
+      },
+      "required": ["id", "plant"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "ending_entry": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "enum": ["destination", "terminal"] },
+        "name": { "type": "string" },
+        "viable_while": { "$ref": "#/$defs/condition" },
+        "ready_when": { "$ref": "#/$defs/condition" },
+        "waypoints": { "type": "array", "items": { "$ref": "#/$defs/waypoint" } },
+        "hint": { "type": "string" },
+        "criteria": { "type": "string" },
+        "arc": {
+          "type": "object",
+          "properties": { "title": { "type": "string" }, "description": { "type": "string" } },
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        },
+        "epilogue": { "type": "string" },
+        "min_turn": { "type": "integer" },
+        "trigger": { "type": "string" }
+      },
+      "required": ["id", "kind"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "plot": {
+      "type": "object",
+      "properties": {
+        "main_thread": { "$ref": "#/$defs/main_thread" },
+        "subplots": { "type": "object", "additionalProperties": { "$ref": "#/$defs/subplot" } },
+        "pacing": { "$ref": "#/$defs/pacing" },
+        "initial_scene": { "$ref": "#/$defs/initial_scene" },
+        "opening_scene": { "$ref": "#/$defs/opening_scene" }
+      },
+      "required": ["main_thread", "pacing", "initial_scene", "opening_scene"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "main_thread": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "plot_notes": { "type": "string" },
+        "max_acts": { "type": "integer" },
+        "acts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "act_number": { "type": "integer" },
+              "title": { "type": "string" },
+              "description": { "type": "string" },
+              "completion_signals": { "type": "array", "items": { "type": "string" } },
+              "requires": { "$ref": "#/$defs/condition" },
+              "is_finale": { "type": "boolean" },
+              "optional": { "type": "boolean" }
+            },
+            "required": ["act_number", "title", "description"],
+            "patternProperties": { "^_": true },
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["title", "description", "acts"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "subplot": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "priority": { "type": "string" },
+        "completion_threshold": { "type": "integer" },
+        "ties_to_main_plot": { "type": "string" },
+        "span": { "enum": ["single_act", "multi_act"] },
+        "starts_active": { "type": "boolean" },
+        "role": { "enum": ["spine", "personal", "texture"] },
+        "activate_when": { "$ref": "#/$defs/condition" },
+        "delivers": { "type": "array", "items": { "type": "string" } },
+        "fail_when": { "$ref": "#/$defs/condition" },
+        "on_complete": {
+          "type": "object",
+          "properties": { "stat_events": { "type": "array", "items": { "type": "string" } } },
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "pacing": {
+      "type": "object",
+      "properties": {
+        "nudge_frequency": { "type": "integer" },
+        "act_check_frequency": { "type": "integer" },
+        "max_parallel_subplots": { "type": "integer" }
+      },
+      "required": ["nudge_frequency", "act_check_frequency"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "initial_scene": {
+      "type": "object",
+      "properties": { "location": { "type": "string" }, "summary": { "type": "string" } },
+      "required": ["location", "summary"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "opening_scene": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "narration_before_name": { "type": "string" },
+            "narration_after_name": { "type": "string" }
+          },
+          "required": ["narration_before_name", "narration_after_name"],
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": { "narration": { "type": "string" } },
+          "required": ["narration"],
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

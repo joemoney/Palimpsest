@@ -1,0 +1,54 @@
+{% if saved %}
+<div class="card" style="border-color:#2e7d4f;">
+  <div style="font-weight:700; color:#2e7d4f;">Saved.</div>
+  <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">story_version {{ story_version }}</div>
+</div>
+{% endif %}
+
+{% if errors %}
+<div class="card" style="border-color:#b0322c;">
+  <div style="font-weight:700; color:#b0322c;">{{ errors|length }} error{{ 's' if errors|length != 1 }} - save blocked</div>
+  <ul style="margin:8px 0 0; padding-left:20px;">
+    {% for issue in errors %}
+    <li style="font-size:0.9rem;">
+      <code style="font-size:0.75rem; color:var(--muted);">{{ issue.id }}</code>
+      {{ issue.message }}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if warnings %}
+<div class="card" style="border-color:#a86a10;">
+  <div style="font-weight:700; color:#a86a10;">{{ warnings|length }} warning{{ 's' if warnings|length != 1 }}</div>
+  <ul style="margin:8px 0 0; padding-left:20px;">
+    {% for issue in warnings %}
+    <li style="font-size:0.9rem;">
+      <code style="font-size:0.75rem; color:var(--muted);">{{ issue.id }}</code>
+      {{ issue.message }}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if not errors and not warnings and not saved %}
+<div class="card">No issues found.</div>
+{% endif %}
+
+{% if diff %}
+<div class="card">
+  <div style="font-weight:700; margin-bottom:6px;">Changes</div>
+  <pre style="font-size:0.8rem; overflow-x:auto; white-space:pre-wrap;">{{ diff if diff.strip() else "(no changes)" }}</pre>
+</div>
+{% endif %}
+
+{% if can_save %}
+<button type="button" class="button-link" style="border:none; cursor:pointer;"
+        hx-post="{{ url_for('author_save', story_slug=story_slug) }}"
+        hx-vals="js:{model: JSON.stringify(getBoardModel())}"
+        hx-target="#author-results" hx-swap="innerHTML">
+  Confirm &amp; Save
+</button>
+{% endif %}

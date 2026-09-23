@@ -1,3 +1,5 @@
+import difflib
+import json
 import os
 import re
 import threading
@@ -7,6 +9,8 @@ from functools import wraps
 from dotenv import load_dotenv
 from flask import Flask, Response, redirect, render_template, request, session, url_for
 
+import author_lint
+import author_model
 import label_sheet
 import mechanics
 import plot_manager
@@ -584,7 +588,7 @@ def plot_manager_view(story_slug):
             plot_manager.stage_steering_seed(ctx, request.form.get("note", ""))
         elif command == "seed-apply":
             overrides = {}
-            for field in ("name", "title", "description", "role", "relationship_to_player", "hook", "priority", "ties_to_main_plot", "span"):
+            for field in ("name", "title", "description", "role", "first_contact", "hook", "priority", "ties_to_main_plot", "span"):
                 if request.form.get(field):
                     overrides[field] = request.form[field]
             plot_manager.apply_steering_seed(ctx, request.form.get("seed_id", ""), **overrides)
@@ -592,7 +596,7 @@ def plot_manager_view(story_slug):
             plot_manager.discard_steering_seed(ctx, request.form.get("seed_id", ""))
         elif command == "promote-relationship":
             overrides = {}
-            for field in ("description", "role", "relationship_to_player", "hook"):
+            for field in ("description", "role", "first_contact", "hook"):
                 if request.form.get(field):
                     overrides[field] = request.form[field]
             plot_manager.promote_relationship_to_npc(ctx, request.form.get("name", ""), **overrides)
@@ -664,6 +668,156 @@ def subplot_manager_view(story_slug):
         pacing=pacing_view, endgame=plot_state["endgame"], memory_fragments=memory_fragments,
         entity_contact_count=plot_state["entity_contact_count"],
         tracked_entity_name=tracked_entity["name"] if tracked_entity else "Entity",
+    )
+
+
+# --- Authoring tool (AUTHORING_TOOL_PHASES.md Phase S1) -----------------------------------
+#
+# The board writes final template paths directly (decision D1) and spends write access + API
+# credit, so it's restricted the same way /labels is: a feature kill-switch plus an allow-list
+# of account ids, both required, 404 rather than 403 so an unauthorised caller doesn't learn
+# the route exists.
+
+def _author_enabled_or_404():
+    if os.environ.get("AUTHOR_ENABLED", "").strip() != "1":
+        return True
+    allowed = {u.strip() for u in os.environ.get("AUTHOR_USER_IDS", "").split(",") if u.strip()}
+    return session.get("user_id", "") not in allowed
+
+
+def _author_template_diff(raw: dict, written: dict) -> str:
+    """A unified diff for the confirm-before-save fragment - display only, never written to
+    disk (state_store._dumps_template is what actually serialises a save)."""
+    before = json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True).splitlines()
+    after = json.dumps(written, indent=2, ensure_ascii=False, sort_keys=True).splitlines()
+    return "\n".join(difflib.unified_diff(before, after, fromfile="on disk", tofile="edited", lineterm=""))
+
+
+def _author_load_and_lint(story_slug: str, model_json: str):
+    """Common half of validate and save: parse the board's posted model, patch it onto the
+    on-disk template (author_model.from_board_model never regenerates - CLAUDE.md), and run
+    the S1 lint subset. Raises ValueError with a user-facing message if the posted JSON
+    itself can't even be parsed."""
+    try:
+        model = json.loads(model_json)
+    except (json.JSONDecodeError, TypeError) as e:
+        raise ValueError(f"The board sent an unreadable model: {e}")
+    raw = state_store.load_template_raw(story_slug)
+    written = author_model.from_board_model(raw, model)
+    issues = author_lint.lint(written, model)
+    return raw, written, issues
+
+
+def _author_validate_response(story_slug, model_json, *, save_on_success):
+    try:
+        raw, written, issues = _author_load_and_lint(story_slug, model_json)
+    except (ValueError, FileNotFoundError) as e:
+        return render_template(
+            "_author_validate_result.html", story_slug=story_slug,
+            errors=[{"id": "L01", "severity": "error", "message": str(e)}],
+            warnings=[], diff=None, can_save=False, saved=False,
+        )
+    errors = [i for i in issues if i["severity"] == "error"]
+    warnings = [i for i in issues if i["severity"] == "warning"]
+    if errors:
+        return render_template(
+            "_author_validate_result.html", story_slug=story_slug,
+            errors=errors, warnings=warnings,
+            diff=_author_template_diff(raw, written), can_save=False, saved=False,
+        )
+    if not save_on_success:
+        return render_template(
+            "_author_validate_result.html", story_slug=story_slug,
+            errors=[], warnings=warnings,
+            diff=_author_template_diff(raw, written), can_save=True, saved=False,
+        )
+    new_version = state_store.write_template(story_slug, written)
+    return render_template(
+        "_author_validate_result.html", story_slug=story_slug,
+        errors=[], warnings=warnings, diff=None, can_save=False,
+        saved=True, story_version=new_version,
+    )
+
+
+@app.route("/author", methods=["GET"])
+@login_required
+def author_catalog():
+    if _author_enabled_or_404():
+        return ("Not found.", 404)
+    return render_template("author_catalog.html", stories=state_store.list_stories())
+
+
+@app.route("/author/<story_slug>/board", methods=["GET"])
+@login_required
+def author_board(story_slug):
+    if _author_enabled_or_404():
+        return ("Not found.", 404)
+    try:
+        raw = state_store.load_template_raw(story_slug)
+    except (ValueError, FileNotFoundError):
+        return ("No such story.", 404)
+    model = author_model.to_board_model(raw)
+    # </ escaped so no authored field (an NPC hook, a waypoint plant...) can break out of the
+    # <script type="application/json"> tag this is embedded in.
+    model_json = json.dumps(model).replace("</", "<\\/")
+    return render_template(
+        "author_board.html", story_slug=story_slug, model_json=model_json,
+        story_title=raw.get("meta", {}).get("title", story_slug),
+    )
+
+
+@app.route("/author/<story_slug>/api/validate", methods=["POST"])
+@login_required
+def author_validate(story_slug):
+    if _author_enabled_or_404():
+        return ("Not found.", 404)
+    return _author_validate_response(story_slug, request.form.get("model", ""), save_on_success=False)
+
+
+@app.route("/author/<story_slug>/api/save", methods=["POST"])
+@login_required
+def author_save(story_slug):
+    if _author_enabled_or_404():
+        return ("Not found.", 404)
+    return _author_validate_response(story_slug, request.form.get("model", ""), save_on_success=True)
+
+
+@app.route("/author/<story_slug>/raw", methods=["GET", "POST"])
+@login_required
+def author_raw(story_slug):
+    if _author_enabled_or_404():
+        return ("Not found.", 404)
+    if request.method == "GET":
+        try:
+            raw = state_store.load_template_raw(story_slug)
+        except (ValueError, FileNotFoundError):
+            return ("No such story.", 404)
+        text = json.dumps(raw, indent=2, ensure_ascii=False) + "\n"
+        return render_template("author_raw.html", story_slug=story_slug, text=text, errors=[], saved=False)
+
+    text = request.form.get("raw", "")
+    try:
+        raw = json.loads(text)
+    except (json.JSONDecodeError, TypeError) as e:
+        return render_template(
+            "author_raw.html", story_slug=story_slug, text=text,
+            errors=[{"id": "L01", "severity": "error", "message": f"Not valid JSON: {e}"}], saved=False,
+        )
+    # The raw route is a board-adjacent write path (it goes through write_template, same as
+    # the board), so it normalises to v3 the same way author_model.from_board_model does -
+    # otherwise every existing v2 story would fail schema_version's const check on its very
+    # first untouched save through this escape hatch.
+    raw["schema_version"] = author_model.TEMPLATE_SCHEMA_VERSION
+    model = author_model.to_board_model(raw)
+    issues = author_lint.lint(raw, model)
+    errors = [i for i in issues if i["severity"] == "error"]
+    if errors:
+        return render_template("author_raw.html", story_slug=story_slug, text=text, errors=errors, saved=False)
+    new_version = state_store.write_template(story_slug, raw)
+    text = json.dumps(raw, indent=2, ensure_ascii=False) + "\n"
+    return render_template(
+        "author_raw.html", story_slug=story_slug, text=text, errors=[],
+        saved=True, story_version=new_version,
     )
 
 

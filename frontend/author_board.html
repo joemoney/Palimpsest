@@ -1,0 +1,967 @@
+{% extends "base.html" %}
+{% block title %}Storyboard - {{ story_title }} - Palimpsest{% endblock %}
+{% block header_title %}{% endblock %}
+{% block content %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+:root{color-scheme:light;box-sizing:border-box}
+[hidden]:not([hidden=until-found i]){display:none!important}
+:root{
+  --ground:#E9EDF1; --surface:#FFFFFF; --raised:#F5F7F9;
+  --ink:#16202B; --muted:#5A6674; --line:#C8D0D9; --grid:#CFD6DE;
+  --focus:#2F5D8A;
+  --r-spine:#2F5D8A; --r-personal:#A2476B; --r-texture:#7D6E52;
+  --e1:#6A4FA3; --e2:#B24C6C; --e3:#1D7A6C; --e4:#4E6A86;
+  --terminal:#B0482C; --warn:#A86A10; --warn-bg:#FBF1DE; --err:#B0322C; --err-bg:#FBE6E4;
+  --start-bg:#16202B; --start-ink:#F2F5F8; --start-muted:#AEB9C5;
+  --shadow:0 1px 2px rgba(22,32,43,.08),0 4px 14px rgba(22,32,43,.06);
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --display:'Archivo Narrow','Arial Narrow',Arial,sans-serif;
+  --body:'Public Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0F151C; --surface:#18212B; --raised:#1E2934;
+    --ink:#E3E9EF; --muted:#93A1B0; --line:#2E3B49; --grid:#232F3B;
+    --focus:#7FB0DE;
+    --r-spine:#7FB0DE; --r-personal:#E08AA8; --r-texture:#C4B08A;
+    --e1:#A68FE0; --e2:#E88AA5; --e3:#5CC3B2; --e4:#9BB4CC;
+    --terminal:#E57F60; --warn:#E3AC4F; --warn-bg:#35291A; --err:#F08A80; --err-bg:#3A2020;
+    --start-bg:#E3E9EF; --start-ink:#101820; --start-muted:#4C5966;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.25);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0F151C; --surface:#18212B; --raised:#1E2934;
+  --ink:#E3E9EF; --muted:#93A1B0; --line:#2E3B49; --grid:#232F3B;
+  --focus:#7FB0DE;
+  --r-spine:#7FB0DE; --r-personal:#E08AA8; --r-texture:#C4B08A;
+  --e1:#A68FE0; --e2:#E88AA5; --e3:#5CC3B2; --e4:#9BB4CC;
+  --terminal:#E57F60; --warn:#E3AC4F; --warn-bg:#35291A; --err:#F08A80; --err-bg:#3A2020;
+  --start-bg:#E3E9EF; --start-ink:#101820; --start-muted:#4C5966;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.25);
+}
+html,body{height:100%}
+body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45}
+*{box-sizing:border-box}
+button,input,select,textarea{font:inherit;color:inherit}
+.app{display:grid;grid-template-rows:auto 1fr;height:100%}
+
+/* ---- top bar ---- */
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;padding-block:10px;padding-inline:16px;background:var(--surface);border-bottom:1px solid var(--line)}
+.brand{margin-right:auto;min-width:0}
+.eyebrow{font:500 11px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.brand h1{font:700 21px/1.1 var(--display);margin:3px 0 0;letter-spacing:.01em;text-wrap:balance}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.viewTabs{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.tab{height:32px;padding:0 14px;border:none;background:var(--surface);cursor:pointer;font-size:13px;font-weight:500;color:var(--muted)}
+.tab.active{background:var(--ink);color:var(--surface)}
+.tab+.tab{border-left:1px solid var(--line)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface);cursor:pointer;font-size:13px;font-weight:500;white-space:nowrap}
+.btn:hover{background:var(--raised)}
+.btn:focus-visible,.node:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.issue:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.btn.primary{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.btn.primary:hover{opacity:.9;background:var(--ink)}
+.btn.danger{color:var(--err);border-color:var(--err)}
+.btn.small{height:26px;padding:0 9px;font-size:12px}
+.toggle{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
+.toggle input{accent-color:var(--focus);margin:0}
+.health{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--warn);background:var(--warn-bg);color:var(--warn);font:500 12px var(--mono);cursor:pointer}
+.health.ok{border-color:var(--e3);color:var(--e3);background:transparent}
+.sep{width:1px;height:22px;background:var(--line)}
+#status{font:12px var(--mono);color:var(--muted);min-height:1em}
+
+/* ---- main ---- */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:0}
+.canvas{position:relative;overflow:hidden;touch-action:none;cursor:grab;
+  background-color:var(--ground);
+  background-image:radial-gradient(var(--grid) 1.2px,transparent 1.3px);background-size:24px 24px}
+.canvas.panning{cursor:grabbing}
+.world{position:absolute;left:0;top:0;transform-origin:0 0}
+svg.edges{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible}
+.edge{fill:none;stroke-width:2;transition:opacity .15s}
+.edge.opens{stroke:var(--muted)}
+.edge.unlocks{stroke:var(--muted);stroke-dasharray:6 5}
+.edge.sel{stroke-width:3.5}
+.hit{fill:none;stroke:transparent;stroke-width:16;pointer-events:stroke;cursor:pointer}
+.arrow{transition:opacity .15s}
+.temp{fill:none;stroke:var(--focus);stroke-width:2;stroke-dasharray:4 4}
+
+.colhead{position:absolute;font:500 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.colhead b{display:block;font:600 15px/1.2 var(--display);letter-spacing:.02em;text-transform:none;color:var(--ink);margin-top:5px}
+
+.node{position:absolute;width:236px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);cursor:pointer;user-select:none;transition:opacity .15s}
+.node .head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 12px 0;font:500 10.5px/1.2 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--k)}
+.node h3{font:600 17.5px/1.15 var(--display);margin:5px 12px 4px;letter-spacing:.005em;text-wrap:balance}
+.node p{margin:0 12px 10px;color:var(--muted);font-size:12.5px;line-height:1.42}
+.node .foot{border-top:1px solid var(--line);padding:6px 12px 7px;display:flex;gap:6px 8px;flex-wrap:wrap;align-items:center;font:11px/1.3 var(--mono);color:var(--muted)}
+.chip{display:inline-block;padding:1px 7px;border-radius:999px;border:1px solid currentColor;font:500 10px/1.5 var(--mono);letter-spacing:.04em;text-transform:none}
+.node.start{background:var(--start-bg);color:var(--start-ink);border-color:var(--start-bg);border-radius:18px}
+.node.start p,.node.start .foot{color:var(--start-muted)}
+.node.start .foot{border-top-color:color-mix(in srgb,var(--start-muted) 35%,transparent)}
+.node.start .head{color:var(--start-muted)}
+.node.ending{border:1.5px solid var(--k);outline:1px solid color-mix(in srgb,var(--k) 35%,transparent);outline-offset:3px}
+.node.terminal{border:1.5px dashed var(--terminal);box-shadow:none;background:var(--raised)}
+.node.sel{box-shadow:0 0 0 2px var(--focus),var(--shadow)}
+.node.ending.sel{outline:2px solid var(--focus)}
+.dim{opacity:.22}
+.hidden{display:none!important}
+.port{position:absolute;right:-8px;top:50%;width:16px;height:16px;margin-top:-8px;border-radius:50%;background:var(--surface);border:2px solid var(--k);cursor:crosshair}
+.port:hover{background:var(--k)}
+.node.start .port{background:var(--start-bg);border-color:var(--start-muted)}
+.dots{display:inline-flex;gap:4px;align-items:center}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--k);display:inline-block;flex:none}
+.dot.open{background:transparent;border:1.5px solid var(--warn)}
+.wprows{display:grid;margin:0 0 2px}
+.wprow{display:flex;align-items:center;gap:7px;padding:4px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);line-height:1.3}
+
+/* ---- matrix view ---- */
+#matrixView{grid-row:2;display:none;overflow:auto;background:var(--surface)}
+.main{grid-row:2}
+.matrixWrap{padding:18px}
+table.matrix{border-collapse:separate;border-spacing:0;font-size:12.5px}
+table.matrix th,table.matrix td{border:1px solid var(--line);padding:0;background:var(--surface)}
+.corner{position:sticky;left:0;top:0;z-index:3;background:var(--surface);min-width:230px;text-align:left;padding:8px 10px!important;font:600 12.5px var(--display);vertical-align:bottom}
+th.endhead{position:sticky;top:0;z-index:2;background:var(--raised);color:var(--k);font:600 12px var(--display);padding:7px 8px!important;text-align:center;border-bottom:2px solid var(--k)}
+th.wphead{position:sticky;top:34px;z-index:2;background:var(--surface);color:var(--muted);font:500 10px var(--mono);padding:6px 5px!important;max-width:110px;white-space:normal;text-align:center;line-height:1.25}
+th.rowhead{position:sticky;left:0;z-index:1;background:var(--surface);text-align:left;padding:7px 10px!important;white-space:nowrap;font-size:12.5px;border-left:3px solid var(--k)}
+td.cell{text-align:center;min-width:46px}
+td.cell.empty{color:var(--muted)}
+.mdot{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line);background:transparent;cursor:pointer;margin:9px auto;display:block;padding:0}
+.mdot.on{background:var(--k);border-color:var(--k)}
+.mdot:hover{border-color:var(--k)}
+.colwarn{background:var(--err-bg)!important}
+
+.elabel{position:absolute;transform:translate(-50%,-50%);font:500 10.5px/1.5 var(--mono);background:var(--surface);border:1px solid currentColor;border-radius:999px;padding:0 8px;white-space:nowrap;cursor:pointer;max-width:260px;overflow:hidden;text-overflow:ellipsis;transition:opacity .15s}
+.elabel.cond{color:var(--muted);border-style:dashed}
+.elabel.unset{color:var(--err);background:var(--err-bg)}
+
+.overlay{position:absolute;display:flex;gap:6px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;box-shadow:var(--shadow)}
+.zoom{right:12px;bottom:12px}
+.legend{left:12px;bottom:12px;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);max-width:calc(100% - 180px)}
+.legend span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.legend svg{width:30px;height:8px;overflow:visible}
+
+/* ---- inspector ---- */
+.inspector{border-left:1px solid var(--line);background:var(--surface);overflow:auto;padding:18px 18px 28px;min-height:0}
+.inspector h2{font:700 19px/1.15 var(--display);margin:4px 0 12px;text-wrap:balance}
+.inspector h4{font:500 11px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px}
+.field{display:grid;gap:5px;margin-bottom:12px}
+.field label{font-size:12px;font-weight:600;color:var(--muted)}
+.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:6px;background:var(--raised);padding:7px 9px;font-size:13.5px}
+.field textarea{min-height:84px;resize:vertical;line-height:1.45}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.note{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+.list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.wp{border:1px solid var(--line);border-radius:7px;padding:8px 9px;display:grid;gap:6px;background:var(--raised)}
+.wp .id{font:500 11px var(--mono);color:var(--muted);display:flex;justify-content:space-between;gap:8px;align-items:center}
+.wp input{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:5px 7px;font-size:13px}
+.carriers{font-size:12px;color:var(--muted)}
+.carriers.none{color:var(--warn);font-weight:600}
+.issue{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start;padding:8px 10px;border-radius:7px;cursor:pointer;border:1px solid transparent;background:var(--warn-bg);color:var(--ink);text-align:left;width:100%}
+.issue.error{background:var(--err-bg)}
+.issue:hover{border-color:var(--line)}
+.sev{font:600 10px/1.6 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--warn);padding-top:1px}
+.issue.error .sev{color:var(--err)}
+.issue span:last-child{font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 6px}
+.stat{border:1px solid var(--line);border-radius:7px;padding:8px 10px}
+.stat b{display:block;font:600 22px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.stat small{color:var(--muted);font-size:11.5px}
+.tips{margin:0;padding-left:18px;color:var(--muted);font-size:12.5px;display:grid;gap:5px}
+kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px}
+
+/* ---- visibility badges ---- */
+.vis{display:inline-block;margin-left:7px;padding:0 6px;border-radius:999px;border:1px solid currentColor;font:500 9.5px/1.55 var(--mono);letter-spacing:.05em;text-transform:uppercase;vertical-align:1px}
+.vis.narrator{color:var(--focus)}
+.vis.stored{color:var(--muted)}
+.vis.author{color:var(--muted);border-style:dashed}
+.fieldnote{font-size:11.5px;color:var(--muted);margin-top:-1px}
+.fieldnote.warn{color:var(--warn);font-weight:600}
+.fieldnote.err{color:var(--err);font-weight:600}
+
+/* ---- cast view ---- */
+#castView{display:none;overflow:auto;min-height:0;background:var(--ground)}
+.castWrap{padding:18px 16px 28px;display:grid;gap:14px;align-content:start}
+.castHead{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:end;justify-content:space-between}
+.castHead h2{font:700 19px/1.15 var(--display);margin:3px 0 0}
+.castGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.ccard{display:grid;align-content:start;text-align:left;padding:0;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--k);border-radius:8px;box-shadow:var(--shadow);cursor:pointer;color:var(--ink);transition:opacity .15s}
+.ccard:hover{border-color:color-mix(in srgb,var(--k) 55%,var(--line));border-left-color:var(--k)}
+.ccard:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.ccard.sel{box-shadow:0 0 0 2px var(--focus),var(--shadow)}
+.ccard .head{display:flex;justify-content:space-between;gap:8px;padding:9px 12px 0;font:500 10.5px/1.2 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--k)}
+.ccard h3{font:600 17.5px/1.15 var(--display);margin:5px 12px 2px;text-wrap:balance}
+.ccard .role{margin:0 12px 6px;font-size:12px;color:var(--muted);font-style:italic}
+.ccard p{margin:0 12px 10px;color:var(--muted);font-size:12.5px;line-height:1.42;display:-webkit-box;-webkit-line-clamp:4;line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.ccard .foot{border-top:1px solid var(--line);padding:6px 12px 7px;display:flex;gap:6px 8px;flex-wrap:wrap;align-items:center;font:11px/1.3 var(--mono);color:var(--muted)}
+.chip.warn{color:var(--warn)}
+.chip.err{color:var(--err);background:var(--err-bg)}
+.canonrow{border:1px dashed var(--line);border-radius:7px;padding:8px 9px;display:grid;gap:6px;background:var(--raised)}
+.canonrow input,.canonrow textarea{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:5px 7px;font-size:13px}
+.canonrow textarea{min-height:64px;resize:vertical;line-height:1.45}
+.linkchips{display:flex;flex-wrap:wrap;gap:6px}
+.linkchip{height:24px;padding:0 9px;border:1px solid var(--k,var(--line));color:var(--k,var(--ink));border-radius:999px;background:var(--surface);cursor:pointer;font:500 11.5px var(--body)}
+.linkchip:hover{background:var(--raised)}
+
+/* ---- validate/save results ---- */
+#author-results{display:grid;gap:8px}
+#author-results .card{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface)}
+
+@media (max-width:900px){
+  html,body{height:auto}
+  .app{height:auto}
+  .main{grid-template-columns:1fr}
+  .canvas{height:64vh}
+  .inspector{border-left:0;border-top:1px solid var(--line)}
+  .legend{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <div class="eyebrow"><a href="{{ url_for('author_catalog') }}" style="color:inherit;">&larr; Author</a> &middot; Palimpsest &middot; Storyboard</div>
+      <h1 id="storyTitle">{{ story_title }}</h1>
+    </div>
+    <div class="tools">
+      <div class="viewTabs" role="tablist">
+        <button class="tab active" id="tabDiagram" type="button" role="tab" aria-selected="true">Diagram</button>
+        <button class="tab" id="tabMatrix" type="button" role="tab" aria-selected="false">Matrix</button>
+        <button class="tab" id="tabCast" type="button" role="tab" aria-selected="false">Cast</button>
+      </div>
+      <span class="sep" aria-hidden="true"></span>
+      <label class="toggle"><input type="checkbox" id="tLabels" checked> Waypoint labels</label>
+      <label class="toggle"><input type="checkbox" id="tUnlocks" checked> Unlock links</label>
+      <label class="toggle"><input type="checkbox" id="tFocus"> Focus (hide unrelated)</label>
+      <span class="sep" aria-hidden="true"></span>
+      <button class="btn" id="autoLayoutBtn" type="button">Auto-layout</button>
+      <button class="btn" id="addThread" type="button">+ Thread</button>
+      <button class="btn" id="addEnding" type="button">+ Ending</button>
+      <a class="btn" href="{{ url_for('author_raw', story_slug=story_slug) }}">Raw JSON</a>
+      <button class="btn" type="button"
+              hx-post="{{ url_for('author_validate', story_slug=story_slug) }}"
+              hx-vals="js:{model: JSON.stringify(getBoardModel())}"
+              hx-target="#author-results" hx-swap="innerHTML">Validate</button>
+      <button class="btn primary" type="button"
+              hx-post="{{ url_for('author_save', story_slug=story_slug) }}"
+              hx-vals="js:{model: JSON.stringify(getBoardModel())}"
+              hx-target="#author-results" hx-swap="innerHTML">Save</button>
+      <button class="health" id="healthBtn" type="button" aria-label="Show story health"></button>
+    </div>
+    <div id="status" role="status" aria-live="polite" style="flex-basis:100%"></div>
+    <div id="author-results" style="flex-basis:100%"></div>
+  </header>
+
+  <div class="main">
+    <div class="canvas" id="canvas" aria-label="Storyboard canvas">
+      <div class="world" id="world">
+        <svg class="edges" id="edges" aria-hidden="true"></svg>
+      </div>
+      <div class="overlay legend" aria-hidden="true">
+        <span><svg viewBox="0 0 30 8"><path d="M0 4H30" stroke="var(--muted)" stroke-width="2"/></svg>opens at start</span>
+        <span><svg viewBox="0 0 30 8"><path d="M0 4H30" stroke="var(--muted)" stroke-width="2" stroke-dasharray="6 5"/></svg>unlocks</span>
+        <span><svg viewBox="0 0 30 8"><path d="M0 4H30" stroke="var(--e2)" stroke-width="2.4"/></svg>delivers toward ending</span>
+        <span><i class="dot" style="--k:var(--e3)"></i>waypoint covered</span>
+        <span><i class="dot open"></i>waypoint with no thread</span>
+      </div>
+      <div class="overlay zoom">
+        <button class="btn small" id="zOut" type="button" aria-label="Zoom out">&minus;</button>
+        <button class="btn small" id="zFit" type="button">Fit</button>
+        <button class="btn small" id="zIn" type="button" aria-label="Zoom in">+</button>
+      </div>
+    </div>
+    <div id="castView" aria-label="Authored cast"></div>
+    <aside class="inspector" id="inspector" aria-live="polite"></aside>
+  </div>
+  <div id="matrixView" aria-label="Thread by waypoint matrix"></div>
+</div>
+
+<script type="application/json" id="board-data">{{ model_json|safe }}</script>
+
+<script>
+(function(){
+const ROLE_NOTE={spine:'Carries waypoints toward an ending.',personal:'A relationship arc; may carry waypoints.',texture:'Episodic breathing room. Generated freely, carries nothing, closes within the act.'};
+
+const clone=o=>JSON.parse(JSON.stringify(o));
+// Seeded server-side from author_model.to_board_model(state_store.load_template_raw(slug)) -
+// nothing here reads or writes localStorage, and nothing touches disk until Validate/Save
+// post back to the server (AUTHORING_TOOL_PHASES.md Phase S1, decision D4).
+let model = JSON.parse(document.getElementById('board-data').textContent);
+window.getBoardModel = () => model;
+
+let view={x:24,y:60,k:.7};
+let sel=null;              // {type:'node',id} | {type:'edge',key}
+let showHealth=false;
+let viewMode='diagram';
+const opts={labels:true,unlocks:true,focus:false};
+
+const $=s=>document.querySelector(s);
+const canvas=$('#canvas'),world=$('#world'),svg=$('#edges'),insp=$('#inspector');
+const NS='http://www.w3.org/2000/svg';
+
+// The board keeps everything in memory until an explicit Validate/Save round-trips to the
+// server (see the toolbar buttons above) - this used to persist to localStorage in the
+// standalone prototype; here it's a deliberate no-op so every existing call site (dozens of
+// them, below) stays correct without individually being audited.
+function save(){}
+function node(id){return model.nodes.find(n=>n.id===id)}
+function say(msg){const s=$('#status');s.textContent=msg;clearTimeout(say.t);say.t=setTimeout(()=>s.textContent='',4000)}
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+function kcol(n){
+  if(n.kind==='start')return 'var(--start-muted)';
+  if(n.kind==='subplot')return `var(--r-${n.role})`;
+  return n.ekind==='terminal'?'var(--terminal)':`var(--${n.color||'e4'})`;
+}
+function gkey(e){return e.from+'|'+e.to+'|'+e.type+(e.type==='delivers'?'|'+(e.wp||''):'')}
+function groups(){
+  const m=new Map();
+  for(const e of model.edges){const k=gkey(e);if(!m.has(k))m.set(k,{key:k,type:e.type,from:e.from,to:e.to,items:[]});m.get(k).items.push(e)}
+  return [...m.values()];
+}
+function carriers(end){
+  const m={};(end.waypoints||[]).forEach(w=>m[w.id]=[]);
+  model.edges.forEach(e=>{if(e.type==='delivers'&&e.to===end.id&&e.wp&&m[e.wp])m[e.wp].push(e.from)});
+  return m;
+}
+function incoming(id){return model.edges.filter(e=>e.to===id&&(e.type==='opens'||e.type==='unlocks'))}
+
+/* ---------- cast (world.characters) ---------- */
+function chr(name){return model.characters.find(c=>c.name===name)}
+function words(s){return (s||'').trim().split(/\s+/).filter(Boolean).length}
+// Mirrors story_engine's pacing nudge: un-introduced characters with a hook, authored order,
+// last two only. At story start nobody is introduced, so this is the opening set.
+function nudged(){return model.characters.filter(c=>(c.hook||'').trim()).slice(-2).map(c=>c.name)}
+// The schema has no character-to-thread field, so this is prose matching only: the full name
+// (minus any parenthetical) or its first word.
+const NAME_STOP=new Set(['the','new','old','young','mr','mrs','ms','miss','dr','sir','lady','lord','captain']);
+function nameKeys(c){const full=c.name.replace(/\s*\(.*?\)\s*/g,' ').trim();const first=full.split(/\s+/)[0].replace(/\W+$/,'');
+  return [...new Set([full,NAME_STOP.has(first.toLowerCase())?'':first].filter(s=>s.length>=3))]}
+function mentions(c){
+  const keys=nameKeys(c);if(!keys.length)return [];
+  const hit=s=>keys.some(k=>new RegExp('\\b'+k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i').test(s||''));
+  return model.nodes.filter(n=>n.kind!=='start'&&(hit(n.title)||hit(n.theme)||(n.waypoints||[]).some(w=>hit(w.plant))));
+}
+function namedIn(n){return model.characters.filter(c=>mentions(c).includes(n))}
+// L03 canon leak: a 40+ character run of author-only canon appearing in a prompted field.
+// Client-side copy for instant highlighting only - the authoritative check is
+// backend/author_lint.py, run server-side on Validate/Save (decision D3).
+function norm(s){return (s||'').toLowerCase().replace(/\s+/g,' ').trim()}
+function canonLeaks(c){
+  const out=[];
+  for(const f of ['description','first_contact','hook']){
+    const hay=norm(c[f]);if(hay.length<40)continue;
+    for(const {k,v} of c.canon||[]){const t=norm(v);
+      for(let i=0;i+40<=t.length;i+=4)if(hay.includes(t.slice(i,i+40))){out.push({field:f,key:k});break}}
+  }
+  return out;
+}
+
+/* ---------- health ---------- */
+// Live, client-side, structural-only checks for instant feedback while editing - not the
+// authoritative gate. The authoritative version is backend/author_lint.py, run server-side
+// by Validate/Save (decision D3): "no parallel JS implementation that could disagree with
+// the engine." These are pure JSON-shape checks (no condition truth, no engine lookup), so
+// there's nothing here for the two to disagree about - but the server always has final say.
+function issues(){
+  const out=[];
+  const ends=model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='destination');
+  if(!ends.some(n=>n.catchAll))out.push({lvl:'error',text:'No catch-all ending. If every other ending is ruled out, the story has nowhere to go.',id:null});
+  for(const n of ends){
+    const c=carriers(n);const threads=new Set(Object.values(c).flat());
+    if(!(n.waypoints||[]).length)out.push({lvl:'warn',text:`${n.title} has no waypoints, so nothing steers the story toward it.`,id:n.id});
+    else if(!threads.size)out.push({lvl:'error',text:`Nothing leads to ${n.title}: no thread carries any of its waypoints.`,id:n.id});
+    else if(threads.size===1&&!n.catchAll)out.push({lvl:'warn',text:`${n.title} rests on one thread (${node([...threads][0]).title}). If that thread fails, the ending is lost.`,id:n.id});
+    for(const w of n.waypoints||[])if(!c[w.id].length&&threads.size)out.push({lvl:'warn',text:`${n.title}: "${w.plant}" has no thread to carry it.`,id:n.id});
+  }
+  for(const e of model.edges)if(e.type==='delivers'&&!e.wp)out.push({lvl:'error',text:`${node(e.from).title} → ${node(e.to).title}: choose which waypoint this thread delivers.`,edge:gkey(e)});
+  for(const n of model.nodes.filter(n=>n.kind==='subplot')){
+    if(!incoming(n.id).length)out.push({lvl:'error',text:`${n.title} never becomes active: nothing opens or unlocks it.`,id:n.id});
+    const carries=model.edges.some(e=>e.type==='delivers'&&e.from===n.id);
+    if(n.role==='spine'&&!carries)out.push({lvl:'warn',text:`${n.title} is a spine thread but carries no waypoint.`,id:n.id});
+    if(n.role==='texture'&&carries)out.push({lvl:'warn',text:`${n.title} is texture but carries waypoints. Make it spine or personal.`,id:n.id});
+  }
+  const seen=new Set();
+  for(const c of model.characters){
+    if(!c.name.trim())out.push({lvl:'error',text:'A character has no name. The name is its key in world.characters.',char:c.name});
+    else if(seen.has(c.name))out.push({lvl:'error',text:`Two characters are named ${c.name}. The second overwrites the first on save.`,char:c.name});
+    seen.add(c.name);
+    for(const l of canonLeaks(c))out.push({lvl:'error',text:`${c.name}: the ${l.field} repeats canon "${l.key}". It reaches the narrator, so the secret is played from turn one.`,char:c.name});
+    if(!(c.description||'').trim())out.push({lvl:'warn',text:`${c.name} has no description, so the narrator gets the name and nothing else.`,char:c.name});
+  }
+  const hooked=model.characters.filter(c=>(c.hook||'').trim());
+  if(hooked.length>2){const n=nudged();for(const c of hooked)if(!n.includes(c.name))out.push({lvl:'warn',text:`${c.name}'s hook waits: only the last two characters with hooks are nudged in, until one of them is introduced.`,char:c.name})}
+  return out;
+}
+
+/* ---------- render ---------- */
+// The canvas measures nodes as it draws, so it only renders while visible; setView redraws it on return.
+function render(){if(viewMode==='diagram')renderCanvas();renderInspector();renderHealth();if(viewMode==='matrix')renderMatrix();if(viewMode==='cast')renderCast()}
+function renderHealth(){
+  const n=issues().length,b=$('#healthBtn');
+  b.textContent=n?`${n} issue${n>1?'s':''}`:'Story holds';
+  b.classList.toggle('ok',!n);
+}
+function related(){
+  if(!sel||sel.type==='char')return null;
+  const ids=new Set(),keys=new Set();
+  if(sel.type==='edge'){const g=groups().find(g=>g.key===sel.key);if(g){ids.add(g.from);ids.add(g.to);keys.add(g.key)}return {ids,keys}}
+  const walk=(start,dir)=>{const q=[start];while(q.length){const c=q.shift();for(const e of model.edges){const [a,b]=dir==='down'?[e.from,e.to]:[e.to,e.from];if(a===c){keys.add(gkey(e));if(!ids.has(b)){ids.add(b);q.push(b)}}}}};
+  ids.add(sel.id);walk(sel.id,'up');walk(sel.id,'down');
+  return {ids,keys};
+}
+function renderColHeads(){
+  const xs=[...new Set(model.nodes.map(n=>n.x))].sort((a,b)=>a-b);
+  xs.forEach((x,i)=>{
+    const isFirst=i===0,isLast=i===xs.length-1;
+    const label=isFirst?'Start':isLast?'Endings':'Threads';
+    const sub=isFirst?'Fixed opening':isLast?'Designed destinations':(xs.length>3?`Unlocked at depth ${i}`:'Open at start');
+    const h=el('div','colhead',label);h.appendChild(el('b',null,sub));h.style.left=x+'px';h.style.top='-62px';world.appendChild(h);
+  });
+  const firstTerm=model.nodes.filter(n=>n.ekind==='terminal').sort((a,b)=>a.y-b.y)[0];
+  if(firstTerm){const h=el('div','colhead','Failure endings');h.appendChild(el('b',null,'Reached through stats, anytime'));h.style.left=firstTerm.x+'px';h.style.top=(firstTerm.y-54)+'px';world.appendChild(h)}
+}
+function renderCanvas(){
+  world.querySelectorAll('.node,.elabel,.colhead').forEach(n=>n.remove());
+  const rel=related();
+  renderColHeads();
+
+  for(const n of model.nodes){
+    const d=el('div','node '+(n.kind==='ending'?(n.ekind==='terminal'?'terminal':'ending'):n.kind));
+    d.dataset.id=n.id;d.tabIndex=0;d.style.left=n.x+'px';d.style.top=n.y+'px';d.style.setProperty('--k',kcol(n));
+    d.setAttribute('role','button');d.setAttribute('aria-label',n.title);
+    if(sel&&sel.type==='node'&&sel.id===n.id)d.classList.add('sel');
+    if(rel&&!rel.ids.has(n.id))d.classList.add(opts.focus?'hidden':'dim');
+    const head=el('div','head');
+    if(n.kind==='start'){head.appendChild(el('span',null,'Start'));head.appendChild(el('span',null,'fixed opening'))}
+    else if(n.kind==='subplot'){head.appendChild(el('span',null,'Thread'));head.appendChild(el('span','chip',n.role))}
+    else if(n.ekind==='terminal'){head.appendChild(el('span',null,'Failure ending'))}
+    else{head.appendChild(el('span',null,'Ending'));if(n.catchAll)head.appendChild(el('span','chip','catch-all'))}
+    d.appendChild(head);
+    d.appendChild(el('h3',null,n.title||'Untitled'));
+    d.appendChild(el('p',null,n.theme||'Add the main theme in the panel.'));
+    let c;
+    if(n.kind==='ending'&&n.ekind==='destination'){
+      c=carriers(n);
+      const wrap=el('div','wprows');
+      (n.waypoints||[]).forEach(w=>{
+        const row=el('div','wprow');row.dataset.wp=w.id;
+        const ok=c[w.id].length>0;
+        row.appendChild(el('i','dot'+(ok?'':' open')));
+        row.appendChild(el('span',null,w.plant));
+        row.title=w.plant+(ok?'':' — no thread carries this yet');
+        wrap.appendChild(row);
+      });
+      d.appendChild(wrap);
+    }
+    const f=el('div','foot');
+    if(n.kind==='start'){(n.variants||[]).forEach(v=>f.appendChild(el('span','chip',v)))}
+    else if(n.kind==='subplot'){
+      const inc=incoming(n.id);
+      f.appendChild(el('span',null,inc.some(e=>e.type==='opens')?'active at start':inc.length?'unlocks later':'never activates'));
+      const cc=model.edges.filter(e=>e.type==='delivers'&&e.from===n.id).length;
+      if(cc)f.appendChild(el('span',null,`· carries ${cc}`));
+    }else if(n.ekind==='terminal'){f.appendChild(el('span',null,n.trigger||'set a trigger'))}
+    else{
+      let cov=0;(n.waypoints||[]).forEach(w=>{if(c[w.id].length)cov++});
+      f.appendChild(el('span',null,`${cov}/${(n.waypoints||[]).length} waypoints carried`));
+    }
+    d.appendChild(f);
+    if(n.kind==='start'||n.kind==='subplot'){const p=el('div','port');p.title='Drag to a thread or ending to connect';p.dataset.port=n.id;d.appendChild(p)}
+    world.appendChild(d);
+    n._w=d.offsetWidth;n._h=d.offsetHeight;
+    if(n.kind==='ending'&&n.ekind==='destination'){
+      n._wpY={};
+      d.querySelectorAll('.wprow').forEach(row=>{n._wpY[row.dataset.wp]=n.y+row.offsetTop+row.offsetHeight/2});
+    }
+  }
+  renderEdges(rel);
+}
+function geom(g){
+  const a=node(g.from),b=node(g.to);
+  const sx=a.x+a._w,sy=a.y+a._h/2;
+  let tx=b.x,ty=b.y+b._h/2;
+  if(g.type==='delivers'&&g.items[0].wp&&b._wpY&&b._wpY[g.items[0].wp]!=null)ty=b._wpY[g.items[0].wp];
+  const dx=Math.max(50,Math.abs(tx-sx)/2);
+  return {sx,sy,tx,ty,d:`M${sx} ${sy} C${sx+dx} ${sy},${tx-dx} ${ty},${tx-7} ${ty}`,mx:(sx+tx)/2,my:(sy+ty)/2};
+}
+function renderEdges(rel){
+  svg.innerHTML='';
+  for(const g of groups()){
+    if(g.type==='unlocks'&&!opts.unlocks)continue;
+    const a=node(g.from),b=node(g.to);if(!a||!b)continue;
+    const G=geom(g);
+    const col=g.type==='delivers'?kcol(b):'var(--muted)';
+    const isSel=sel&&sel.type==='edge'&&sel.key===g.key;
+    const faded=rel&&!rel.keys.has(g.key);
+    const hideIt=faded&&opts.focus;
+    const p=document.createElementNS(NS,'path');p.setAttribute('d',G.d);p.setAttribute('class','edge '+g.type+(isSel?' sel':'')+(hideIt?' hidden':''));
+    if(g.type==='delivers'){p.style.stroke=col;p.style.strokeWidth=isSel?3.8:2.2}
+    if(faded&&!hideIt)p.style.opacity=.12;
+    const ar=document.createElementNS(NS,'path');ar.setAttribute('class','arrow'+(hideIt?' hidden':''));
+    ar.setAttribute('d',`M${G.tx} ${G.ty} L${G.tx-9} ${G.ty-5} L${G.tx-9} ${G.ty+5} Z`);ar.style.fill=col;if(faded&&!hideIt)ar.style.opacity=.12;
+    const h=document.createElementNS(NS,'path');h.setAttribute('d',G.d);h.setAttribute('class','hit'+(hideIt?' hidden':''));h.dataset.edge=g.key;
+    svg.appendChild(p);svg.appendChild(ar);svg.appendChild(h);
+    let text=null,cls='elabel';
+    const e0=g.items[0];
+    if(g.type==='delivers'&&opts.labels){
+      if(!e0.wp){text='choose waypoint';cls+=' unset'}else text=e0.wp;
+    }else if(g.type==='unlocks'&&e0.cond){text=e0.cond;cls+=' cond'}
+    if(text){
+      const L=el('div',cls+(hideIt?' hidden':''),text);L.dataset.edge=g.key;
+      if(!cls.includes('cond')&&!cls.includes('unset'))L.style.color=col;
+      L.style.left=G.mx+'px';L.style.top=G.my+'px';
+      if(faded&&!hideIt)L.style.opacity=.15;
+      L.title=g.type==='delivers'?((b.waypoints||[]).find(w=>w.id===e0.wp)||{plant:'unassigned'}).plant:text;
+      world.appendChild(L);
+    }
+  }
+}
+function applyView(){world.style.transform=`translate(${view.x}px,${view.y}px) scale(${view.k})`}
+function fit(){
+  if(!model.nodes.length||!canvas.offsetWidth)return;
+  const r=canvas.getBoundingClientRect();
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  for(const n of model.nodes){x0=Math.min(x0,n.x);y0=Math.min(y0,n.y-70);x1=Math.max(x1,n.x+(n._w||236));y1=Math.max(y1,n.y+(n._h||150))}
+  const pad=36,k=Math.min((r.width-pad*2)/(x1-x0),(r.height-pad*2)/(y1-y0),1.05);
+  view.k=Math.max(.3,k);view.x=pad+(r.width-pad*2-(x1-x0)*view.k)/2-x0*view.k;view.y=pad-y0*view.k;applyView();
+}
+
+/* ---------- inspector ---------- */
+// vis: [class, text] for a visibility badge - narrator (prompted), stored (kept, never prompted), author (engine never reads).
+function field(label,input,vis,hint){const f=el('div','field');const l=el('label',null,label);const id='f_'+label.toLowerCase().replace(/\W+/g,'_');input.id=id;l.htmlFor=id;
+  if(vis)l.appendChild(el('span','vis '+vis[0],vis[1]));f.appendChild(l);f.appendChild(input);if(hint)f.appendChild(hint);return f}
+const VIS={
+  every:['narrator','narrator · every turn'],
+  nudge:['narrator','narrator · until introduced'],
+  scored:['narrator','narrator · until scored'],
+  author:['author','author only']
+};
+function textInput(val,on,ph){const i=el('input');i.type='text';i.value=val||'';if(ph)i.placeholder=ph;i.addEventListener('input',()=>{on(i.value);save();renderCanvas();renderHealth()});return i}
+function area(val,on){const t=el('textarea');t.value=val||'';t.addEventListener('input',()=>{on(t.value);save();renderCanvas()});return t}
+function selectInput(val,choices,on){const s=el('select');choices.forEach(([v,l])=>{const o=el('option',null,l);o.value=v;if(v===val)o.selected=true;s.appendChild(o)});s.addEventListener('change',()=>{on(s.value);save();render()});return s}
+function eyebrow(t){return el('div','eyebrow',t)}
+function renderInspector(){
+  insp.innerHTML='';
+  if(!sel){return renderOverview()}
+  if(sel.type==='edge')return renderEdgeInspector();
+  if(sel.type==='char')return renderCharInspector();
+  const n=node(sel.id);if(!n){sel=null;return renderOverview()}
+  insp.appendChild(eyebrow(n.kind==='start'?'Start':n.kind==='subplot'?`Thread · ${n.id}`:n.ekind==='terminal'?`Failure ending · ${n.id}`:`Ending · ${n.id}`));
+  insp.appendChild(el('h2',null,n.title||'Untitled'));
+  insp.appendChild(field('Title',textInput(n.title,v=>{n.title=v;insp.querySelector('h2').textContent=v||'Untitled'})));
+  insp.appendChild(field('Main theme',area(n.theme,v=>n.theme=v)));
+  const cast=n.kind==='start'?[]:namedIn(n);
+  if(cast.length){
+    insp.appendChild(el('h4',null,'Characters named here'));
+    const w=el('div','linkchips');
+    cast.forEach(c=>{const b=el('button','linkchip',c.name);b.type='button';b.style.setProperty('--k','var(--r-personal)');b.onclick=()=>openChar(c.name);w.appendChild(b)});
+    insp.appendChild(w);
+  }
+  if(n.kind==='start'){
+    insp.appendChild(field('Starting choices',textInput((n.variants||[]).join(', '),v=>n.variants=v.split(',').map(s=>s.trim()).filter(Boolean),'comma-separated')));
+    insp.appendChild(el('p','note','Drag from the round port on the right edge to a thread: it becomes active at the start. Connect with a condition to unlock it later instead.'));
+  }
+  if(n.kind==='subplot'){
+    insp.appendChild(field('Role',selectInput(n.role,[['spine','Spine: carries waypoints'],['personal','Personal: a relationship arc'],['texture','Texture: episodic, generated']],v=>n.role=v)));
+    insp.appendChild(el('p','note',ROLE_NOTE[n.role]));
+    insp.appendChild(el('h4',null,'Becomes active'));
+    const inc=incoming(n.id);
+    if(!inc.length)insp.appendChild(el('p','note','Never. Connect it from the start or from another thread.'));
+    const ul=el('ul','list');
+    inc.forEach(e=>{const li=el('li','wp');const src=node(e.from);
+      li.appendChild(el('div','id',e.type==='opens'?'at the start':`after ${src.title}`));
+      if(e.type==='unlocks'){const i=textInput(e.cond,v=>e.cond=v,'condition, e.g. REACH ≥ 20');li.appendChild(i)}
+      ul.appendChild(li)});
+    insp.appendChild(ul);
+    insp.appendChild(el('h4',null,'Carries toward'));
+    const out=model.edges.filter(e=>e.type==='delivers'&&e.from===n.id);
+    if(!out.length)insp.appendChild(el('p','note','Nothing yet. Drag from its port onto an ending.'));
+    const ul2=el('ul','list');
+    out.forEach(e=>{const end=node(e.to);const w=(end.waypoints||[]).find(w=>w.id===e.wp);const li=el('li','wp');
+      const idr=el('div','id');idr.appendChild(el('span',null,end.title));const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{model.edges.splice(model.edges.indexOf(e),1);save();render()};idr.appendChild(rm);li.appendChild(idr);
+      li.appendChild(el('div','carriers'+(w?'':' none'),w?w.plant:'no waypoint chosen'));ul2.appendChild(li)});
+    insp.appendChild(ul2);
+  }
+  if(n.kind==='ending'){
+    insp.appendChild(field('Kind',selectInput(n.ekind,[['destination','Destination: steered toward'],['terminal','Failure: reached through stats']],v=>{n.ekind=v;if(v==='terminal'){model.edges=model.edges.filter(e=>!(e.type==='delivers'&&e.to===n.id))}})));
+    if(n.ekind==='terminal'){
+      insp.appendChild(field('Trigger',textInput(n.trigger,v=>n.trigger=v,'e.g. FRAME reaches 0')));
+      insp.appendChild(el('p','note','Failure endings are never steered toward, so they carry no waypoints. The engine checks the trigger every turn and a judge confirms it.'));
+    }else{
+      const cb=el('label','toggle');const c=el('input');c.type='checkbox';c.checked=!!n.catchAll;c.id='f_catchall';c.onchange=()=>{n.catchAll=c.checked;save();render()};cb.appendChild(c);cb.appendChild(document.createTextNode(' Catch-all: can never be ruled out'));
+      insp.appendChild(cb);
+      insp.appendChild(el('h4',null,'Waypoints'));
+      insp.appendChild(el('p','note','What the story must set up before this ending can happen. Write each as an event on the page, never its meaning.'));
+      const c2=carriers(n),ul=el('ul','list');
+      (n.waypoints||[]).forEach((w,i)=>{const li=el('li','wp');const idr=el('div','id');idr.appendChild(el('span',null,w.id));
+        const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{n.waypoints.splice(i,1);model.edges=model.edges.filter(e=>!(e.to===n.id&&e.wp===w.id));save();render()};idr.appendChild(rm);li.appendChild(idr);
+        const inp=textInput(w.plant,v=>w.plant=v);inp.setAttribute('aria-label','Waypoint '+w.id);li.appendChild(inp);
+        const cs=c2[w.id];li.appendChild(el('div','carriers'+(cs.length?'':' none'),cs.length?'Carried by '+cs.map(id=>node(id).title).join(', '):'No thread carries this yet'));
+        ul.appendChild(li)});
+      insp.appendChild(ul);
+      const r=el('div','row');r.style.marginTop='8px';const ni=el('input');ni.type='text';ni.placeholder='New waypoint, e.g. a door opens for Lark';ni.id='f_newwp';ni.style.cssText='flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;background:var(--raised);padding:6px 8px';
+      const ab=el('button','btn small','Add');ab.type='button';
+      const add=()=>{const t=ni.value.trim();if(!t)return;let base=t.toLowerCase().replace(/[^a-z0-9 ]/g,'').split(/\s+/).filter(Boolean).slice(0,3).join('_')||'waypoint',id=base,k=2;while((n.waypoints||[]).some(w=>w.id===id))id=base+'_'+k++;(n.waypoints=n.waypoints||[]).push({id,plant:t});save();render()};
+      ab.onclick=add;ni.onkeydown=e=>{if(e.key==='Enter')add()};r.appendChild(ni);r.appendChild(ab);insp.appendChild(r);
+    }
+  }
+  if(n.kind!=='start'){
+    const del=el('button','btn danger','Delete '+(n.kind==='subplot'?'thread':'ending'));del.type='button';del.style.marginTop='22px';
+    del.onclick=()=>{model.nodes=model.nodes.filter(x=>x!==n);model.edges=model.edges.filter(e=>e.from!==n.id&&e.to!==n.id);sel=null;save();render();say('Deleted '+(n.title||n.id))};
+    insp.appendChild(del);
+  }
+}
+function openChar(name){sel={type:'char',name};if(viewMode!=='cast')setView('cast');render()}
+function openNode(id){sel={type:'node',id};if(viewMode!=='diagram')setView('diagram');render()}
+function renderCharInspector(){
+  const c=chr(sel.name);if(!c){sel=null;return renderOverview()}
+  const idx=model.characters.indexOf(c);
+  insp.appendChild(eyebrow(`Character · world.characters[${idx+1}]`));
+  const h2=el('h2',null,c.name||'Unnamed');insp.appendChild(h2);
+  const after=()=>{save();renderCast();renderHealth();refresh()};
+  const hints=[];
+  const hint=fn=>{const d=el('div','fieldnote');hints.push([d,fn]);return d};
+  const refresh=()=>hints.forEach(([d,fn])=>{const [cls,t]=fn();d.className='fieldnote'+(cls?' '+cls:'');d.textContent=t});
+
+  // Name is the key in world.characters and the only identity the engine matches on, so it commits
+  // on blur and refuses a blank or a clash rather than renaming through every keystroke.
+  const nm=el('input');nm.type='text';nm.value=c.name;
+  nm.addEventListener('change',()=>{const v=nm.value.trim();
+    if(!v||(v!==c.name&&chr(v))){say(v?`${v} is already in the cast.`:'A character needs a name.');nm.value=c.name;return}
+    c.name=v;sel.name=v;h2.textContent=v;save();renderCast();renderHealth();refresh()});
+  insp.appendChild(field('Name',nm,VIS.every,el('div','fieldnote','The key in world.characters. Relationship scores attach to this exact name, so renaming mid-story orphans a live save’s score.')));
+
+  const leakHint=f=>()=>{const l=canonLeaks(c).find(l=>l.field===f);return l?['err',`Repeats canon “${l.key}” — this reaches the narrator.`]:null};
+  const ta=(key,on)=>{const t=el('textarea');t.value=c[key]||'';t.addEventListener('input',()=>{c[key]=t.value;on&&on();after()});return t};
+
+  insp.appendChild(field('Description',ta('description'),VIS.every,hint(()=>leakHint('description')()||['',`${words(c.description)} words, on every narrator turn as “${c.name}: …” in KNOWN CHARACTERS.`])));
+  insp.appendChild(field('First contact',ta('first_contact'),VIS.scored,hint(()=>{
+    const l=leakHint('first_contact')();if(l)return l;
+    if(!(c.first_contact||'').trim())return ['','No stance. Until the first scored interaction, the narrator has only the description to decide how they meet the protagonist.'];
+    return ['',`Until they have a relationship score, the roster line reads “${c.name} (not yet met — ${c.first_contact.trim().slice(0,60)}${c.first_contact.trim().length>60?'…':''}): …”. After that, the relationship tiers speak instead.`];
+  })));
+  insp.appendChild(field('Hook',ta('hook'),VIS.nudge,hint(()=>{
+    const l=leakHint('hook')();if(l)return l;
+    if(!(c.hook||'').trim())return ['','No hook. The pacing nudge never brings them on stage, so they appear only if the scene already calls for them. Right for a constant companion.'];
+    return nudged().includes(c.name)?['','A concrete way on stage. Offered in the pacing nudge until they are introduced.']:['warn','Queued: only the last two characters with hooks are nudged in. Move this character later, or wait for one to be introduced.'];
+  })));
+  const ri=el('input');ri.type='text';ri.value=c.role||'';ri.addEventListener('input',()=>{c.role=ri.value;after()});
+  insp.appendChild(field('Role',ri,VIS.author,el('div','fieldnote','The card subtitle and the Plot Manager label. Never prompted: a role often says where the arc is going, and the narrator would steer there from the first scene.')));
+
+  insp.appendChild(el('h4',null,'Canon'));
+  insp.appendChild(el('p','note','Author-only truth about this character. The engine never reads it, and the leak check flags any of it that turns up in the description or hook.'));
+  const ul=el('div','list');
+  (c.canon=c.canon||[]).forEach((row,i)=>{
+    const li=el('div','canonrow');const idr=el('div','row');
+    const k=el('input');k.type='text';k.value=row.k;k.placeholder='key, e.g. truth';k.setAttribute('aria-label','Canon key');k.style.flex='1';k.addEventListener('input',()=>{row.k=k.value;after()});
+    const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{c.canon.splice(i,1);save();render()};
+    idr.appendChild(k);idr.appendChild(rm);li.appendChild(idr);
+    const v=el('textarea');v.value=row.v;v.setAttribute('aria-label','Canon '+(row.k||'entry'));v.addEventListener('input',()=>{row.v=v.value;after()});li.appendChild(v);
+    ul.appendChild(li)});
+  insp.appendChild(ul);
+  const ab=el('button','btn small','+ Canon note');ab.type='button';ab.style.marginTop='8px';
+  ab.onclick=()=>{c.canon.push({k:'',v:''});save();render();const ks=insp.querySelectorAll('.canonrow input');ks.length&&ks[ks.length-1].focus()};insp.appendChild(ab);
+
+  const m=mentions(c);
+  insp.appendChild(el('h4',null,'Named on the board'));
+  insp.appendChild(el('p','note',m.length?'Threads and endings whose prose names this character. A text match, not a schema link.':'No thread or ending names this character yet.'));
+  if(m.length){const w=el('div','linkchips');m.forEach(n=>{const b=el('button','linkchip',n.title);b.type='button';b.style.setProperty('--k',kcol(n));b.onclick=()=>openNode(n.id);w.appendChild(b)});insp.appendChild(w)}
+
+  insp.appendChild(el('h4',null,'Order'));
+  insp.appendChild(el('p','note','Template order decides which hooks are nudged first: the last two with hooks.'));
+  const r=el('div','row');
+  const mv=d=>{const j=idx+d;if(j<0||j>=model.characters.length)return;model.characters.splice(idx,1);model.characters.splice(j,0,c);save();render()};
+  const up=el('button','btn small','Move earlier');up.type='button';up.disabled=idx===0;up.onclick=()=>mv(-1);
+  const dn=el('button','btn small','Move later');dn.type='button';dn.disabled=idx===model.characters.length-1;dn.onclick=()=>mv(1);
+  r.appendChild(up);r.appendChild(dn);insp.appendChild(r);
+
+  const del=el('button','btn danger','Delete character');del.type='button';del.style.marginTop='22px';
+  del.onclick=()=>{model.characters.splice(model.characters.indexOf(c),1);sel=null;save();render();say('Deleted '+(c.name||'character'))};
+  insp.appendChild(del);
+  refresh();
+}
+function renderEdgeInspector(){
+  const g=groups().find(g=>g.key===sel.key);if(!g){sel=null;return renderOverview()}
+  const a=node(g.from),b=node(g.to);
+  insp.appendChild(eyebrow(g.type==='delivers'?'Delivers toward':g.type==='opens'?'Opens at start':'Unlocks'));
+  insp.appendChild(el('h2',null,`${a.title} → ${b.title}`));
+  if(g.type==='opens'){insp.appendChild(el('p','note',`${b.title} is active from the first turn.`))}
+  if(g.type==='unlocks'){
+    insp.appendChild(el('p','note',`${b.title} activates ${a.kind==='start'?'when the condition holds':'once '+a.title+' has moved far enough'}.`));
+    insp.appendChild(field('Unlocks when',textInput(g.items[0].cond,v=>g.items[0].cond=v,'e.g. REACH ≥ 20')));
+  }
+  if(g.type==='delivers'){
+    insp.appendChild(el('p','note',`While ${b.title} is being steered toward, the engine prioritises ${a.title} to plant these waypoints.`));
+    const ul=el('ul','list');
+    g.items.forEach(e=>{const li=el('li','wp');const idr=el('div','id');
+      const s=selectInput(e.wp||'',[['','Choose a waypoint…'],...(b.waypoints||[]).map(w=>[w.id,w.plant])],v=>{e.wp=v||null;sel={type:'edge',key:gkey(e)}});s.setAttribute('aria-label','Waypoint');
+      s.style.cssText='width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:5px 7px;font-size:13px';
+      const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{model.edges.splice(model.edges.indexOf(e),1);save();render()};
+      idr.appendChild(el('span',null,e.wp||'unassigned'));idr.appendChild(rm);li.appendChild(idr);li.appendChild(s);ul.appendChild(li)});
+    insp.appendChild(ul);
+    const left=(b.waypoints||[]).filter(w=>!g.items.some(e=>e.wp===w.id));
+    if(left.length){const ab=el('button','btn small','+ Carry another waypoint');ab.type='button';ab.style.marginTop='10px';ab.onclick=()=>{model.edges.push({type:'delivers',from:a.id,to:b.id,wp:left[0].id});save();render()};insp.appendChild(ab)}
+  }
+  const del=el('button','btn danger','Remove link');del.type='button';del.style.marginTop='22px';
+  del.onclick=()=>{model.edges=model.edges.filter(e=>gkey(e)!==g.key);sel=null;save();render();say('Link removed')};insp.appendChild(del);
+}
+function renderOverview(){
+  insp.appendChild(eyebrow('Story health'));
+  insp.appendChild(el('h2',null,model.story));
+  const threads=model.nodes.filter(n=>n.kind==='subplot'),ends=model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='destination');
+  let wpTotal=0,wpCov=0;ends.forEach(n=>{const c=carriers(n);(n.waypoints||[]).forEach(w=>{wpTotal++;if(c[w.id].length)wpCov++})});
+  const st=el('div','stats');
+  [[threads.length,'threads'],[ends.length,'destinations'],[`${wpCov}/${wpTotal}`,'waypoints carried']].forEach(([v,l])=>{const s=el('div','stat');s.appendChild(el('b',null,String(v)));s.appendChild(el('small',null,l));st.appendChild(s)});
+  insp.appendChild(st);
+  const iss=issues();
+  insp.appendChild(el('h4',null,iss.length?`${iss.length} to look at`:'Nothing to fix'));
+  const ul=el('div','list');
+  iss.forEach(i=>{const b=el('button','issue'+(i.lvl==='error'?' error':''));b.type='button';b.appendChild(el('span','sev',i.lvl==='error'?'Fix':'Check'));b.appendChild(el('span',null,i.text));
+    b.onclick=()=>{if(i.char!=null)return openChar(i.char);if(viewMode==='cast')setView('diagram');if(i.edge)sel={type:'edge',key:i.edge};else if(i.id)sel={type:'node',id:i.id};render()};ul.appendChild(b)});
+  insp.appendChild(ul);
+  insp.appendChild(el('h4',null,'Using the board'));
+  const tips=el('ul','tips');
+  ['Click a box to trace every path into and out of it; turn on Focus to hide everything else instead of dimming it.','Drag a box to move it; drag empty space to pan; scroll to zoom. Auto-layout re-columns everything by how many unlocks it is from the start.','Drag from a round port onto a thread or ending to connect them. Each waypoint gets its own row and its own line — no more guessing which line feeds which slot.','Click a line or its label to edit or remove the link.','Switch to the Matrix tab for a thread-by-waypoint grid — better than the diagram once a story has a lot of threads.','The Cast tab edits the authored characters (world.characters). Each field is badged with what reaches the narrator and what is only stored.','Validate checks the schema and lint rules and shows a diff against the saved file; Save runs the same check and, if nothing blocks it, writes the file.'].forEach(t=>tips.appendChild(el('li',null,t)));
+  const k=el('li');k.appendChild(el('kbd',null,'Esc'));k.appendChild(document.createTextNode(' clears the selection; '));k.appendChild(el('kbd',null,'Delete'));k.appendChild(document.createTextNode(' removes it.'));tips.appendChild(k);
+  insp.appendChild(tips);
+}
+
+/* ---------- interaction ---------- */
+let drag=null;
+function toWorld(cx,cy){const r=canvas.getBoundingClientRect();return {x:(cx-r.left-view.x)/view.k,y:(cy-r.top-view.y)/view.k}}
+canvas.addEventListener('pointerdown',ev=>{
+  if(ev.button!==0)return;
+  const port=ev.target.closest('.port'),nd=ev.target.closest('.node'),ed=ev.target.closest('[data-edge]');
+  if(ev.target.closest('.overlay'))return;
+  canvas.setPointerCapture(ev.pointerId);
+  if(port){const n=node(port.dataset.port);const tp=document.createElementNS(NS,'path');tp.setAttribute('class','temp');svg.appendChild(tp);drag={mode:'connect',from:n.id,tp,sx:n.x+n._w,sy:n.y+n._h/2}}
+  else if(nd){const n=node(nd.dataset.id);drag={mode:'node',id:n.id,ox:n.x,oy:n.y,cx:ev.clientX,cy:ev.clientY,moved:false}}
+  else if(ed){drag={mode:'edge',key:ed.dataset.edge}}
+  else{drag={mode:'pan',vx:view.x,vy:view.y,cx:ev.clientX,cy:ev.clientY,moved:false};canvas.classList.add('panning')}
+});
+canvas.addEventListener('pointermove',ev=>{
+  if(!drag)return;
+  if(drag.mode==='pan'){const dx=ev.clientX-drag.cx,dy=ev.clientY-drag.cy;if(Math.abs(dx)+Math.abs(dy)>3)drag.moved=true;view.x=drag.vx+dx;view.y=drag.vy+dy;applyView()}
+  else if(drag.mode==='node'){const dx=(ev.clientX-drag.cx)/view.k,dy=(ev.clientY-drag.cy)/view.k;if(Math.abs(dx)+Math.abs(dy)>4/view.k)drag.moved=true;if(!drag.moved)return;
+    const n=node(drag.id);n.x=Math.round(drag.ox+dx);n.y=Math.round(drag.oy+dy);const d=world.querySelector(`.node[data-id="${CSS.escape(n.id)}"]`);d.style.left=n.x+'px';d.style.top=n.y+'px';
+    world.querySelectorAll('.elabel').forEach(l=>l.remove());renderEdges(related())}
+  else if(drag.mode==='connect'){const p=toWorld(ev.clientX,ev.clientY);const dx=Math.max(40,Math.abs(p.x-drag.sx)/2);drag.tp.setAttribute('d',`M${drag.sx} ${drag.sy} C${drag.sx+dx} ${drag.sy},${p.x-dx} ${p.y},${p.x} ${p.y}`)}
+});
+canvas.addEventListener('pointerup',ev=>{
+  if(!drag)return;const d=drag;drag=null;canvas.classList.remove('panning');
+  if(d.mode==='pan'){if(!d.moved&&sel){sel=null;render()}return}
+  if(d.mode==='node'){if(d.moved){save();renderCanvas()}else{sel={type:'node',id:d.id};render()}return}
+  if(d.mode==='edge'){sel={type:'edge',key:d.key};render();return}
+  if(d.mode==='connect'){d.tp.remove();const t=document.elementFromPoint(ev.clientX,ev.clientY);const tn=t&&t.closest('.node');if(tn)connect(d.from,tn.dataset.id);else renderEdges(related())}
+});
+canvas.addEventListener('wheel',ev=>{ev.preventDefault();const r=canvas.getBoundingClientRect();const cx=ev.clientX-r.left,cy=ev.clientY-r.top;const wx=(cx-view.x)/view.k,wy=(cy-view.y)/view.k;
+  view.k=Math.min(1.8,Math.max(.25,view.k*Math.exp(-ev.deltaY*.0015)));view.x=cx-wx*view.k;view.y=cy-wy*view.k;applyView()},{passive:false});
+canvas.addEventListener('keydown',ev=>{const nd=ev.target.closest&&ev.target.closest('.node');if(nd&&(ev.key==='Enter'||ev.key===' ')){ev.preventDefault();sel={type:'node',id:nd.dataset.id};render();const again=world.querySelector(`.node[data-id="${CSS.escape(nd.dataset.id)}"]`);again&&again.focus()}});
+function zoomBy(f){const r=canvas.getBoundingClientRect();const cx=r.width/2,cy=r.height/2;const wx=(cx-view.x)/view.k,wy=(cy-view.y)/view.k;view.k=Math.min(1.8,Math.max(.25,view.k*f));view.x=cx-wx*view.k;view.y=cy-wy*view.k;applyView()}
+$('#zIn').onclick=()=>zoomBy(1.2);$('#zOut').onclick=()=>zoomBy(1/1.2);$('#zFit').onclick=fit;
+
+function connect(fromId,toId){
+  const a=node(fromId),b=node(toId);if(!a||!b||a===b)return renderEdges(related());
+  if(b.kind==='start'){say('Nothing leads into the start.');return renderEdges(related())}
+  if(b.kind==='ending'){
+    if(b.ekind==='terminal'){say('Failure endings are reached through stats, not threads.');return renderEdges(related())}
+    if(a.kind!=='subplot'){say('Only threads carry the story toward an ending.');return renderEdges(related())}
+    const c=carriers(b);const mine=new Set(model.edges.filter(e=>e.type==='delivers'&&e.from===a.id&&e.to===b.id).map(e=>e.wp));
+    const pick=(b.waypoints||[]).find(w=>!c[w.id].length&&!mine.has(w.id))||(b.waypoints||[]).find(w=>!mine.has(w.id));
+    if(!pick&&mine.size){say(`${a.title} already carries every waypoint of ${b.title}.`);return renderEdges(related())}
+    const e={type:'delivers',from:a.id,to:b.id,wp:pick?pick.id:null};model.edges.push(e);sel={type:'edge',key:gkey(e)};
+    save();render();say(pick?`${a.title} now carries “${pick.plant}”.`:`Linked. Add a waypoint to ${b.title}, then choose it.`);return;
+  }
+  if(b.kind==='subplot'){
+    if(model.edges.some(e=>e.from===a.id&&e.to===b.id&&e.type!=='delivers')){say('Already connected.');return renderEdges(related())}
+    const e=a.kind==='start'?{type:'opens',from:a.id,to:b.id}:{type:'unlocks',from:a.id,to:b.id,cond:''};
+    model.edges.push(e);sel={type:'edge',key:gkey(e)};save();render();say(a.kind==='start'?`${b.title} is now active at the start.`:`${b.title} now unlocks after ${a.title}.`);
+  }
+}
+document.addEventListener('keydown',ev=>{
+  if(ev.target.matches&&ev.target.matches('input,textarea,select'))return;
+  if(ev.key==='Escape'&&sel){sel=null;render()}
+  if((ev.key==='Delete'||ev.key==='Backspace')&&sel){
+    if(sel.type==='edge'){model.edges=model.edges.filter(e=>gkey(e)!==sel.key)}
+    else if(sel.type==='char'){const c=chr(sel.name);if(!c)return;model.characters.splice(model.characters.indexOf(c),1);say('Deleted '+c.name)}
+    else{const n=node(sel.id);if(!n||n.kind==='start')return;model.nodes=model.nodes.filter(x=>x!==n);model.edges=model.edges.filter(e=>e.from!==n.id&&e.to!==n.id)}
+    sel=null;save();render();ev.preventDefault();
+  }
+});
+$('#tLabels').onchange=e=>{opts.labels=e.target.checked;renderCanvas()};
+$('#tUnlocks').onchange=e=>{opts.unlocks=e.target.checked;renderCanvas()};
+$('#tFocus').onchange=e=>{opts.focus=e.target.checked;renderCanvas()};
+
+/* ---------- auto-layout ---------- */
+function nodeHeightGuess(n){
+  if(n.kind==='ending'&&n.ekind==='destination')return 150+((n.waypoints||[]).length*24);
+  if(n.ekind==='terminal')return 118;
+  return 150;
+}
+function autoLayout(){
+  const depth={start:0};
+  let changed=true,guard=0;
+  while(changed&&guard++<200){
+    changed=false;
+    for(const e of model.edges){
+      if(e.type!=='opens'&&e.type!=='unlocks')continue;
+      if(depth[e.from]===undefined)continue;
+      const nd=depth[e.from]+1;
+      if(depth[e.to]===undefined||nd>depth[e.to]){depth[e.to]=nd;changed=true}
+    }
+  }
+  for(const n of model.nodes)if(n.kind==='subplot'&&depth[n.id]===undefined)depth[n.id]=1;
+  const threadDepths=model.nodes.filter(n=>n.kind==='subplot').map(n=>depth[n.id]);
+  const endDepth=(threadDepths.length?Math.max(...threadDepths):0)+1;
+  for(const n of model.nodes)if(n.kind==='ending')depth[n.id]=endDepth;
+  const byDepth={};
+  for(const n of model.nodes)(byDepth[depth[n.id]]=byDepth[depth[n.id]]||[]).push(n);
+  const maxDepth=Math.max(...Object.keys(byDepth).map(Number));
+  const colGap=380,colX0=40;
+  const order={};
+  for(let d=0;d<=maxDepth;d++){
+    const list=byDepth[d]||[];
+    list.sort((a,b)=>{
+      const ta=(a.kind==='ending'&&a.ekind==='terminal')?1:0,tb=(b.kind==='ending'&&b.ekind==='terminal')?1:0;
+      if(ta!==tb)return ta-tb;
+      const preA=model.edges.filter(e=>e.to===a.id).map(e=>order[e.from]).filter(v=>v!==undefined);
+      const preB=model.edges.filter(e=>e.to===b.id).map(e=>order[e.from]).filter(v=>v!==undefined);
+      const ba=preA.length?preA.reduce((s,v)=>s+v,0)/preA.length:(a.y||0)/1000;
+      const bb=preB.length?preB.reduce((s,v)=>s+v,0)/preB.length:(b.y||0)/1000;
+      return ba-bb;
+    });
+    let y=40;
+    list.forEach((n,i)=>{
+      order[n.id]=i;
+      n.x=colX0+d*colGap;
+      if(n.kind==='ending'&&n.ekind==='terminal'&&list[i-1]&&list[i-1].ekind!=='terminal')y+=90;
+      n.y=y;
+      y+=nodeHeightGuess(n)+46;
+    });
+  }
+  save();renderCanvas();fit();say('Auto-layout applied: columns follow how many unlocks a thread is from the start.');
+}
+$('#autoLayoutBtn').onclick=autoLayout;
+
+/* ---------- matrix view ---------- */
+function renderMatrix(){
+  const mv=$('#matrixView');mv.innerHTML='';
+  const threads=model.nodes.filter(n=>n.kind==='subplot');
+  const ends=model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='destination');
+  const wrap=el('div','matrixWrap');
+  if(!threads.length||!ends.length){wrap.appendChild(el('p','note','Add threads and destination endings to see the matrix.'));mv.appendChild(wrap);return}
+  const table=el('table','matrix');
+  const thead=el('thead');
+  const r1=el('tr');
+  const corner=el('th','corner','Thread \\ waypoint');corner.rowSpan=2;r1.appendChild(corner);
+  ends.forEach(en=>{const th=el('th','endhead',en.title);th.colSpan=(en.waypoints||[]).length||1;th.style.setProperty('--k',kcol(en));r1.appendChild(th)});
+  thead.appendChild(r1);
+  const r2=el('tr');
+  ends.forEach(en=>{
+    if(!(en.waypoints||[]).length){const th=el('th','wphead','—');r2.appendChild(th);return}
+    en.waypoints.forEach(w=>{const th=el('th','wphead');th.title=w.plant;th.textContent=w.plant.length>26?w.plant.slice(0,24)+'…':w.plant;th.style.setProperty('--k',kcol(en));r2.appendChild(th)});
+  });
+  thead.appendChild(r2);table.appendChild(thead);
+  const tbody=el('tbody');
+  threads.forEach(t=>{
+    const tr=el('tr');
+    const rh=el('th','rowhead');rh.style.setProperty('--k',kcol(t));
+    rh.appendChild(el('span','chip',t.role));rh.appendChild(document.createTextNode(' '+t.title));
+    tr.appendChild(rh);
+    ends.forEach(en=>{
+      if(!(en.waypoints||[]).length){tr.appendChild(el('td','cell empty','—'));return}
+      en.waypoints.forEach(w=>{
+        const has=model.edges.some(e=>e.type==='delivers'&&e.from===t.id&&e.to===en.id&&e.wp===w.id);
+        const td=el('td','cell'+(has?' on':''));
+        const dot=el('button','mdot'+(has?' on':''));dot.type='button';
+        dot.setAttribute('aria-label',`${t.title} carries "${w.plant}" toward ${en.title}`);
+        dot.style.setProperty('--k',kcol(en));
+        dot.title=w.plant;
+        dot.onclick=()=>{
+          if(has)model.edges=model.edges.filter(e=>!(e.type==='delivers'&&e.from===t.id&&e.to===en.id&&e.wp===w.id));
+          else model.edges.push({type:'delivers',from:t.id,to:en.id,wp:w.id});
+          save();renderMatrix();renderHealth();
+        };
+        td.appendChild(dot);tr.appendChild(td);
+      });
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);wrap.appendChild(table);
+  const uncarried=[];
+  ends.forEach(en=>(en.waypoints||[]).forEach(w=>{if(!model.edges.some(e=>e.type==='delivers'&&e.to===en.id&&e.wp===w.id))uncarried.push(`${en.title}: ${w.plant}`)}));
+  const note=el('p','note',uncarried.length?`${uncarried.length} waypoint(s) have no thread yet — click a dot in that column to assign one.`:'Every waypoint has at least one carrier thread. Click a dot to add or remove a link.');
+  note.style.margin='12px 2px 0';wrap.appendChild(note);
+  mv.appendChild(wrap);
+}
+/* ---------- cast view ---------- */
+function renderCast(){
+  const cv=$('#castView');cv.innerHTML='';
+  const wrap=el('div','castWrap');
+  const head=el('div','castHead');
+  const t=el('div');t.appendChild(eyebrow('Authored cast · world.characters'));t.appendChild(el('h2',null,`${model.characters.length} character${model.characters.length===1?'':'s'}`));head.appendChild(t);
+  const add=el('button','btn','+ Character');add.type='button';add.onclick=addChar;head.appendChild(add);
+  wrap.appendChild(head);
+  const every=model.characters.reduce((s,c)=>s+words(c.name)+words(c.description),0);
+  const n=nudged();
+  wrap.appendChild(el('p','note',`${every} words of name and description reach the narrator every turn. `+(n.length?`At the start the pacing nudge offers ${n.join(' and ')}.`:'No character has a hook, so the pacing nudge introduces nobody.')));
+  if(!model.characters.length){wrap.appendChild(el('p','note','No authored characters. The story still runs: the model introduces its own, and the roster fills from play.'));cv.appendChild(wrap);return}
+  const grid=el('div','castGrid');
+  const broken=new Set(issues().filter(i=>i.lvl==='error'&&i.char!=null).map(i=>i.char));
+  model.characters.forEach(c=>{
+    const b=el('button','ccard'+(sel&&sel.type==='char'&&sel.name===c.name?' sel':''));b.type='button';b.style.setProperty('--k','var(--r-personal)');
+    const h=el('div','head');h.appendChild(el('span',null,'Character'));
+    if((c.hook||'').trim())h.appendChild(el('span','chip'+(n.includes(c.name)?'':' warn'),n.includes(c.name)?'hook':'hook queued'));
+    b.appendChild(h);
+    b.appendChild(el('h3',null,c.name||'Unnamed'));
+    if(c.role)b.appendChild(el('div','role',c.role));
+    b.appendChild(el('p',null,c.description||'Add a description: it is the only part of this character the narrator sees.'));
+    const f=el('div','foot');
+    f.appendChild(el('span',null,`${words(c.description)} words`));
+    if((c.canon||[]).length)f.appendChild(el('span',null,`· ${c.canon.length} canon`));
+    const m=mentions(c).length;if(m)f.appendChild(el('span',null,`· named in ${m}`));
+    if(broken.has(c.name))f.appendChild(el('span','chip err','fix'));
+    b.appendChild(f);
+    b.onclick=()=>openChar(c.name);
+    grid.appendChild(b);
+  });
+  wrap.appendChild(grid);cv.appendChild(wrap);
+}
+function addChar(){
+  let name='New character',i=2;while(chr(name))name='New character '+i++;
+  model.characters.push({name,role:'',description:'',first_contact:'',hook:'',canon:[]});
+  openChar(name);save();const f=$('#f_name');f&&f.select();say('Character added. Give them a description: it is what the narrator sees.');
+}
+function setView(v){
+  viewMode=v;
+  for(const [id,name] of [['#tabDiagram','diagram'],['#tabMatrix','matrix'],['#tabCast','cast']]){$(id).classList.toggle('active',v===name);$(id).setAttribute('aria-selected',v===name)}
+  document.querySelector('.main').style.display=v==='matrix'?'none':'grid';
+  canvas.style.display=v==='diagram'?'':'none';
+  $('#castView').style.display=v==='cast'?'block':'none';
+  $('#matrixView').style.display=v==='matrix'?'block':'none';
+  // Leaving the cast drops a character selection; entering it drops a node or edge one.
+  if(sel&&(sel.type==='char')!==(v==='cast')){sel=null;renderInspector()}
+  if(v==='diagram')renderCanvas();
+  if(v==='matrix')renderMatrix();
+  if(v==='cast')renderCast();
+}
+$('#tabDiagram').onclick=()=>setView('diagram');
+$('#tabMatrix').onclick=()=>setView('matrix');
+$('#tabCast').onclick=()=>setView('cast');
+$('#healthBtn').onclick=()=>{sel=null;render();insp.scrollTop=0;if(window.matchMedia('(max-width:900px)').matches)insp.scrollIntoView({behavior:'smooth'})};
+function spot(){const r=canvas.getBoundingClientRect();const p=toWorld(r.left+r.width/2,r.top+r.height/2);return {x:Math.round(p.x-118),y:Math.round(p.y-70)}}
+$('#addThread').onclick=()=>{let i=1;while(node('subplot_'+String(i).padStart(3,'0')))i++;const id='subplot_'+String(i).padStart(3,'0');const p=spot();
+  model.nodes.push({id,kind:'subplot',role:'spine',title:'New thread',theme:'',x:p.x,y:p.y});sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();say('Thread added. Connect it from the start or another thread.')};
+$('#addEnding').onclick=()=>{let i=1;while(node('ending_'+i))i++;const id='ending_'+i;const p=spot();const cols=['e1','e2','e3','e4'];
+  model.nodes.push({id,kind:'ending',ekind:'destination',color:cols[model.nodes.filter(n=>n.kind==='ending').length%4],title:'New ending',theme:'',waypoints:[],x:p.x,y:p.y});sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();say('Ending added. Give it waypoints, then connect threads to it.')};
+
+applyView();render();
+requestAnimationFrame(fit);
+window.addEventListener('resize',()=>{clearTimeout(fit.t);fit.t=setTimeout(fit,150)});
+})();
+</script>
+{% endblock %}

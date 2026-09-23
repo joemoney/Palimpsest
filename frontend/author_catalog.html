@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Author - Palimpsest{% endblock %}
+{% block header_title %}Storyboard authoring{% endblock %}
+{% block content %}
+<section class="story-list">
+  {% for story in stories %}
+  <a href="{{ url_for('author_board', story_slug=story.slug) }}">
+    <div class="card story-list-item">
+      <div style="font-weight:700;">{{ story.title or story.slug }}</div>
+      {% if story.genre %}<div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">{{ story.genre }}</div>{% endif %}
+    </div>
+  </a>
+  {% else %}
+  <div class="card">No stories found under stories/.</div>
+  {% endfor %}
+</section>
+{% endblock %}
