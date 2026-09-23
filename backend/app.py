@@ -12,6 +12,7 @@ from flask import Flask, Response, redirect, render_template, request, session, 
 import author_lint
 import author_model
 import label_sheet
+import readme_sync
 import mechanics
 import plot_manager
 import state_store
@@ -693,6 +694,29 @@ def _author_template_diff(raw: dict, written: dict) -> str:
     return "\n".join(difflib.unified_diff(before, after, fromfile="on disk", tofile="edited", lineterm=""))
 
 
+def _author_sync_readme(story_slug: str, written: dict) -> None:
+    """Regenerates the "## Synopsis" section of the story's README from meta.synopsis on a
+    successful save (Authoring_Tool_Spec.md sect2). Only ever touches a README that already
+    exists - AUTHORING_TOOL_PHASES.md's S1 scoping never creates one, since of the stories in
+    this repo only some have one at all and inventing the rest of a README's content (the
+    hand-authored design-rationale sections every current one has) isn't this feature's job.
+    Best-effort: a README sync failure must never turn a successful template save into an
+    error response, so any exception here is swallowed after logging."""
+    story_dir = state_store._story_dir(story_slug)
+    readme_path = os.path.join(story_dir, "README.md")
+    if not os.path.isfile(readme_path):
+        return
+    try:
+        with open(readme_path, "r", encoding="utf-8") as f:
+            text = f.read()
+        synced = readme_sync.sync(text, written.get("meta", {}).get("synopsis", ""))
+        if synced != text:
+            with open(readme_path, "w", encoding="utf-8") as f:
+                f.write(synced)
+    except OSError as e:
+        print(f"WARNING: README sync failed for {story_slug!r}: {e}")
+
+
 def _author_load_and_lint(story_slug: str, model_json: str):
     """Common half of validate and save: parse the board's posted model, patch it onto the
     on-disk template (author_model.from_board_model never regenerates - CLAUDE.md), and run
@@ -732,6 +756,7 @@ def _author_validate_response(story_slug, model_json, *, save_on_success):
             diff=_author_template_diff(raw, written), can_save=True, saved=False,
         )
     new_version = state_store.write_template(story_slug, written)
+    _author_sync_readme(story_slug, written)
     return render_template(
         "_author_validate_result.html", story_slug=story_slug,
         errors=[], warnings=warnings, diff=None, can_save=False,
@@ -814,6 +839,7 @@ def author_raw(story_slug):
     if errors:
         return render_template("author_raw.html", story_slug=story_slug, text=text, errors=errors, saved=False)
     new_version = state_store.write_template(story_slug, raw)
+    _author_sync_readme(story_slug, raw)
     text = json.dumps(raw, indent=2, ensure_ascii=False) + "\n"
     return render_template(
         "author_raw.html", story_slug=story_slug, text=text, errors=[],

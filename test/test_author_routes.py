@@ -79,6 +79,8 @@ try:
     os.makedirs(clean_dir, exist_ok=True)
     with open(os.path.join(clean_dir, "template.json"), "w", encoding="utf-8") as f:
         json.dump(CLEAN_TEMPLATE, f)
+    with open(os.path.join(clean_dir, "README.md"), "w", encoding="utf-8") as f:
+        f.write("# Author Route Test Story\n\n## Synopsis\n\nStale pitch, not yet synced.\n")
 
     import author_model  # noqa: E402  (picks up the same stubbed state_store path setup)
     import app as flask_app_module  # noqa: E402
@@ -164,6 +166,13 @@ try:
     assert after["story_version"] != before_version, (before_version, after["story_version"])
     assert after["schema_version"] == author_model.TEMPLATE_SCHEMA_VERSION
     print("OK: /api/save writes the file and bumps story_version")
+
+    # --- a successful save also resyncs the story's README, if it has one --------------------
+    with open(os.path.join(clean_dir, "README.md"), encoding="utf-8") as f:
+        readme_after = f.read()
+    assert "Stale pitch, not yet synced." not in readme_after
+    assert after["meta"]["title"] in readme_after or "Author Route Test Story" in readme_after
+    print("OK: /api/save resyncs the story's README Synopsis section")
 
     # --- saving with a blocking error never touches the file ----------------------------------
     before = ss.load_template_raw("example")

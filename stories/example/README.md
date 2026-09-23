@@ -14,15 +14,13 @@ authoring a new `stories/<slug>/template.json`.
 
 ## Synopsis
 
-The last ferry of the season drops you in Millbrook just as the fog rolls
-in — and doesn't leave. The town is friendly, the inn is warm, and everyone
-insists nothing is wrong. But the ferry isn't due back for a week, and
-you're starting to notice that no one in Millbrook quite agrees on what
-happened yesterday.
+The last ferry of the season drops you in Millbrook just as the fog rolls in —
+and doesn't leave. The town is friendly, the inn is warm, and everyone insists
+nothing is wrong. But the ferry isn't due back for a week, and you're starting
+to notice that no one in Millbrook quite agrees on what happened yesterday.
 
-This is also stored as `meta.synopsis` in `template.json`, so the web
-interface's story picker can display it directly — keep the two in sync if
-you edit either.
+This section is generated from `meta.synopsis` in `template.json` by the
+authoring tool's save flow - edit the template, not this file, to change it.
 
 ## Setting Reference
 
