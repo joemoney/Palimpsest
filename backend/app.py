@@ -50,6 +50,35 @@ def login_required(view):
     return wrapped
 
 
+# --- Closed for the V3 overhaul -----------------------------------------------------------
+#
+# No story is reliably playable end to end while templates and the engine are mid-migration
+# to schema v3 (CLAUDE.md: "saves are disposable for the duration of the overhaul... old
+# saves are refused at load rather than migrated") - closing the door on new and ongoing
+# play is safer than letting someone start or continue a save against content that changes
+# out from under them as CR-05/CR-10 content lands. A `before_request` hook rather than a
+# per-route gate (the /author, /labels pattern) because this covers a whole path family
+# (nine routes under /play/<slug>/...) rather than one feature's handful of routes, and
+# because 503-with-a-message is the right response here, not 404 - this isn't hiding an
+# unauthorised route, it's an announced, temporary status every logged-in user should see
+# explained. Flip PLAY_ENABLED=1 once a playable v3 system exists; nothing else changes.
+# Read per-request, not cached at import time - the same pattern _author_enabled_or_404 and
+# label_sheet.enabled_for use, so a test (or an operator) can flip it without a fresh import.
+_CLOSED_PATH_PREFIXES = ("/stories", "/play")
+
+
+@app.before_request
+def _close_play_during_overhaul():
+    if os.environ.get("PLAY_ENABLED", "").strip() == "1":
+        return None
+    path = request.path
+    if path != "/" and not any(path == p or path.startswith(p + "/") for p in _CLOSED_PATH_PREFIXES):
+        return None
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+    return render_template("closed_for_overhaul.html"), 503
+
+
 INITIAL_TURNS_SHOWN = 3
 
 # Display-only cap for the story list's info panel - unrelated to

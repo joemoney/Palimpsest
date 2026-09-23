@@ -223,7 +223,10 @@ before and after.
 
 ## Phase S1: The board becomes the source of truth
 
-**Status: in progress - the backend half is done, the Flask/HTMX half hasn't started.**
+**Status: mechanically complete. Every gate item except the acceptance run is built and
+tested - schema, lint, the `/author` routes, the board frontend, the save flow, and README
+sync. Not yet closed: step 8, the acceptance run (migrating CR-10/CR-05 content into the
+three real stories) - in progress, see below.**
 
 **Done:**
 - **D7** (`relationship_to_player` → `first_contact`), fully shipped end to end - engine,
@@ -232,31 +235,72 @@ before and after.
 - **`backend/author_model.py`** - `to_board_model`/`from_board_model`/`playable_projection`
   (D1), Python, offline-testable, no Flask/HTMX dependency. Round-trips all 3 real stories
   and 3 fixtures losslessly. See its bullet below for what shipped and the one real design
-  change from what this document originally said about failure-ending conversion.
+  change from what this document originally said about failure-ending conversion. A real bug
+  was found and fixed while building the schema against it: `_apply_endings` wasn't
+  stripping the node-only `title` field before writing an ending entry back, so every
+  destination/terminal ending failed schema validation on save.
 - **The reference-design prototype's Cast tab, health checks, cross-links, dark mode and
   export were exercised live in headless Chromium (Playwright)** - not just syntax-checked.
   Every interaction (add/remove/reorder characters, canon rows, the live leak check,
   bidirectional cross-links between a character and the threads/endings that name them,
   keyboard delete, dark-mode rendering verified by raw pixel sampling rather than a
-  screenshot glance) behaved as designed, with zero console/page errors. This de-risks the
-  interaction design the real board's frontend will implement; it is **not** the same as
-  the real board existing - see "Not started," below.
+  screenshot glance) behaved as designed, with zero console/page errors. This de-risked the
+  interaction design the real board's frontend went on to implement.
+- **`schema/template.v3.schema.json`** - JSON Schema draft 2020-12, exhaustive against every
+  field the real stories and fixtures use today plus the CR-05/CR-10 fields the board writes
+  as final paths from day one (D1). Declared `mechanics.<slot>` blocks stay valid without an
+  `"engine"` key (CLAUDE.md's declare-to-bind invariant: that is not an error), so the schema
+  doesn't turn an already-documented, warn-only gap into a hard failure - it does still reject
+  the unbound v2 `mechanics.revelations` bare-list shape outright, and the pre-D7
+  `relationship_to_player` key on `world.characters.*`, both real gaps in The Missing Core's
+  current content that step 8 needs to close.
+- **`backend/author_lint.py`** - the S1 lint subset (L01, L08, L09, L16, the structural-flow
+  checks, and the Cast checks), ported from the prototype's `issues()`/`canonLeaks()`. Pure,
+  offline-testable, no engine imports (none of this subset needs condition truth - that's
+  L10, still S2).
+- **The `/author` blueprint - all five routes**, in `backend/app.py`, gated on
+  `AUTHOR_ENABLED=1` + `AUTHOR_USER_IDS` exactly like `_labels_enabled_or_404` (404-not-403).
+  Thin wrappers over `author_model.py`/`author_lint.py`/`state_store.py`, as planned.
+- **The board frontend**, `frontend/author_board.html` - the prototype ported onto real data:
+  `SAMPLE`/`localStorage` removed, seeded server-side from
+  `author_model.to_board_model(state_store.load_template_raw(slug))`, Export repointed at the
+  raw-JSON escape hatch, Validate/Save added as the only two HTMX calls the canvas makes (D4).
+- **The save flow**: schema → lint (errors block, warnings don't) → diff fragment → confirm →
+  `write_template`, exactly as planned.
+- **README synopsis sync** (`backend/readme_sync.py`) - regenerates a story's `## Synopsis`
+  section from `meta.synopsis` on every successful save, only ever touching that one marked
+  section. Broader than originally scoped here on explicit request: backfilled onto all three
+  real stories, including creating a README for The Missing Core, which had none.
+- **`test_author_model.py`, `test_author_lint.py`, `test_author_routes.py`,
+  `test_readme_sync.py`** - all offline (bar the Flask-gated route test, which follows
+  `test_app_routes.py`'s skip-gracefully contract), all passing.
+- **Play is closed for the duration of the overhaul** - see its own note below. Not part of
+  the original S1 plan, but it removes what would otherwise be the real blocker on step 8.
 
-**Not started:**
-- The `/author` Flask blueprint and its five routes.
-- The board's actual frontend under `/author/<slug>/board` (D4: client-rendered canvas,
-  HTMX for every server exchange) - the prototype file is a standalone reference design,
-  not code this repo serves.
-- `schema/template.v3.schema.json`.
-- The health-panel lint subset (D3) as server-computed lint, L01/L08/L09/L16 plus the
-  structural-flow and Cast checks - the prototype's client-side JS versions of these are
-  reference only; D3 puts the real ones on the server.
-- README synopsis sync.
-- Actually authoring CR-10 (`role`/`delivers`/`activate_when`) and CR-05
-  (`mechanics.endings`) content into the three real stories. `author_model.py` can
-  round-trip that content the moment it exists; nothing has written it into any real
-  template yet - the loader/writer's ending-round-trip coverage today is a synthetic
-  template in `test_author_model.py`, not real content.
+**Still open:**
+- **Step 8**: migrating CR-10 (`role`/`delivers`/`activate_when`) and CR-05
+  (`mechanics.endings`) content into the three real stories - `example`, New Babel, and The
+  Missing Core. In progress: the user is authoring `example` and New Babel's content by hand.
+  The Missing Core's content doesn't need designing - CR-10's mapping table (roles,
+  activations, deliveries for all five subplots) and CR-05's proposed ending set are already
+  written out in `Story_Mechanics_Update.md` (the "Proposed ending set: The Missing Core"
+  and "Mapping for The Missing Core" tables) - transcribing them onto the board is what's
+  left, and nobody has claimed it yet.
+
+**Play closed during the overhaul.** `backend/app.py`'s `_close_play_during_overhaul`
+(`before_request` hook, `PLAY_ENABLED` env var, default off) returns 503 with an explanatory
+page for `/`, `/stories` and everything under `/play/...`, for every logged-in user, until
+flipped. Decided rather than worked around: while building S1's routes, `_story_save_stats`
+was found to call `state_store.load_template()` unconditionally for every story in the
+catalog to build its save-stats card, with no guard - so the moment any story authors
+`mechanics.endings` (which D1 has the board do routinely, and which `load_template()`
+correctly rejects with `UnknownEngineError` until S5 registers `ending_funnel`), `/stories`
+and `/play` break for that story, for everyone, not just its author. Patching that one call
+site was the smaller fix; closing play outright was the decision actually made, since no
+story is reliably playable end to end during the schema-v3 migration regardless (CLAUDE.md:
+"saves are disposable for the duration of the overhaul"). Flip `PLAY_ENABLED=1` once a
+playable v3 system exists - nothing else about the gate changes. Covered by
+`test_play_closure.py`.
 
 **Goal.** Open a real story on the board, edit everything in fact 2's table, and save without
 losing anything.
@@ -357,17 +401,21 @@ losing anything.
   - L16 (dangling ids)
   - the §4.6 structural flow checks
   - the prototype's Cast checks
+  **Done** - `backend/author_lint.py`.
 - **Schema** `schema/template.v3.schema.json`. With no legacy templates to protect, L01's
   "any unknown non-`_` key is an error" applies to the whole template from the start. Every
   key the three stories use today gets modelled in S1, or deleted from the story because no
-  engine reads it.
+  engine reads it. **Done.**
 - **Save flow:** schema → lint (errors block, warnings don't) → diff shown as an HTMX
-  fragment → confirm → `write_template`.
+  fragment → confirm → `write_template`. **Done.**
 - **README synopsis sync (§2).** Only rewrite a marked section of an existing `README.md`.
-  Never create one; of today's stories only New Babel has a README.
+  Never create one; of today's stories only New Babel has a README. **Done** -
+  `backend/readme_sync.py`. Creating a README for a story with none was out of this bullet's
+  original scope; done anyway, once, as an explicit backfill (see "Done," above) - the
+  automatic per-save sync still only ever touches a README that already exists.
 - **Migrate the three stories** onto the board as the S1 acceptance run. For The Missing
   Core, CR-10's own mapping table (roles, activations and deliveries for all five subplots)
-  and CR-05's proposed ending set are the source.
+  and CR-05's proposed ending set are the source. **Still open** - see "Still open," above.
 
 **Gate.**
 - **Round trip: met.** For every real story and fixture, `load → board model → write` with
@@ -385,13 +433,15 @@ losing anything.
   `mechanics.validate()` (confirmed directly, not just asserted by this document) - and
   `author_model.to_board_model` loads the same content cleanly, exercised by
   `test_author_model.py`'s synthetic-ending tests.
-- **Offline test: `test_author_model.py` exists and passes (loader, writer, projection).**
-  `test_author_routes.py` does not exist - there is no `/author` blueprint yet for it to
-  test, so the 404-for-non-author-account check is still open.
-- **Not yet gated at all, because nothing exists to gate:** the board frontend rendering a
-  real template (only the prototype's *sample* data has been interaction-tested, not a real
-  story loaded through `author_model.py`), the health panel's server-side lint, the schema
-  file, README sync, and the save flow's diff/confirm step.
+- **Offline test: met.** `test_author_model.py`, `test_author_lint.py`,
+  `test_author_routes.py` and `test_readme_sync.py` all exist and pass - including the
+  404-for-non-author-account check, previously open.
+- **Met:** the board frontend rendering a real template, the health panel's server-side
+  lint, the schema file, README sync, and the save flow's diff/confirm step - all previously
+  "not yet gated at all, because nothing exists to gate," now built and covered by the tests
+  above.
+- **Still open:** the acceptance run itself (step 8) - the phase's gate isn't formally closed
+  until it runs, even though every mechanical item above is met.
 
 **Risk.** The writer. Every lossy template editor loses data by rebuilding from its own
 model, and the resulting diff looks like a formatting change. The byte-identical round trip
@@ -401,23 +451,17 @@ this bug class before any UI existed to hide them (see the loader/writer bullet,
 remaining risk in S1 is schedule/scope, not data loss.
 
 **To close S1, in dependency order:**
-1. `schema/template.v3.schema.json` - the save flow needs it before it can validate anything.
-2. The `/author` Flask blueprint and its five routes (gate, catalog, board page, validate,
-   save, raw). Thin wrappers around `author_model.py`, which already does the real work.
-3. The board frontend at `/author/<slug>/board` - port the prototype's interaction
-   patterns (now Playwright-verified as correct) from its standalone HTML/JS into the D4
-   shape (client canvas, HTMX for every server call), wired to a real template through
-   `author_model.py` instead of the prototype's hardcoded sample.
-4. The health panel's server-side lint subset (L01/L08/L09/L16 + structural-flow + Cast
-   checks), called from the save flow.
-5. The save flow itself: schema → lint → diff fragment → confirm → `write_template`.
-6. README synopsis sync.
-7. `test_author_routes.py` (404-gating, Flask-gated per the existing `test_app_routes.py`
-   pattern).
-8. Only then: migrate the three real stories' CR-10/CR-05 content onto the board by hand,
-   as the S1 acceptance run.
-
-Steps 1-2 can start immediately - both depend only on `author_model.py`, which is done.
+1. ~~`schema/template.v3.schema.json`~~ **Done.**
+2. ~~The `/author` Flask blueprint and its five routes~~ **Done.**
+3. ~~The board frontend at `/author/<slug>/board`~~ **Done.**
+4. ~~The health panel's server-side lint subset~~ **Done.**
+5. ~~The save flow itself~~ **Done.**
+6. ~~README synopsis sync~~ **Done**, plus the one-time backfill onto all three real stories.
+7. ~~`test_author_routes.py`~~ **Done**, alongside `test_author_lint.py` and
+   `test_readme_sync.py`.
+8. **Still open:** migrate the three real stories' CR-10/CR-05 content onto the board by
+   hand, as the S1 acceptance run - see "Still open," above, for exactly what's left and for
+   whom.
 
 ---
 

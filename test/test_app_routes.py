@@ -39,6 +39,10 @@ tmp_dir = tempfile.mkdtemp(prefix="cyoa_app_routes_test_")
 try:
     os.environ.setdefault("GOOGLE_API_KEY", "test-key")
     os.environ.setdefault("FLASK_SECRET_KEY", "test-secret")
+    # /stories and /play are closed by default during the V3 overhaul (backend/app.py's
+    # _close_play_during_overhaul) - this test exercises the real play flow, so it needs
+    # the closure lifted, the same way it needs a real flask install.
+    os.environ["PLAY_ENABLED"] = "1"
 
     ss = load_state_store(tmp_dir)
 
