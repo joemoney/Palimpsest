@@ -626,11 +626,33 @@ function renderInspector(){
       const cb=el('label','toggle');const c=el('input');c.type='checkbox';c.checked=!!n.catchAll;c.id='f_catchall';c.onchange=()=>{n.catchAll=c.checked;save();render()};cb.appendChild(c);cb.appendChild(document.createTextNode(' Catch-all: can never be ruled out'));
       insp.appendChild(cb);
       insp.appendChild(el('h4',null,'Waypoints'));
-      insp.appendChild(el('p','note','What the story must set up before this ending can happen. Write each as an event on the page, never its meaning.'));
+      insp.appendChild(el('p','note','What the story must set up before this ending can happen. Write each as an event on the page, never its meaning. Each one needs a way to recognise it happened - detect (a judge reads the scene) or done_when (a condition the engine checks, e.g. a stat threshold).'));
       const c2=carriers(n),ul=el('ul','list');
       (n.waypoints||[]).forEach((w,i)=>{const li=el('li','wp');const idr=el('div','id');idr.appendChild(el('span',null,w.id));
         const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{n.waypoints.splice(i,1);model.edges=model.edges.filter(e=>!(e.to===n.id&&e.wp===w.id));save();render()};idr.appendChild(rm);li.appendChild(idr);
-        const inp=textInput(w.plant,v=>w.plant=v);inp.setAttribute('aria-label','Waypoint '+w.id);li.appendChild(inp);
+        const inp=textInput(w.plant,v=>w.plant=v);inp.setAttribute('aria-label','Waypoint '+w.id+' plant');inp.placeholder='plant: the event, e.g. a door opens for Lark';li.appendChild(inp);
+
+        const detectInp=textInput(w.detect,v=>{if(v.trim())w.detect=v;else delete w.detect},'detect: judge text, e.g. "Lark is named aloud"');
+        detectInp.setAttribute('aria-label','Waypoint '+w.id+' detect');li.appendChild(detectInp);
+
+        // done_when is CR-02's condition grammar (JSON) - no structured editor yet (that's
+        // S2's condition editor), so this is a validated raw-JSON textarea: invalid JSON
+        // shows an error and never overwrites the last-valid w.done_when, so a mid-typing
+        // state can't corrupt the model.
+        const dwWrap=el('div');dwWrap.style.cssText='display:grid;gap:3px';
+        const dwTa=el('textarea');dwTa.value=w.done_when?JSON.stringify(w.done_when):'';
+        dwTa.placeholder='done_when (JSON), e.g. {"stat": {"axis": "reach", "at_least": 20}}';
+        dwTa.setAttribute('aria-label','Waypoint '+w.id+' done_when');
+        dwTa.style.cssText='min-height:44px;font-family:var(--mono);font-size:11.5px;width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:5px 7px';
+        const dwErr=el('div','fieldnote err');dwErr.style.display='none';
+        dwTa.addEventListener('input',()=>{
+          const t=dwTa.value.trim();
+          if(!t){delete w.done_when;dwErr.style.display='none';save();renderCanvas();renderHealth();return}
+          try{w.done_when=JSON.parse(t);dwErr.style.display='none';save();renderCanvas();renderHealth()}
+          catch(e){dwErr.textContent='Not valid JSON - keeping the last saved condition.';dwErr.style.display='block'}
+        });
+        dwWrap.appendChild(dwTa);dwWrap.appendChild(dwErr);li.appendChild(dwWrap);
+
         const cs=c2[w.id];li.appendChild(el('div','carriers'+(cs.length?'':' none'),cs.length?'Carried by '+cs.map(id=>node(id).title).join(', '):'No thread carries this yet'));
         ul.appendChild(li)});
       insp.appendChild(ul);

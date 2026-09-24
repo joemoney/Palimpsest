@@ -362,6 +362,14 @@ losing anything.
     `playable_projection` cases.
 - **Inspector detail tab** for every node kind in §4.3. Each field shows its visibility badge
   and, where it applies, the "not built" chip (D1).
+  - **Gap found and fixed after initial ship**, per UI feedback: a destination ending's
+    waypoint rows only exposed `plant` - `detect` and `done_when` had no editor at all, so
+    there was no way to author how a waypoint gets recognised as complete (L09 exists
+    specifically to catch a waypoint with neither). `detect` is a plain text input; `done_when`
+    is a raw-JSON textarea (validated, keeps the last-valid value on a parse error) rather than
+    a structured condition builder - that's S2's condition editor, not built yet, and CR-02's
+    grammar (`{"stat": {"axis": ..., "at_least": ...}}`, `flag`, `revelation`, `all`/`any`/`not`)
+    is the same shape the raw-JSON escape hatch already accepts elsewhere.
 - **Cast tab**, carried over from the prototype and wired to `world.characters`.
 - **D7: `relationship_to_player` becomes `first_contact`. Done**, in one change with its
   engine reader (the same "no field without a reader" rule as D1).
