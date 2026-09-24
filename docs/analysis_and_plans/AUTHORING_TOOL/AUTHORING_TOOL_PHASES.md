@@ -603,9 +603,20 @@ is worse than no preview.
 
 ## Phase S5: Engine implementation
 
-**Goal.** Every "not built" chip disappears.
+**Planning approach changed 2026-09-24: demand-driven, not batch-planned.** The board (S1)
+is done and being used for real authoring now, which is exactly the state D1 anticipated -
+"a story is unplayable (loudly) until S5 builds its engines." Rather than pre-planning and
+building a whole numbered step of this phase at once (e.g. "step 3, CR-05+CR-10 together")
+before any of it is exercised, engine work now happens piece by piece as real storyboard
+authoring surfaces a concrete need - `activate_when` doing nothing in play is what prompted
+this, not a phase-completion deadline. The step order and CR grouping below stays as the
+reference for what the complete picture looks like and why CR-05/CR-10 are coupled; it is no
+longer a gate that has to be fully satisfied before any of it is touched. Expect this phase
+to land out of order and partially, tracked here after the fact rather than planned ahead of it.
 
-Order, as `Story_Mechanics_Update.md` §5 justifies:
+**Goal.** Every "not built" chip disappears, eventually.
+
+Order, as `Story_Mechanics_Update.md` §5 justifies (reference, not a build queue - see above):
 
 1. **CR-03** visibility enforcement in the loader (allowlists from `x-visibility`).
 2. **CR-01** tier `on_enter` hooks.
