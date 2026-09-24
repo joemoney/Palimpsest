@@ -153,14 +153,14 @@ td.cell.empty{color:var(--muted)}
 .inspector h4{font:500 11px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px}
 .field{display:grid;gap:5px;margin-bottom:12px}
 .field label{font-size:12px;font-weight:600;color:var(--muted)}
-.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:6px;background:var(--raised);padding:7px 9px;font-size:13.5px}
+.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:6px;background:var(--raised);color:var(--ink);padding:7px 9px;font-size:13.5px}
 .field textarea{min-height:84px;resize:vertical;line-height:1.45}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .note{font-size:12.5px;color:var(--muted);margin:0 0 10px}
 .list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
 .wp{border:1px solid var(--line);border-radius:7px;padding:8px 9px;display:grid;gap:6px;background:var(--raised)}
 .wp .id{font:500 11px var(--mono);color:var(--muted);display:flex;justify-content:space-between;gap:8px;align-items:center}
-.wp input{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:5px 7px;font-size:13px}
+.wp input{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);padding:5px 7px;font-size:13px}
 .carriers{font-size:12px;color:var(--muted)}
 .carriers.none{color:var(--warn);font-weight:600}
 .issue{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start;padding:8px 10px;border-radius:7px;cursor:pointer;border:1px solid transparent;background:var(--warn-bg);color:var(--ink);text-align:left;width:100%}
@@ -203,7 +203,7 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .chip.warn{color:var(--warn)}
 .chip.err{color:var(--err);background:var(--err-bg)}
 .canonrow{border:1px dashed var(--line);border-radius:7px;padding:8px 9px;display:grid;gap:6px;background:var(--raised)}
-.canonrow input,.canonrow textarea{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:5px 7px;font-size:13px}
+.canonrow input,.canonrow textarea{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);padding:5px 7px;font-size:13px}
 .canonrow textarea{min-height:64px;resize:vertical;line-height:1.45}
 .linkchips{display:flex;flex-wrap:wrap;gap:6px}
 .linkchip{height:24px;padding:0 9px;border:1px solid var(--k,var(--line));color:var(--k,var(--ink));border-radius:999px;background:var(--surface);cursor:pointer;font:500 11.5px var(--body)}
@@ -212,9 +212,13 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .cb{display:grid;gap:5px}
 .cb-group{border:1px solid var(--line);border-radius:7px;padding:6px 8px;display:grid;gap:5px;background:var(--raised)}
 .cb-leaf{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
-.cb select,.cb input[type=text],.cb input[type=number]{height:26px;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:0 6px;font-size:12.5px;max-width:100%}
+.cb select,.cb input[type=text],.cb input[type=number]{height:26px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);padding:0 6px;font-size:12.5px;max-width:100%}
 /* ---- validate/save results ---- */
-#author-results{display:grid;gap:8px}
+/* Capped so a long error/warning list can't grow the header's "auto" grid row until it
+   crushes .main's "1fr" row to nothing - board-app is display:grid;grid-template-rows:auto 1fr
+   at height:100%, so an unbounded results panel here used to push the canvas fully off
+   screen with no way back short of a page reload. */
+#author-results{display:grid;gap:8px;max-height:40vh;overflow-y:auto}
 #author-results .card{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface)}
 
 /* base.html's <main> is itself class="app", max-width:560px - sized for the narrow prose
@@ -612,7 +616,7 @@ function rawConditionField(current,on,placeholder){
   const wrap=el('div');wrap.style.cssText='display:grid;gap:3px';
   const ta=el('textarea');ta.value=current?JSON.stringify(current):'';
   ta.placeholder=placeholder||'condition (JSON), e.g. {"stat": "reach", "gte": 20}';
-  ta.style.cssText='min-height:44px;font-family:var(--mono);font-size:11.5px;width:100%;border:1px solid var(--line);border-radius:5px;background:var(--raised);padding:5px 7px';
+  ta.style.cssText='min-height:44px;font-family:var(--mono);font-size:11.5px;width:100%;border:1px solid var(--line);border-radius:5px;background:var(--raised);color:var(--ink);padding:5px 7px';
   const err=el('div','fieldnote err');err.style.display='none';
   ta.addEventListener('input',()=>{
     const t=ta.value.trim();
@@ -696,7 +700,7 @@ function cbText(value,onchange,suggestions){
 function cbRawNode(c,set){
   const wrap=el('div');wrap.style.cssText='display:grid;gap:3px;flex:1';
   const ta=el('textarea');ta.value=JSON.stringify(c);
-  ta.style.cssText='min-height:40px;font-family:var(--mono);font-size:11.5px;width:100%;border:1px solid var(--warn);border-radius:5px;background:var(--surface);padding:5px 7px';
+  ta.style.cssText='min-height:40px;font-family:var(--mono);font-size:11.5px;width:100%;border:1px solid var(--warn);border-radius:5px;background:var(--surface);color:var(--ink);padding:5px 7px';
   const note=el('div','fieldnote warn','Not a form the builder can edit (old free-text or gate-form condition). Edit as JSON, or replace it with a builder row.');
   const err=el('div','fieldnote err');err.style.display='none';
   ta.addEventListener('change',()=>{try{set(JSON.parse(ta.value))}catch(e){err.textContent='Not valid JSON - unchanged.';err.style.display='block'}});
@@ -928,7 +932,7 @@ function renderInspector(){
         const cs=c2[w.id];li.appendChild(el('div','carriers'+(cs.length?'':' none'),cs.length?'Carried by '+cs.map(id=>node(id).title).join(', '):'No thread carries this yet'));
         ul.appendChild(li)});
       insp.appendChild(ul);
-      const r=el('div','row');r.style.marginTop='8px';const ni=el('input');ni.type='text';ni.placeholder='New waypoint, e.g. a door opens for Lark';ni.id='f_newwp';ni.style.cssText='flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;background:var(--raised);padding:6px 8px';
+      const r=el('div','row');r.style.marginTop='8px';const ni=el('input');ni.type='text';ni.placeholder='New waypoint, e.g. a door opens for Lark';ni.id='f_newwp';ni.style.cssText='flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;background:var(--raised);color:var(--ink);padding:6px 8px';
       const ab=el('button','btn small','Add');ab.type='button';
       const add=()=>{const t=ni.value.trim();if(!t)return;let base=t.toLowerCase().replace(/[^a-z0-9 ]/g,'').split(/\s+/).filter(Boolean).slice(0,3).join('_')||'waypoint',id=base,k=2;while((n.waypoints||[]).some(w=>w.id===id))id=base+'_'+k++;(n.waypoints=n.waypoints||[]).push({id,plant:t});save();render()};
       ab.onclick=add;ni.onkeydown=e=>{if(e.key==='Enter')add()};r.appendChild(ni);r.appendChild(ab);insp.appendChild(r);
@@ -1054,7 +1058,7 @@ function renderEdgeInspector(){
     const ul=el('ul','list');
     g.items.forEach(e=>{const li=el('li','wp');const idr=el('div','id');
       const s=selectInput(e.wp||'',[['','Choose a waypoint…'],...(b.waypoints||[]).map(w=>[w.id,w.plant])],v=>{e.wp=v||null;sel={type:'edge',key:gkey(e)}});s.setAttribute('aria-label','Waypoint');
-      s.style.cssText='width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:5px 7px;font-size:13px';
+      s.style.cssText='width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);padding:5px 7px;font-size:13px';
       const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{model.edges.splice(model.edges.indexOf(e),1);save();render()};
       idr.appendChild(el('span',null,e.wp||'unassigned'));idr.appendChild(rm);li.appendChild(idr);li.appendChild(s);ul.appendChild(li)});
     insp.appendChild(ul);

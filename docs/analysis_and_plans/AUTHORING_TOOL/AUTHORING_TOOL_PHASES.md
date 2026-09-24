@@ -265,8 +265,10 @@ three real stories) - in progress, see below.**
   `SAMPLE`/`localStorage` removed, seeded server-side from
   `author_model.to_board_model(state_store.load_template_raw(slug))`, Export repointed at the
   raw-JSON escape hatch, Validate/Save added as the only two HTMX calls the canvas makes (D4).
-- **The save flow**: schema → lint (errors block, warnings don't) → diff fragment → confirm →
-  `write_template`, exactly as planned.
+- **The save flow**: schema → lint → `write_template`. **Changed from the original plan** (which
+  had errors block the save, behind a diff-and-confirm step): Save now *always* writes the full
+  edited template, lint errors or not - see "Save always writes" below. Validate is the
+  preview-only path (same lint, no write, no diff).
 - **README synopsis sync** (`backend/readme_sync.py`) - regenerates a story's `## Synopsis`
   section from `meta.synopsis` on every successful save, only ever touching that one marked
   section. Broader than originally scoped here on explicit request: backfilled onto all three
@@ -302,19 +304,22 @@ story is reliably playable end to end during the schema-v3 migration regardless 
 playable v3 system exists - nothing else about the gate changes. Covered by
 `test_play_closure.py`.
 
-**Layout is decoupled from content lint - resolved.** `frontend/author_board.html` autosaves
-`_storyboard.positions` (node x/y) to `localStorage`, keyed per story, on every edit -
-client-only, so dragging/auto-layout survives a refresh without waiting on a server round
-trip. The gap this used to leave open (no path from there to disk while any content lint
-error blocked `/api/save`, which every real story hits via L08 until it has
-`mechanics.endings` content) is closed: `author_model.apply_layout_only(raw, nodes)` patches
-only `_storyboard.positions` onto a copy of the on-disk template, and `app.py`'s
-`_author_save_layout_only` calls it whenever `/api/save` would otherwise refuse to write
-anything, skipping the write (and the story_version bump) if positions haven't actually
-changed. The fragment reports "Layout saved." alongside the blocking errors when this fires.
-Content itself is still all-or-nothing behind the full lint check, as designed - only layout
-(author-only, engine-ignored - CR-03) bypasses it. Covered in `test_author_model.py`
-(`apply_layout_only`) and `test_author_routes.py` (the route-level write/skip behaviour).
+**Save always writes; lint gates whether a story is shown to players, not whether an author can
+save. (Supersedes an earlier "layout-only save".)** The original plan had lint errors block
+`/api/save`. Every real story fails lint (L08) until it authors `mechanics.endings`, so an
+author mid-edit - adding and removing threads and endings, rewiring connections - could not land
+anything on disk. A first fix built `author_model.apply_layout_only` and let a blocked save write
+just `_storyboard.positions`; that was then superseded by the simpler and more general rule:
+`_author_validate_response` writes the full edited template on every Save, and reports lint
+errors alongside "Saved" instead of refusing. What lint errors gate instead is player
+visibility - `stories()` filters out any story where `_story_blocked_by_lint` is true, so a
+half-wired story can't be started, while its author can always save and come back to it.
+`apply_layout_only`, `_author_save_layout_only` and the diff against the on-disk file are gone;
+Validate still offers a "Confirm & Save" button, which now just saves. Not exercised end-to-end yet: `/stories` currently serves the "closed for the V3
+overhaul" page (play is disabled until a minimum working appV3 build exists), so the filter
+only runs once `PLAY_ENABLED` is on; `test_app_routes.py` covers it against a deliberately
+lint-failing story. The client-side layout autosave to `localStorage`
+(`frontend/author_board.html`, keyed per story) is unaffected and still smooths refreshes.
 
 **Goal.** Open a real story on the board, edit everything in fact 2's table, and save without
 losing anything.
@@ -466,8 +471,9 @@ losing anything.
   "any unknown non-`_` key is an error" applies to the whole template from the start. Every
   key the three stories use today gets modelled in S1, or deleted from the story because no
   engine reads it. **Done.**
-- **Save flow:** schema → lint (errors block, warnings don't) → diff shown as an HTMX
-  fragment → confirm → `write_template`. **Done.**
+- **Save flow:** schema → lint → `write_template`. **Done, then changed** - Save always writes
+  and lint gates player visibility instead of blocking the save; see "Save always writes",
+  above.
 - **README synopsis sync (§2).** Only rewrite a marked section of an existing `README.md`.
   Never create one; of today's stories only New Babel has a README. **Done** -
   `backend/readme_sync.py`. Creating a README for a story with none was out of this bullet's
@@ -497,7 +503,7 @@ losing anything.
   `test_author_routes.py` and `test_readme_sync.py` all exist and pass - including the
   404-for-non-author-account check, previously open.
 - **Met:** the board frontend rendering a real template, the health panel's server-side
-  lint, the schema file, README sync, and the save flow's diff/confirm step - all previously
+  lint, the schema file, README sync, and the save flow - all previously
   "not yet gated at all, because nothing exists to gate," now built and covered by the tests
   above.
 - **Still open:** the acceptance run itself (step 8) - the phase's gate isn't formally closed

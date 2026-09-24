@@ -68,8 +68,46 @@ try:
     with open(os.path.join(story_dir, "template.json"), "w") as f:
         json.dump(template, f)
 
+    # A second, deliberately lint-failing story (no mechanics.endings at all, so L01/L08
+    # fire) - used below to exercise the /stories lint gate for real (backend/app.py's
+    # _story_blocked_by_lint). Kept minimal rather than a mutated copy of new_babel: this
+    # test only needs *a* story that fails lint, not one that also carries the full opening-
+    # scene/turn-taking schema new_babel needs.
+    BROKEN_TEMPLATE = {
+        "schema_version": 3, "story_version": "2024-01-01.1",
+        "meta": {"title": "Broken Test Story"},
+        "narration": {"pov": "second-person"},
+        "world": {"setting_summary": "A test world.", "rules": ["Be nice."]},
+        "protagonist": {"default_name": "Traveller"},
+        "plot": {
+            "main_thread": {"title": "Main", "description": "The main thread.", "acts": [
+                {"act_number": 1, "title": "Act One", "description": "It begins."},
+            ]},
+            "pacing": {"nudge_frequency": 5, "act_check_frequency": 12},
+            "initial_scene": {"location": "start", "summary": "The beginning."},
+            "opening_scene": {"narration_before_name": "Before.", "narration_after_name": "After."},
+        },
+    }
+    broken_dir = os.path.join(ss.STORIES_DIR, "broken_test_story")
+    os.makedirs(broken_dir, exist_ok=True)
+    with open(os.path.join(broken_dir, "template.json"), "w") as f:
+        json.dump(BROKEN_TEMPLATE, f)
+
     import story_engine as se  # noqa: E402  (picks up the same stubbed state_store)
     import app as flask_app_module  # noqa: E402
+
+    # This test otherwise exercises the real turn-taking flow against a real (private)
+    # template - the committed new_babel template doesn't yet author mechanics.endings
+    # (AUTHORING_TOOL_PHASES.md Phase S1 step 8 isn't done for any real story yet), so it
+    # fails lint same as every other real story right now, and would otherwise vanish from
+    # /stories and break the "lists the seeded catalog" and /play assertions below for a
+    # reason unrelated to what this file is testing. broken_test_story above is deliberately
+    # left un-patched, so the real gate (captured here before the override) still gets
+    # exercised against it below.
+    _real_story_blocked_by_lint = flask_app_module._story_blocked_by_lint
+    flask_app_module._story_blocked_by_lint = (
+        lambda slug: False if slug == "new_babel" else _real_story_blocked_by_lint(slug)
+    )
 
     # call_llm handles narration (returns a string); call_llm_json handles the
     # separate state-update pass that follows every turn (returns a dict) - two
@@ -148,6 +186,11 @@ try:
     assert resp.status_code == 200
     assert b"New Babel" in resp.data or template["meta"]["title"].encode() in resp.data
     print("OK: /stories lists the seeded catalog")
+
+    # --- ...but omits a story that still fails lint (backend/app.py's _story_blocked_by_lint,
+    # exercised for real here since new_babel above is the one with the monkeypatched bypass) --
+    assert b"Broken Test Story" not in resp.data
+    print("OK: /stories omits a story that still fails lint")
 
     # --- first visit to /play is the name-capture phase ---
     resp = client.get("/play/new_babel")

@@ -182,14 +182,18 @@ try:
     assert b"GOOGLE_API_KEY" in resp.data
     print("OK: /author/<slug>/assist reports a clear error with no API key configured")
 
-    # --- validate against the real, unmodified example story: known lint errors block save ---
+    # --- validate against the real, unmodified example story: known lint errors surface, but
+    # Confirm & Save is still offered - Save always writes the full template now, lint errors
+    # or not (see backend/app.py's _author_validate_response); what lint errors gate is
+    # whether the story is listed to players (_story_blocked_by_lint / /stories), not whether
+    # the author can keep saving their edits ------------------------------------------------
     raw = ss.load_template_raw("example")
     model = author_model.to_board_model(raw)
     resp = client.post("/author/example/api/validate", data={"model": json.dumps(model)})
     assert resp.status_code == 200
     assert b"No catch-all ending" in resp.data
-    assert b"Confirm &amp; Save" not in resp.data and b"Confirm & Save" not in resp.data
-    print("OK: validating the unmodified example story surfaces its known lint errors and blocks save")
+    assert b"Confirm" in resp.data
+    print("OK: validating the unmodified example story surfaces its known lint errors, without blocking Confirm & Save")
 
     # --- a clean, schema-and-lint-valid template validates with nothing blocking -------------
     clean_raw = ss.load_template_raw("author_test_story")
@@ -217,36 +221,23 @@ try:
     assert after["meta"]["title"] in readme_after or "Author Route Test Story" in readme_after
     print("OK: /api/save resyncs the story's README Synopsis section")
 
-    # --- saving with a blocking error never writes content, but does write layout ------------
-    # (layout is author-only and engine-ignored - CR-03 - so it shouldn't have to wait on an
-    # unrelated content lint error; AUTHORING_TOOL_PHASES.md Phase S1's decoupling decision.)
-    before = ss.load_template_raw("example")
+    # --- saving with a blocking error still writes the full edited content, not just layout --
+    # (an author mid-edit - adding/removing threads and endings, rewiring connections - needs
+    # every Save to land on disk; lint errors only gate whether the story is listed to
+    # players, never the author's own ability to keep working. See _author_validate_response.)
+    before_version = ss.load_template_raw("example")["story_version"]
     moved_model = json.loads(json.dumps(model))  # deep copy
     moved_model["nodes"][0]["x"] = 999
     moved_model["nodes"][0]["y"] = 888
     resp = client.post("/author/example/api/save", data={"model": json.dumps(moved_model)})
     assert resp.status_code == 200
-    assert b"Saved." not in resp.data
-    assert b"Layout saved." in resp.data
+    assert b"Saved." in resp.data
+    assert b"No catch-all ending" in resp.data
+    assert b"until" in resp.data  # "not shown in the player list until..." note
     after = ss.load_template_raw("example")
+    assert after["story_version"] != before_version
     assert after["_storyboard"]["positions"][moved_model["nodes"][0]["id"]] == {"x": 999, "y": 888}
-    after_without_layout = dict(after)
-    after_without_layout.pop("_storyboard")
-    after_without_layout["schema_version"] = before["schema_version"]
-    after_without_layout["story_version"] = before["story_version"]
-    before_without_layout = dict(before)
-    before_without_layout.pop("_storyboard", None)
-    assert after_without_layout == before_without_layout, "a blocked save must not write content"
-    print("OK: /api/save writes layout even when content lint errors block the rest")
-
-    # --- a second blocked save with unchanged positions writes nothing at all -----------------
-    before = ss.load_template_raw("example")
-    resp = client.post("/author/example/api/save", data={"model": json.dumps(moved_model)})
-    assert resp.status_code == 200
-    assert b"Layout saved." not in resp.data
-    after = ss.load_template_raw("example")
-    assert after == before, "an unchanged layout must not trigger a pointless write"
-    print("OK: /api/save skips the layout write when positions haven't actually changed")
+    print("OK: /api/save writes the full edited template even when content lint errors remain")
 
     # --- the raw JSON escape hatch: GET shows canonical text, POST round-trips through the
     # same validate pipeline -------------------------------------------------------------------

@@ -1,22 +1,28 @@
+{% if errors or warnings or saved %}
+<button type="button" onclick="document.getElementById('author-results').innerHTML=''"
+        style="justify-self:end; border:none; background:none; cursor:pointer; color:var(--muted); font-size:0.8rem; padding:2px 4px;">
+  &times; Close, back to board
+</button>
+{% endif %}
+
 {% if saved %}
 <div class="card" style="border-color:#2e7d4f;">
   <div style="font-weight:700; color:#2e7d4f;">Saved.</div>
   <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">story_version {{ story_version }}</div>
-</div>
-{% endif %}
-
-{% if layout_saved %}
-<div class="card" style="border-color:#2e7d4f;">
-  <div style="font-weight:700; color:#2e7d4f;">Layout saved.</div>
+  {% if errors %}
   <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">
-    Node positions are on disk even though the errors below still block the rest of the save.
+    Not shown in the player story list until the error{{ 's' if errors|length != 1 }} below {{ 'is' if errors|length == 1 else 'are' }} fixed.
   </div>
+  {% endif %}
 </div>
 {% endif %}
 
 {% if errors %}
 <div class="card" style="border-color:#b0322c;">
-  <div style="font-weight:700; color:#b0322c;">{{ errors|length }} error{{ 's' if errors|length != 1 }} - save blocked</div>
+  <div style="font-weight:700; color:#b0322c;">
+    {{ errors|length }} error{{ 's' if errors|length != 1 }}
+    {% if not saved %} - hides this story from the player list until fixed{% endif %}
+  </div>
   <ul style="margin:8px 0 0; padding-left:20px;">
     {% for issue in errors %}
     <li style="font-size:0.9rem;">
@@ -44,13 +50,6 @@
 
 {% if not errors and not warnings and not saved %}
 <div class="card">No issues found.</div>
-{% endif %}
-
-{% if diff %}
-<div class="card">
-  <div style="font-weight:700; margin-bottom:6px;">Changes</div>
-  <pre style="font-size:0.8rem; overflow-x:auto; white-space:pre-wrap;">{{ diff if diff.strip() else "(no changes)" }}</pre>
-</div>
 {% endif %}
 
 {% if can_save %}

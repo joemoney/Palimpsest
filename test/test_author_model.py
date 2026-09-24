@@ -305,21 +305,4 @@ assert projected3["mechanics"]["subplots"] == {"engine": "weighted_threads"}
 assert ("subplots", "weighted_threads") not in left_out3
 print("OK: playable_projection leaves a registered engine's block untouched")
 
-# --- apply_layout_only: touches _storyboard.positions and nothing else -------------------
-layout_raw = copy.deepcopy(synthetic)
-layout_out = author_model.apply_layout_only(layout_raw, [{"id": "start", "x": 10, "y": 20}])
-assert layout_out["_storyboard"]["positions"] == {"start": {"x": 10, "y": 20}}
-assert layout_out["schema_version"] == author_model.TEMPLATE_SCHEMA_VERSION
-without_layout = copy.deepcopy(layout_out)
-without_layout.pop("_storyboard")
-without_layout["schema_version"] = layout_raw.get("schema_version")
-assert without_layout == layout_raw, "apply_layout_only must not touch anything but _storyboard"
-assert layout_raw.get("_storyboard") is None, "apply_layout_only must not mutate its input"
-print("OK: apply_layout_only writes only _storyboard.positions, leaving content untouched")
-
-# An empty node list drops _storyboard entirely, same as from_board_model's own P-2 rule.
-layout_none = author_model.apply_layout_only(layout_raw, [])
-assert "_storyboard" not in layout_none
-print("OK: apply_layout_only with no nodes drops _storyboard rather than writing {}")
-
 print("\nALL CHECKS PASSED: test_author_model")

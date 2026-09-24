@@ -1,4 +1,3 @@
-import difflib
 import json
 import os
 import re
@@ -297,11 +296,26 @@ def _story_save_stats(user_id: str, story_slug: str) -> dict | None:
     }
 
 
+def _story_blocked_by_lint(story_slug: str) -> bool:
+    """True if story_slug's on-disk template currently fails author_lint (errors, not
+    warnings) - the gate that keeps a story an author is still wiring up in the board out of
+    the player-facing list, without that lint blocking the author's own Save (see
+    _author_validate_response: Save always writes the full edited template now, lint errors
+    or not). Anything that fails to even load counts as blocked rather than raising into the
+    stories page."""
+    try:
+        raw = state_store.load_template_raw(story_slug)
+    except (ValueError, FileNotFoundError):
+        return True
+    model = author_model.to_board_model(raw)
+    return author_lint.has_errors(author_lint.lint(raw, model))
+
+
 @app.route("/stories")
 @login_required
 def stories():
     user_id = session["user_id"]
-    story_list = state_store.list_stories()
+    story_list = [s for s in state_store.list_stories() if not _story_blocked_by_lint(s["slug"])]
     for story in story_list:
         story["save_stats"] = _story_save_stats(user_id, story["slug"])
     return render_template("stories.html", stories=story_list)
@@ -716,14 +730,6 @@ def _author_enabled_or_404():
     return session.get("user_id", "") not in allowed
 
 
-def _author_template_diff(raw: dict, written: dict) -> str:
-    """A unified diff for the confirm-before-save fragment - display only, never written to
-    disk (state_store._dumps_template is what actually serialises a save)."""
-    before = json.dumps(raw, indent=2, ensure_ascii=False, sort_keys=True).splitlines()
-    after = json.dumps(written, indent=2, ensure_ascii=False, sort_keys=True).splitlines()
-    return "\n".join(difflib.unified_diff(before, after, fromfile="on disk", tofile="edited", lineterm=""))
-
-
 def _author_sync_readme(story_slug: str, written: dict) -> None:
     """Regenerates the "## Synopsis" section of the story's README from meta.synopsis on a
     successful save (Authoring_Tool_Spec.md sect2). Only ever touches a README that already
@@ -759,51 +765,36 @@ def _author_load_and_lint(story_slug: str, model_json: str):
     raw = state_store.load_template_raw(story_slug)
     written = author_model.from_board_model(raw, model)
     issues = author_lint.lint(written, model)
-    return raw, written, model, issues
-
-
-def _author_save_layout_only(story_slug: str, raw: dict, model: dict) -> bool:
-    """Layout (`_storyboard.positions`) is author-only and engine-ignored (CR-03), so it
-    shouldn't have to wait on a content lint error elsewhere in the template - called only
-    when a save is otherwise blocked. Returns whether anything was actually written (a no-op
-    save that changed nothing shouldn't still bump story_version)."""
-    layout_only = author_model.apply_layout_only(raw, model.get("nodes", []))
-    if layout_only.get("_storyboard") == raw.get("_storyboard"):
-        return False
-    state_store.write_template(story_slug, layout_only)
-    return True
+    return written, issues
 
 
 def _author_validate_response(story_slug, model_json, *, save_on_success):
+    """Save always writes the full edited template, lint errors or not - an author mid-edit
+    (adding/removing threads and endings, rewiring connections) needs every Save to land on
+    disk, not just whichever save happened to leave the template lint-clean. What lint blocks
+    is the story showing up to players at all (see stories()'s own lint filter), never the
+    author's own ability to keep working and come back to it. Validate (save_on_success=False)
+    stays preview-only - same lint, no write - so an author can check status without saving."""
     try:
-        raw, written, model, issues = _author_load_and_lint(story_slug, model_json)
+        written, issues = _author_load_and_lint(story_slug, model_json)
     except (ValueError, FileNotFoundError) as e:
         return render_template(
             "_author_validate_result.html", story_slug=story_slug,
             errors=[{"id": "L01", "severity": "error", "message": str(e)}],
-            warnings=[], diff=None, can_save=False, saved=False,
+            warnings=[], can_save=False, saved=False,
         )
     errors = [i for i in issues if i["severity"] == "error"]
     warnings = [i for i in issues if i["severity"] == "warning"]
-    if errors:
-        layout_saved = save_on_success and _author_save_layout_only(story_slug, raw, model)
-        return render_template(
-            "_author_validate_result.html", story_slug=story_slug,
-            errors=errors, warnings=warnings,
-            diff=_author_template_diff(raw, written), can_save=False, saved=False,
-            layout_saved=layout_saved,
-        )
     if not save_on_success:
         return render_template(
             "_author_validate_result.html", story_slug=story_slug,
-            errors=[], warnings=warnings,
-            diff=_author_template_diff(raw, written), can_save=True, saved=False,
+            errors=errors, warnings=warnings, can_save=True, saved=False,
         )
     new_version = state_store.write_template(story_slug, written)
     _author_sync_readme(story_slug, written)
     return render_template(
         "_author_validate_result.html", story_slug=story_slug,
-        errors=[], warnings=warnings, diff=None, can_save=False,
+        errors=errors, warnings=warnings, can_save=False,
         saved=True, story_version=new_version,
     )
 
