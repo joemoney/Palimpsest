@@ -192,6 +192,37 @@ errors = author_lint.schema_errors(bad_raw)
 assert errors, "expected schema errors for an unknown top-level key"
 assert any("not_a_real_key" in e["message"] for e in errors), errors
 
+# --- L01: the condition grammar is CR-02's canonical spelling, not free text -----------------
+import jsonschema as _js  # noqa: E402
+_schema = json.load(open(os.path.join(REPO_ROOT, "schema", "template.v3.schema.json"), encoding="utf-8"))
+_cond = _js.Draft202012Validator({"$ref": "#/$defs/condition", "$defs": _schema["$defs"]})
+GOOD = [
+    {"stat": "reach", "gte": 50},
+    {"stat": "reach", "between": [10, 20]},
+    {"revealed": "frag_0002"},
+    {"relationship": "Lark Ferris", "tier_gte": "warm"},
+    {"subplot_status": {"subplot_003": "progressed"}},
+    {"waypoints_done": "all"},
+    {"stat": {"axis": "reach", "at_least": 50}},  # pre-overhaul gate form: CR-02 rewrites, still valid
+    {"revelation": "frag_0001"},
+    {"all": [{"stat": "sync", "gte": 70}, {"revealed": "frag_0002"},
+             {"any": [{"relationship": "Lark Ferris", "tier_gte": "warm"}, {"flag": "lark_aboard"}]},
+             {"not": {"tier_reached": ["trace", "loud"]}}]},  # CR-02's own worked example
+]
+BAD = [
+    {"condition": "REACH >= 50"},          # what the free-text box used to write
+    {"condition": "TODO"},
+    {"stat": "reach"},                     # a stat leaf needs a comparator
+    {"relationship": "Lark Ferris"},       # ... and so does a relationship leaf
+    {"any": [{"condition": "TODO"}]},
+    {"stat": "reach", "gtee": 50},         # typo'd key
+]
+for c in GOOD:
+    assert _cond.is_valid(c), c
+for c in BAD:
+    assert not _cond.is_valid(c), c
+print("OK: conditions validate as CR-02 canonical grammar; free text and half-built leaves are L01")
+
 # --- has_errors -------------------------------------------------------------------------------
 assert author_lint.has_errors([{"severity": "error"}])
 assert not author_lint.has_errors([{"severity": "warning"}])

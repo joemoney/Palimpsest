@@ -209,6 +209,10 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .linkchip{height:24px;padding:0 9px;border:1px solid var(--k,var(--line));color:var(--k,var(--ink));border-radius:999px;background:var(--surface);cursor:pointer;font:500 11.5px var(--body)}
 .linkchip:hover{background:var(--raised)}
 
+.cb{display:grid;gap:5px}
+.cb-group{border:1px solid var(--line);border-radius:7px;padding:6px 8px;display:grid;gap:5px;background:var(--raised)}
+.cb-leaf{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.cb select,.cb input[type=text],.cb input[type=number]{height:26px;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:0 6px;font-size:12.5px;max-width:100%}
 /* ---- validate/save results ---- */
 #author-results{display:grid;gap:8px}
 #author-results .card{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface)}
@@ -585,20 +589,29 @@ function eyebrow(t){return el('div','eyebrow',t)}
 function condLabel(c){
   if(!c||typeof c!=='object')return '';
   if(Object.keys(c).length===1&&'condition' in c)return String(c.condition);
+  if(typeof c.stat==='string'){
+    const ax=c.stat.toUpperCase();
+    if('gte' in c)return `${ax} >= ${c.gte}`;
+    if('lte' in c)return `${ax} <= ${c.lte}`;
+    if('between' in c)return `${ax} ${c.between[0]}-${c.between[1]}`;
+  }
   if(c.stat&&typeof c.stat==='object'){
     for(const [k,op] of [['at_least','>='],['gte','>='],['at_most','<='],['lte','<=']])
       if(k in c.stat)return `${String(c.stat.axis||'').toUpperCase()} ${op} ${c.stat[k]}`;
   }
-  for(const k of ['flag','revelation','item_tag'])if(k in c)return `${k}: ${c[k]}`;
+  if(typeof c.relationship==='string')for(const k of ['tier_gte','tier_lte','peak_gte'])if(k in c)return `${c.relationship} ${k} ${c[k]}`;
+  if(c.subplot_status&&typeof c.subplot_status==='object')return 'thread '+Object.entries(c.subplot_status).map(([k,v])=>`${k} ${v}`).join(', ');
+  for(const k of ['flag','revealed','revelation','item_tag'])if(k in c)return `${k}: ${c[k]}`;
+  for(const k of ['turn_gte','act_gte'])if(k in c)return `${k.split('_')[0]} >= ${c[k]}`;
   for(const k of ['all','any','not'])if(k in c)return k+'(...)';
   return 'condition';
 }
 function setUnlockCond(e,v){if(v===undefined){delete e.cond_raw;e.cond=''}else{e.cond_raw=v;e.cond=condLabel(v)}}
-const UNLOCK_PLACEHOLDER='unlock condition (JSON), e.g. {"stat": {"axis": "reach", "at_least": 20}}';
-function jsonConditionField(current,on,placeholder){
+const UNLOCK_PLACEHOLDER='unlock condition (JSON), e.g. {"stat": "reach", "gte": 20}';
+function rawConditionField(current,on,placeholder){
   const wrap=el('div');wrap.style.cssText='display:grid;gap:3px';
   const ta=el('textarea');ta.value=current?JSON.stringify(current):'';
-  ta.placeholder=placeholder||'condition (JSON), e.g. {"stat": {"axis": "reach", "at_least": 20}}';
+  ta.placeholder=placeholder||'condition (JSON), e.g. {"stat": "reach", "gte": 20}';
   ta.style.cssText='min-height:44px;font-family:var(--mono);font-size:11.5px;width:100%;border:1px solid var(--line);border-radius:5px;background:var(--raised);padding:5px 7px';
   const err=el('div','fieldnote err');err.style.display='none';
   ta.addEventListener('input',()=>{
@@ -610,6 +623,202 @@ function jsonConditionField(current,on,placeholder){
   wrap.appendChild(ta);wrap.appendChild(err);
   return wrap;
 }
+/* ---------- condition builder (CR-02) ----------
+   Every condition field on the board goes through conditionBuilder(): dropdowns for the
+   common leaves (stat, relationship, flag, revealed, thread status, turn/act, waypoints done,
+   tier reached), all/any/not groups nested at most MAX_COND_DEPTH deep (CR-02's cap), and a
+   Raw JSON toggle for anything it can't express. A node the builder doesn't recognise (the
+   pre-overhaul {"condition": "..."} shape, gate-form stats, other leaves) is shown as an
+   inline JSON editor rather than dropped - opening a condition in the builder never loses it.
+   Canonical spelling is CR-02's: {"stat": "reach", "gte": 50}. Options come from model.refs
+   (stat axes, revelations, declared flags), the Cast tab and the thread nodes, so a typo can't
+   name something that doesn't exist. Inputs commit on `change`, not `input`, because a commit
+   repaints the whole builder and would steal focus mid-keystroke. */
+const MAX_COND_DEPTH=3;
+const LEAF_KINDS=[['stat','Stat'],['relationship','Relationship'],['flag','Flag'],['revealed','Revelation revealed'],['subplot_status','Thread status'],['turn_gte','Turn at least'],['act_gte','Act at least'],['waypoints_done','Waypoints done'],['tier_reached','Tier reached']];
+const THREAD_STATUSES=['active','progressed','completed','failed'];
+let cbUid=0;
+function condKind(c){
+  if(!c||typeof c!=='object'||Array.isArray(c))return 'raw';
+  const ks=Object.keys(c);
+  if(ks.length===1){
+    const k=ks[0],v=c[k];
+    if(k==='all'||k==='any')return Array.isArray(v)?k:'raw';
+    if(k==='not')return v&&typeof v==='object'&&!Array.isArray(v)?'not':'raw';
+    if(k==='flag'||k==='revealed')return typeof v==='string'?k:'raw';
+    if(k==='turn_gte'||k==='act_gte')return typeof v==='number'?k:'raw';
+    if(k==='waypoints_done')return (v==='all'||typeof v==='number')?k:'raw';
+    if(k==='subplot_status')return v&&typeof v==='object'&&Object.keys(v).length===1?k:'raw';
+    if(k==='tier_reached')return Array.isArray(v)&&v.length===2?k:'raw';
+    return 'raw';
+  }
+  if(ks.length===2&&typeof c.stat==='string'&&('gte' in c||'lte' in c||'between' in c))return 'stat';
+  if(ks.length===2&&typeof c.relationship==='string'&&['tier_gte','tier_lte','peak_gte'].some(k=>k in c))return 'relationship';
+  return 'raw';
+}
+function defaultLeaf(kind){
+  const R=model.refs||{};
+  const thread=model.nodes.find(n=>n.kind==='subplot');
+  switch(kind){
+    case 'stat':return {stat:(R.stats||[])[0]||'',gte:0};
+    case 'relationship':return {relationship:(model.characters[0]||{}).name||'',peak_gte:0};
+    case 'flag':return {flag:''};
+    case 'revealed':return {revealed:(R.revelations||[])[0]||''};
+    case 'subplot_status':return {subplot_status:{[thread?thread.id:'']:'progressed'}};
+    case 'turn_gte':return {turn_gte:10};
+    case 'act_gte':return {act_gte:2};
+    case 'waypoints_done':return {waypoints_done:'all'};
+    case 'tier_reached':return {tier_reached:[(R.stats||[])[0]||'','']};
+  }
+}
+function cbSelect(options,value,onchange){
+  const s=el('select');
+  const opts=options.map(o=>Array.isArray(o)?o:[o,o]);
+  if(value!==undefined&&value!==''&&!opts.some(([v])=>v===value))opts.push([value,value+' (not found)']);
+  opts.forEach(([v,l])=>{const o=el('option',null,l);o.value=v;if(v===value)o.selected=true;s.appendChild(o)});
+  s.addEventListener('change',()=>onchange(s.value));return s;
+}
+function cbNumber(value,onchange){
+  const i=el('input');i.type='number';i.value=(value===undefined||value===null)?'':value;i.style.width='72px';
+  i.addEventListener('change',()=>onchange(i.value.trim()===''?0:Number(i.value)));return i;
+}
+function cbText(value,onchange,suggestions){
+  const box=el('span'),i=el('input');i.type='text';i.value=value||'';
+  box.appendChild(i);
+  if(suggestions&&suggestions.length){
+    const id='cbl'+(++cbUid),dl=el('datalist');dl.id=id;
+    suggestions.forEach(x=>{const o=el('option');o.value=x;dl.appendChild(o)});
+    i.setAttribute('list',id);box.appendChild(dl);
+  }
+  i.addEventListener('change',()=>onchange(i.value.trim()));
+  return box;
+}
+function cbRawNode(c,set){
+  const wrap=el('div');wrap.style.cssText='display:grid;gap:3px;flex:1';
+  const ta=el('textarea');ta.value=JSON.stringify(c);
+  ta.style.cssText='min-height:40px;font-family:var(--mono);font-size:11.5px;width:100%;border:1px solid var(--warn);border-radius:5px;background:var(--surface);padding:5px 7px';
+  const note=el('div','fieldnote warn','Not a form the builder can edit (old free-text or gate-form condition). Edit as JSON, or replace it with a builder row.');
+  const err=el('div','fieldnote err');err.style.display='none';
+  ta.addEventListener('change',()=>{try{set(JSON.parse(ta.value))}catch(e){err.textContent='Not valid JSON - unchanged.';err.style.display='block'}});
+  wrap.appendChild(note);wrap.appendChild(ta);wrap.appendChild(err);return wrap;
+}
+function cbLeaf(c,kind,set){
+  const row=el('div','cb-leaf');
+  const R=model.refs||{};
+  const kindSel=cbSelect(LEAF_KINDS,kind,k=>set(defaultLeaf(k)));row.appendChild(kindSel);
+  const axes=R.stats||[];
+  if(kind==='stat'){
+    let axis=c.stat,cmp='gte' in c?'gte':'lte' in c?'lte':'between',a=c.gte??c.lte??(c.between?c.between[0]:0),b=c.between?c.between[1]:a;
+    const build=()=>{const o={stat:axis};if(cmp==='between')o.between=[a,b];else o[cmp]=a;return o};
+    row.appendChild(axes.length?cbSelect(axes,axis,v=>{axis=v;set(build())}):cbText(axis,v=>{axis=v;set(build())}));
+    row.appendChild(cbSelect([['gte','at least'],['lte','at most'],['between','between']],cmp,v=>{cmp=v;set(build())}));
+    row.appendChild(cbNumber(a,v=>{a=v;set(build())}));
+    if(cmp==='between')row.appendChild(cbNumber(b,v=>{b=v;set(build())}));
+  }else if(kind==='relationship'){
+    let who=c.relationship,cmp=['tier_gte','tier_lte','peak_gte'].find(k=>k in c),val=c[cmp];
+    const build=()=>({relationship:who,[cmp]:cmp==='peak_gte'?Number(val)||0:String(val??'')});
+    row.appendChild(cbSelect(model.characters.map(x=>x.name),who,v=>{who=v;set(build())}));
+    row.appendChild(cbSelect([['peak_gte','peak score at least'],['tier_gte','tier at least'],['tier_lte','tier at most']],cmp,v=>{
+      cmp=v;val=cmp==='peak_gte'?0:'';set(build())}));
+    row.appendChild(cmp==='peak_gte'?cbNumber(val,v=>{val=v;set(build())}):cbText(val,v=>{val=v;set(build())}));
+  }else if(kind==='flag'){
+    row.appendChild(cbText(c.flag,v=>set({flag:v}),R.flags||[]));
+  }else if(kind==='revealed'){
+    const revs=R.revelations||[];
+    row.appendChild(revs.length?cbSelect(revs,c.revealed,v=>set({revealed:v})):cbText(c.revealed,v=>set({revealed:v})));
+  }else if(kind==='subplot_status'){
+    const [tid,status]=Object.entries(c.subplot_status)[0];
+    row.appendChild(cbSelect(model.nodes.filter(n=>n.kind==='subplot').map(n=>[n.id,n.title||n.id]),tid,v=>set({subplot_status:{[v]:status}})));
+    row.appendChild(cbSelect(THREAD_STATUSES,status,v=>set({subplot_status:{[tid]:v}})));
+  }else if(kind==='turn_gte'||kind==='act_gte'){
+    row.appendChild(cbNumber(c[kind],v=>set({[kind]:v})));
+  }else if(kind==='waypoints_done'){
+    const isAll=c.waypoints_done==='all';
+    row.appendChild(cbSelect([['all','all of them'],['count','at least N']],isAll?'all':'count',v=>set({waypoints_done:v==='all'?'all':1})));
+    if(!isAll)row.appendChild(cbNumber(c.waypoints_done,v=>set({waypoints_done:v})));
+  }else if(kind==='tier_reached'){
+    const [ax,tier]=c.tier_reached;
+    row.appendChild(axes.length?cbSelect(axes,ax,v=>set({tier_reached:[v,tier]})):cbText(ax,v=>set({tier_reached:[v,tier]})));
+    row.appendChild(cbText(tier,v=>set({tier_reached:[ax,v]})));
+  }
+  return row;
+}
+function cbNode(c,depth,set){
+  if(c===undefined){
+    const add=el('button','btn small','+ Add condition');add.type='button';
+    add.onclick=()=>set(defaultLeaf((model.refs&&(model.refs.stats||[]).length)?'stat':'flag'));
+    return add;
+  }
+  const kind=condKind(c);
+  const x=el('button','btn small','×');x.type='button';x.title='Remove';x.onclick=()=>set(undefined);
+  if(kind==='all'||kind==='any'){
+    const box=el('div','cb-group');
+    const head=el('div','cb-leaf');
+    head.appendChild(cbSelect([['all','All of'],['any','Any of']],kind,k=>set({[k]:c[kind]})));
+    head.appendChild(el('span','fieldnote','these must hold'+(kind==='any'?' (at least one)':' (every one)')));
+    head.appendChild(x);box.appendChild(head);
+    c[kind].forEach((child,i)=>{
+      const inner=el('div');inner.style.marginLeft='10px';
+      inner.appendChild(cbNode(child,depth+1,nv=>{
+        const list=c[kind].slice();
+        if(nv===undefined)list.splice(i,1);else list[i]=nv;
+        set({[kind]:list});
+      }));
+      box.appendChild(inner);
+    });
+    const foot=el('div','cb-leaf');
+    const addC=el('button','btn small','+ condition');addC.type='button';
+    addC.onclick=()=>set({[kind]:c[kind].concat([defaultLeaf((model.refs&&(model.refs.stats||[]).length)?'stat':'flag')])});
+    foot.appendChild(addC);
+    if(depth<MAX_COND_DEPTH){
+      const addG=el('button','btn small','+ group');addG.type='button';
+      addG.onclick=()=>set({[kind]:c[kind].concat([{any:[defaultLeaf((model.refs&&(model.refs.stats||[]).length)?'stat':'flag')]}])});
+      foot.appendChild(addG);
+      const addN=el('button','btn small','+ not');addN.type='button';
+      addN.onclick=()=>set({[kind]:c[kind].concat([{not:defaultLeaf((model.refs&&(model.refs.stats||[]).length)?'stat':'flag')}])});
+      foot.appendChild(addN);
+    }
+    box.appendChild(foot);return box;
+  }
+  if(kind==='not'){
+    const box=el('div','cb-group');
+    const head=el('div','cb-leaf');head.appendChild(el('strong',null,'Not'));head.appendChild(el('span','fieldnote','this must NOT hold'));head.appendChild(x);
+    box.appendChild(head);
+    const inner=el('div');inner.style.marginLeft='10px';
+    inner.appendChild(cbNode(c.not,depth+1,nv=>{if(nv===undefined)set(undefined);else set({not:nv})}));
+    box.appendChild(inner);return box;
+  }
+  const row=el('div','cb-leaf');
+  if(kind==='raw'){row.appendChild(cbRawNode(c,set))}else{row.appendChild(cbLeaf(c,kind,set))}
+  row.appendChild(x);return row;
+}
+function conditionBuilder(current,on){
+  const wrap=el('div','cb');
+  let value=current===undefined||current===null?undefined:clone(current);
+  let rawMode=false;
+  const commit=v=>{value=v;on(v);save();renderCanvas();renderHealth();paint()};
+  function paint(){
+    wrap.innerHTML='';
+    const top=el('div','cb-leaf');top.style.justifyContent='space-between';
+    top.appendChild(el('span','fieldnote',rawMode?'Editing the condition as JSON':'Build the condition'));
+    const tog=el('button','btn small',rawMode?'Use builder':'Raw JSON');tog.type='button';
+    tog.onclick=()=>{rawMode=!rawMode;paint()};top.appendChild(tog);wrap.appendChild(top);
+    if(rawMode){wrap.appendChild(rawConditionField(value,v=>{value=v;on(v)}));return}
+    const root=cbNode(value,1,commit);
+    // A lone leaf can be combined without first having to make a group by hand.
+    wrap.appendChild(root);
+    if(value!==undefined&&condKind(value)!=='all'&&condKind(value)!=='any'&&condKind(value)!=='not'){
+      const combine=el('div','cb-leaf');
+      const allB=el('button','btn small','+ AND another');allB.type='button';
+      allB.onclick=()=>commit({all:[value,defaultLeaf((model.refs&&(model.refs.stats||[]).length)?'stat':'flag')]});
+      const anyB=el('button','btn small','+ OR another');anyB.type='button';
+      anyB.onclick=()=>commit({any:[value,defaultLeaf((model.refs&&(model.refs.stats||[]).length)?'stat':'flag')]});
+      combine.appendChild(allB);combine.appendChild(anyB);wrap.appendChild(combine);
+    }
+  }
+  paint();return wrap;
+}
+function jsonConditionField(current,on){return conditionBuilder(current,on)}
 function renderInspector(){
   insp.innerHTML='';
   if(!sel){return renderOverview()}
@@ -683,7 +892,7 @@ function renderInspector(){
       insp.appendChild(el('h4',null,'Ready when'));
       insp.appendChild(el('p','note','Checked every turn - the engine\'s own trigger, e.g. a stat reaching zero.'));
       insp.appendChild(jsonConditionField(n.ready_when,v=>{if(v===undefined)delete n.ready_when;else{n.ready_when=v;promote()}},
-        'ready_when (JSON), e.g. {"stat": {"axis": "frame", "at_most": 0}}'));
+        'ready_when (JSON), e.g. {"stat": "frame", "lte": 0}'));
       insp.appendChild(field('Criteria',area(n.criteria,v=>{if(v.trim()){n.criteria=v;promote()}else delete n.criteria}),VIS.author,
         el('div','fieldnote','JUDGE-ONLY confirmation once ready_when trips, e.g. "the scene just narrated was lethal, not merely damaging."')));
       insp.appendChild(el('h4',null,'Arc (narrator-facing once committed)'));
@@ -713,8 +922,7 @@ function renderInspector(){
         detectInp.setAttribute('aria-label','Waypoint '+w.id+' detect');li.appendChild(detectInp);
 
         const dwField=jsonConditionField(w.done_when,v=>{if(v===undefined)delete w.done_when;else w.done_when=v},
-          'done_when (JSON), e.g. {"stat": {"axis": "reach", "at_least": 20}}');
-        dwField.querySelector('textarea').setAttribute('aria-label','Waypoint '+w.id+' done_when');
+          'done_when (JSON), e.g. {"stat": "reach", "gte": 20}');
         li.appendChild(dwField);
 
         const cs=c2[w.id];li.appendChild(el('div','carriers'+(cs.length?'':' none'),cs.length?'Carried by '+cs.map(id=>node(id).title).join(', '):'No thread carries this yet'));
@@ -743,7 +951,7 @@ function renderInspector(){
       insp.appendChild(el('h4',null,'Ready when'));
       insp.appendChild(el('p','note','The condition that actually commits the story to this ending, e.g. a relationship score plus every waypoint done.'));
       insp.appendChild(jsonConditionField(n.ready_when,v=>{if(v===undefined)delete n.ready_when;else n.ready_when=v},
-        'ready_when (JSON), e.g. {"all": [{"stat": {"axis": "quorum", "at_least": 65}}, {"waypoints_done": "all"}]}'));
+        'ready_when (JSON), e.g. {"all": [{"stat": "quorum", "gte": 65}, {"waypoints_done": "all"}]}'));
       insp.appendChild(field('Hint',textInput(n.hint,v=>{if(v.trim())n.hint=v;else delete n.hint},'a diegetic fragment that may join a pacing nudge, e.g. "the ship is quieter with Lark aboard"'),VIS.every,
         el('div','fieldnote','May join a pacing nudge at most once per cycle while this ending is steered toward. Never shown in the UI.')));
       insp.appendChild(field('Criteria',area(n.criteria,v=>{if(v.trim())n.criteria=v;else delete n.criteria}),VIS.author,

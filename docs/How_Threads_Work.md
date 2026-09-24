@@ -156,9 +156,13 @@ Reading it:
 - **`starts_active`** vs **`activate_when`**: the "Becomes active" section on a thread's Detail
   panel — either "active at start," or an incoming `unlocks` edge with a condition.
 - **`fail_when`**, waypoint **`done_when`**/**`detect`**, an ending's **`ready_when`**/
-  **`viable_while`** are all the same validated raw-JSON condition field (CR-02's grammar:
-  `stat`/`flag`/`revelation`/`all`/`any`/`not`) — there's no dropdown-based condition builder
-  yet (that's Phase S2), but every one of these fields is editable on the board today.
+  **`viable_while`**, and an unlock's condition all use the same **condition builder**:
+  dropdowns for stat / relationship / flag / revelation / thread status / turn / act /
+  waypoints-done / tier-reached, combinable with all-of / any-of / not (nested at most three
+  deep, CR-02's cap), plus a **Raw JSON** toggle for anything it can't express. The options
+  come from the story itself - stat axes, revelations, the Cast tab, the thread cards - so a
+  typo can't name something that doesn't exist. It writes CR-02's canonical spelling, e.g.
+  `{"stat": "reach", "gte": 50}`.
 
 ## What's actually live today
 

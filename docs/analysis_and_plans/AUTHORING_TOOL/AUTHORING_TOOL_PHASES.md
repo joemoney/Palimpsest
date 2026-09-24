@@ -382,12 +382,32 @@ losing anything.
     `author_model.to_board_model`/`from_board_model` gained a new `endings_settings` key in
     the board model to carry it (tested in `test_author_model.py`).
 
-    Every condition field (`viable_while`, `ready_when`, `fail_when`, waypoint `done_when`)
-    is the same validated raw-JSON textarea, not a structured condition builder - that's S2's
-    condition editor, not built yet, and CR-02's grammar (`{"stat": {"axis": ...,
-    "at_least": ...}}`, `flag`, `revelation`, `all`/`any`/`not`) is the same shape the
-    raw-JSON escape hatch already accepted. Invalid JSON shows an inline error and never
-    overwrites the last-valid value.
+    **Condition builder (pulled forward from S2, on request).** Every condition field
+    (`viable_while`, `ready_when`, `fail_when`, waypoint `done_when`, an unlock's
+    `activate_when`) started as a raw-JSON textarea; they are now one shared builder -
+    dropdowns for the common leaves, all/any/not groups capped at depth 3 (CR-02), options
+    fed by `model.refs` (stat axes, revelations, declared flags; built by
+    `author_model._condition_refs`, read-only, never written back) plus the Cast tab and
+    thread cards - with a Raw JSON toggle behind it. A node the builder can't express is
+    shown as an inline JSON editor, never dropped. What it does *not* do is evaluate anything
+    (D3 stands: conditions are still evaluated server-side by engine code) or check that a
+    flag exists (L10, still S2).
+
+    **Grammar decision: CR-02's canonical spelling.** The builder and `schema/
+    template.v3.schema.json` use `{"stat": "reach", "gte": 50}` (also `lte`/`between`,
+    `revealed`, `relationship` + `tier_gte`/`tier_lte`/`peak_gte`, `subplot_status`,
+    `waypoints_done`, `turn_gte`, `act_gte`, `tier_reached`). The pre-overhaul gate spellings
+    (`{"stat": {"axis", "at_least"}}`, `revelation`) stay valid - CR-02 says the loader
+    rewrites them, no template edits. **Consequence to keep in view:** `mechanics/gate.py`
+    evaluates only the gate spellings, and reads an unknown leaf as satisfied (fail-open). Any
+    field it evaluates today (`plot.main_thread.acts[].requires`, `mechanics.gate.gates[]`) must
+    keep using the gate spelling until `conditions.py` (D2) exists - the board doesn't edit
+    those fields yet, so nothing is exposed today.
+
+    **Bug fixed alongside:** the old free-text "Unlocks when" box wrote
+    `{"condition": "<prose>"}` (or `{"condition": "TODO"}` when blank), which is not grammar
+    and failed L01 on every save. The writer no longer invents placeholders, and a condition-
+    less unlock link is its own lint error.
 - **Cast tab**, carried over from the prototype and wired to `world.characters`.
 - **D7: `relationship_to_player` becomes `first_contact`. Done**, in one change with its
   engine reader (the same "no field without a reader" rule as D1).

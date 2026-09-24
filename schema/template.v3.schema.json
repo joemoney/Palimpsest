@@ -162,45 +162,80 @@
     },
 
     "condition": {
+      "$comment": "CR-02 (Story_Mechanics_Update.md): the canonical leaf spellings are {\"stat\": \"sync\", \"gte\": 70}, {\"revealed\": id}, {\"relationship\": name, \"tier_gte\": label}. The pre-overhaul gate forms - stat as {axis, at_least}, revelation, character-object relationship - stay accepted: CR-02 rewrites them, no template edits needed.",
       "type": "object",
       "minProperties": 1,
       "properties": {
         "all": { "type": "array", "items": { "$ref": "#/$defs/condition" } },
         "any": { "type": "array", "items": { "$ref": "#/$defs/condition" } },
         "not": { "$ref": "#/$defs/condition" },
+        "revealed": { "type": "string" },
         "revelation": { "type": "string" },
         "flag": { "type": "string" },
         "item_tag": { "type": "string" },
         "turn_gte": { "type": "number" },
+        "act_gte": { "type": "number" },
+        "creation": { "type": "object", "additionalProperties": { "type": "string" } },
+        "leverage_kind": { "type": "string" },
+        "leverage_label_matches": { "type": "string" },
+        "tier": { "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 2 },
+        "tier_reached": { "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 2 },
+        "gte": { "type": "number" },
+        "lte": { "type": "number" },
+        "between": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+        "tier_gte": { "type": "string" },
+        "tier_lte": { "type": "string" },
+        "peak_gte": { "type": "number" },
         "waypoints_done": {
-          "oneOf": [{ "const": "all" }, { "type": "array", "items": { "type": "string" } }]
+          "oneOf": [{ "const": "all" }, { "type": "integer" }, { "type": "array", "items": { "type": "string" } }]
         },
         "subplot_status": { "type": "object", "additionalProperties": { "type": "string" } },
         "bond": { "type": "object" },
         "stat": {
-          "type": "object",
-          "properties": {
-            "axis": { "type": "string" },
-            "at_least": { "type": "number" },
-            "at_most": { "type": "number" },
-            "gte": { "type": "number" },
-            "lte": { "type": "number" }
-          },
-          "required": ["axis"],
-          "additionalProperties": false
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "properties": {
+                "axis": { "type": "string" },
+                "at_least": { "type": "number" },
+                "at_most": { "type": "number" },
+                "gte": { "type": "number" },
+                "lte": { "type": "number" }
+              },
+              "required": ["axis"],
+              "additionalProperties": false
+            }
+          ]
         },
         "relationship": {
-          "type": "object",
-          "properties": {
-            "character": { "type": "string" },
-            "peak_gte": { "type": "number" },
-            "gte": { "type": "number" },
-            "lte": { "type": "number" }
-          },
-          "required": ["character"],
-          "additionalProperties": false
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "properties": {
+                "character": { "type": "string" },
+                "peak_gte": { "type": "number" },
+                "gte": { "type": "number" },
+                "lte": { "type": "number" }
+              },
+              "required": ["character"],
+              "additionalProperties": false
+            }
+          ]
         }
       },
+      "allOf": [
+        {
+          "if": { "properties": { "stat": { "type": "string" } }, "required": ["stat"] },
+          "then": { "anyOf": [{ "required": ["gte"] }, { "required": ["lte"] }, { "required": ["between"] }] }
+        },
+        {
+          "if": { "properties": { "relationship": { "type": "string" } }, "required": ["relationship"] },
+          "then": { "anyOf": [{ "required": ["tier_gte"] }, { "required": ["tier_lte"] },
+                              { "required": ["peak_gte"] }, { "required": ["between"] }] }
+        }
+      ],
       "additionalProperties": false
     },
 

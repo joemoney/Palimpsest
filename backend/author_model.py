@@ -129,7 +129,28 @@ def to_board_model(raw: dict) -> dict:
                          if k in endings_cfg}
     if endings_settings:
         result["endings_settings"] = endings_settings
+    result["refs"] = _condition_refs(raw)
     return result
+
+
+def _condition_refs(raw: dict) -> dict:
+    """Read-only reference data for the board's condition builder dropdowns: what a condition
+    can legally name. Never written back (from_board_model ignores it) - it exists so the
+    builder offers real axes/revelations instead of a free-text box where a typo reads as an
+    unknown referent (L10)."""
+    mechanics = raw.get("mechanics", {}) or {}
+    stats = list(((mechanics.get("stats") or {}).get("axes") or {}).keys())
+    for axis in (raw.get("protagonist", {}) or {}).get("stats", {}) or {}:
+        if axis not in stats:
+            stats.append(axis)
+    revelations = mechanics.get("revelations")
+    entries = revelations.get("entries", []) if isinstance(revelations, dict) else []
+    flags = ((mechanics.get("flags") or {}).get("declared") or []) if isinstance(mechanics.get("flags"), dict) else []
+    return {
+        "stats": stats,
+        "revelations": [e.get("id") for e in entries if isinstance(e, dict) and e.get("id")],
+        "flags": [f.get("id") for f in flags if isinstance(f, dict) and f.get("id")],
+    }
 
 
 def _start_node(raw: dict) -> dict:
@@ -192,14 +213,30 @@ def _condition_label(cond) -> str:
         return "condition"
     if len(cond) == 1 and "condition" in cond:  # legacy free-text shape, not CR-02 grammar
         return str(cond["condition"])
-    if "stat" in cond and isinstance(cond["stat"], dict):
+    if isinstance(cond.get("stat"), str):  # CR-02 canonical: {"stat": "reach", "gte": 50}
+        axis = cond["stat"].upper()
+        for key, op in (("gte", ">="), ("lte", "<=")):
+            if key in cond:
+                return f"{axis} {op} {cond[key]}"
+        if "between" in cond:
+            return f"{axis} {cond['between'][0]}-{cond['between'][1]}"
+    if isinstance(cond.get("stat"), dict):  # pre-overhaul gate form, still accepted
         s = cond["stat"]
         for key, op in (("at_least", ">="), ("gte", ">="), ("at_most", "<="), ("lte", "<=")):
             if key in s:
                 return f"{str(s.get('axis', '')).upper()} {op} {s[key]}"
-    for key in ("flag", "revelation", "item_tag"):
+    if isinstance(cond.get("relationship"), str):
+        for key in ("tier_gte", "tier_lte", "peak_gte"):
+            if key in cond:
+                return f"{cond['relationship']} {key} {cond[key]}"
+    if "subplot_status" in cond and isinstance(cond["subplot_status"], dict):
+        return "thread " + ", ".join(f"{k} {v}" for k, v in cond["subplot_status"].items())
+    for key in ("flag", "revealed", "revelation", "item_tag"):
         if key in cond:
             return f"{key}: {cond[key]}"
+    for key in ("turn_gte", "act_gte"):
+        if key in cond:
+            return f"{key.split('_')[0]} >= {cond[key]}"
     if "all" in cond or "any" in cond or "not" in cond:
         return next(k for k in ("all", "any", "not") if k in cond) + "(...)"
     return "condition"
