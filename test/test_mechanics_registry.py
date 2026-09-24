@@ -79,8 +79,21 @@ def ctx_for(mechanics_block):
 
 
 # --- (1) the phase 1 headline: nothing that ships today binds an engine -------------
+# Updated for the storyboard-first overhaul (CLAUDE.md, "Build order: the storyboard leads,
+# the engine follows"; decision D1). A story may now author a mechanics block for an engine
+# this build has not registered yet - the board writes final paths ahead of the engine, and
+# the story is unplayable, *loudly*, until the engine exists. So the rule is two-sided:
+#   - a story declaring only registered engines must validate, and bind exactly what it
+#     declares (the original guarantee, unchanged);
+#   - a story declaring an unregistered engine must be refused by validate() with
+#     UnknownEngineError naming it. That is the guard that keeps "authored but unbuilt" from
+#     silently becoming "authored and inert".
+# What this deliberately no longer asserts is that every shipped story loads: one that is
+# still waiting on an engine is expected to raise, and it is checked that it does.
 roots = [os.path.join(REPO_ROOT, "stories"), os.path.join(REPO_ROOT, "stories", "private")]
+registered = mechanics.registered_engines()
 checked = []
+awaiting_engine = []
 for root in roots:
     if not os.path.isdir(root):
         continue
@@ -90,15 +103,30 @@ for root in roots:
             continue
         with open(path) as f:
             story = json.load(f)
+        declared_pairs = sorted((s, cfg["engine"]) for s, cfg in (story.get("mechanics") or {}).items()
+                                if isinstance(cfg, dict) and cfg.get("engine"))
+        unbuilt = [pair for pair in declared_pairs if pair not in registered]
+        if unbuilt:
+            try:
+                mechanics.validate(story)
+                assert False, f"{slug}: authors {unbuilt} but validate() did not raise"
+            except mechanics.UnknownEngineError as e:
+                # Names the *first* unregistered block it meets, so check it is one of ours
+                # rather than an unrelated failure that happens to share the exception type.
+                assert any(name in str(e) for _, name in unbuilt), f"{slug}: {e}"
+            awaiting_engine.append(f"{slug}=awaiting {[n for _, n in unbuilt]}")
+            continue
         mechanics.validate(story)  # must not raise
-        declared = sorted(s for s, cfg in (story.get("mechanics") or {}).items()
-                          if isinstance(cfg, dict) and cfg.get("engine"))
+        declared = sorted(s for s, _ in declared_pairs)
         assert sorted(b.slot for b in mechanics.bind(story)) == declared, \
             f"{slug}: bound engines must be exactly the slots that declare one"
         checked.append(f"{slug}={declared or 'none'}")
-assert checked, "no story templates were checked - discovery is broken"
-print(f"OK: every shipped template validates, and binds exactly what it declares "
-      f"({'; '.join(checked)})")
+assert checked, "no loadable story templates were checked - discovery is broken"
+print(f"OK: every shipped template that declares only built engines validates, and binds exactly "
+      f"what it declares ({'; '.join(checked)})")
+if awaiting_engine:
+    print(f"OK: every shipped template authoring an unbuilt engine is refused loudly, not silently "
+          f"inert ({'; '.join(awaiting_engine)})")
 
 # An authored mechanics block with no "engine" key is invisible to the registry - that is
 # what lets phase 1 land without touching story_engine's existing .get("mechanics") paths.
