@@ -362,14 +362,32 @@ losing anything.
     `playable_projection` cases.
 - **Inspector detail tab** for every node kind in §4.3. Each field shows its visibility badge
   and, where it applies, the "not built" chip (D1).
-  - **Gap found and fixed after initial ship**, per UI feedback: a destination ending's
-    waypoint rows only exposed `plant` - `detect` and `done_when` had no editor at all, so
-    there was no way to author how a waypoint gets recognised as complete (L09 exists
-    specifically to catch a waypoint with neither). `detect` is a plain text input; `done_when`
-    is a raw-JSON textarea (validated, keeps the last-valid value on a parse error) rather than
-    a structured condition builder - that's S2's condition editor, not built yet, and CR-02's
-    grammar (`{"stat": {"axis": ..., "at_least": ...}}`, `flag`, `revelation`, `all`/`any`/`not`)
-    is the same shape the raw-JSON escape hatch already accepts elsewhere.
+  - **Gap closed after initial ship**, per UI feedback, in two passes. First: a destination
+    ending's waypoint rows only exposed `plant` - `detect` and `done_when` had no editor
+    (L09 exists specifically to catch a waypoint with neither). Second, larger pass ("a fully
+    functional storyboard" - every judge/author/narrator field a CR-05/CR-10 story actually
+    needs, not just what happened to get built first): destination endings now also expose
+    `viable_while` (kept in sync both ways with the Catch-all checkbox - checking it clears
+    `viable_while`, and typing a condition unchecks it), `ready_when`, `hint`, `criteria`,
+    `arc.title`/`arc.description`, `epilogue`; terminals gained the equivalent CR-05 fields
+    (`min_turn`, `ready_when`, `criteria`, `arc`, `epilogue`) alongside the pre-existing legacy
+    `trigger` - filling in any of the new terminal fields sets `source:"endings"` on the node,
+    which is what makes `author_model._apply_endings` write it under `mechanics.endings`
+    instead of the legacy `mechanics.failure_conditions` shape (the "promotion" the loader's
+    own docstring already described as "a real board action... once S2's condition editor
+    exists" - built here ahead of S2, narrowly, the same call made for AI assist). Subplots
+    gained `fail_when` and `on_complete.stat_events` (CR-07). The Overview panel gained an
+    "Ending funnel settings" section for `mechanics.endings`'s own block-level config
+    (`check_every`/`budget`/`steer_top`/`finale_turns`) - story-wide, not per-node, so
+    `author_model.to_board_model`/`from_board_model` gained a new `endings_settings` key in
+    the board model to carry it (tested in `test_author_model.py`).
+
+    Every condition field (`viable_while`, `ready_when`, `fail_when`, waypoint `done_when`)
+    is the same validated raw-JSON textarea, not a structured condition builder - that's S2's
+    condition editor, not built yet, and CR-02's grammar (`{"stat": {"axis": ...,
+    "at_least": ...}}`, `flag`, `revelation`, `all`/`any`/`not`) is the same shape the
+    raw-JSON escape hatch already accepted. Invalid JSON shows an inline error and never
+    overwrites the last-valid value.
 - **Cast tab**, carried over from the prototype and wired to `world.characters`.
 - **D7: `relationship_to_player` becomes `first_contact`. Done**, in one change with its
   engine reader (the same "no field without a reader" rule as D1).

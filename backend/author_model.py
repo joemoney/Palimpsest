@@ -116,12 +116,20 @@ def to_board_model(raw: dict) -> dict:
         if pos:
             node["x"], node["y"] = pos.get("x", 0), pos.get("y", 0)
 
-    return {
+    result = {
         "story": raw.get("meta", {}).get("title", ""),
         "nodes": nodes,
         "edges": edges,
         "characters": _characters_to_board(raw.get("world", {}).get("characters", {}) or {}),
     }
+    # endings_settings: the mechanics.endings block's own config (check_every/budget/
+    # steer_top/finale_turns) - story-wide, not per-node, so it has nowhere else in this
+    # shape to live. P-2: omitted entirely rather than an empty dict when nothing is authored.
+    endings_settings = {k: endings_cfg[k] for k in ("check_every", "budget", "steer_top", "finale_turns")
+                         if k in endings_cfg}
+    if endings_settings:
+        result["endings_settings"] = endings_settings
+    return result
 
 
 def _start_node(raw: dict) -> dict:
@@ -262,7 +270,7 @@ def from_board_model(raw: dict, model: dict) -> dict:
 
     _apply_subplots(out, nodes, edges)
     _apply_terminals(out, nodes)
-    _apply_endings(out, nodes)
+    _apply_endings(out, nodes, model.get("endings_settings"))
     _apply_characters(out, model.get("characters"))
     _apply_positions(out, nodes)
 
@@ -358,15 +366,23 @@ def _apply_terminals(out: dict, nodes: list) -> None:
         mechanics.pop("failure_conditions", None)
 
 
-def _apply_endings(out: dict, nodes: list) -> None:
+def _apply_endings(out: dict, nodes: list, settings: dict = None) -> None:
     dest_nodes = [n for n in nodes if n.get("kind") == "ending" and n.get("ekind") == "destination"]
     term_nodes = [n for n in nodes if n.get("kind") == "ending" and n.get("ekind") == "terminal"
                   and n.get("source") == "endings"]
-    if not dest_nodes and not term_nodes:
+    if not dest_nodes and not term_nodes and not settings:
         return
     mechanics = out.setdefault("mechanics", {})
     endings_cfg = mechanics.setdefault("endings", {})
     endings_cfg.setdefault("engine", "ending_funnel")
+
+    # The block's own config (check_every/budget/steer_top/finale_turns) - story-wide, not
+    # per-entry. Only ever overlays keys the board actually sent; a key it's never heard of
+    # (none exist yet, but the same "patch, don't regenerate" discipline as everything else
+    # in this module) survives because nothing here touches it.
+    for k in ("check_every", "budget", "steer_top", "finale_turns"):
+        if settings and k in settings:
+            endings_cfg[k] = settings[k]
 
     entries = []
     for n in dest_nodes:

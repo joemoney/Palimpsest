@@ -192,6 +192,30 @@ entry = written_e["mechanics"]["endings"]["entries"][0]
 for field in ("viable_while", "ready_when", "hint", "criteria", "arc", "epilogue"):
     assert entry[field] == synthetic["mechanics"]["endings"]["entries"][0][field], field
 assert written_e["plot"]["subplots"]["sp_001"]["delivers"] == ["the_end.wp1"]
+
+# --- endings_settings: the mechanics.endings block's own config round-trips -----------------
+assert model_e["endings_settings"] == {"budget": {"open_until": 40, "narrow_until": 90, "commit_by": 140}}
+written_same = author_model.from_board_model(synthetic, model_e)
+assert written_same["mechanics"]["endings"]["budget"] == synthetic["mechanics"]["endings"]["budget"]
+assert "check_every" not in written_same["mechanics"]["endings"], "P-2: no key the board never sent"
+
+edited_settings = dict(model_e)
+edited_settings["endings_settings"] = {"budget": {"open_until": 40, "narrow_until": 90, "commit_by": 140},
+                                        "check_every": 6, "steer_top": 2}
+written_edit = author_model.from_board_model(synthetic, edited_settings)
+assert written_edit["mechanics"]["endings"]["check_every"] == 6
+assert written_edit["mechanics"]["endings"]["steer_top"] == 2
+assert written_edit["mechanics"]["endings"]["budget"]["open_until"] == 40
+print("OK: endings_settings (check_every/budget/steer_top/finale_turns) round-trips and patches in place")
+
+no_settings_model = copy.deepcopy(model_e)
+del no_settings_model["endings_settings"]
+no_settings_synthetic = copy.deepcopy(synthetic)
+del no_settings_synthetic["mechanics"]["endings"]["budget"]
+written_none = author_model.from_board_model(no_settings_synthetic, no_settings_model)
+assert "budget" not in written_none["mechanics"]["endings"], "no settings authored, none written"
+print("OK: a story with no endings_settings authored gets no settings keys written")
+
 print("OK: a synthetic destination ending's waypoints, delivers edge, and every judge/"
       "author-only field (viable_while, ready_when, hint, criteria, arc, epilogue) round-trip")
 

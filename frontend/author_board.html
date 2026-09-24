@@ -575,6 +575,26 @@ function textInput(val,on,ph){const i=el('input');i.type='text';i.value=val||'';
 function area(val,on){const t=el('textarea');t.value=val||'';t.addEventListener('input',()=>{on(t.value);save();renderCanvas()});return t}
 function selectInput(val,choices,on){const s=el('select');choices.forEach(([v,l])=>{const o=el('option',null,l);o.value=v;if(v===val)o.selected=true;s.appendChild(o)});s.addEventListener('change',()=>{on(s.value);save();render()});return s}
 function eyebrow(t){return el('div','eyebrow',t)}
+// CR-02's condition grammar (JSON) has no structured editor yet - that's S2's - so every
+// condition field (viable_while, ready_when, fail_when...) is this same validated raw-JSON
+// textarea: invalid JSON shows an inline error and never overwrites the last-valid value, so
+// a mid-typing state can't corrupt the model. `on(value)` is called with `undefined` when
+// the field is cleared, `on` implementations should delete their key in that case.
+function jsonConditionField(current,on,placeholder){
+  const wrap=el('div');wrap.style.cssText='display:grid;gap:3px';
+  const ta=el('textarea');ta.value=current?JSON.stringify(current):'';
+  ta.placeholder=placeholder||'condition (JSON), e.g. {"stat": {"axis": "reach", "at_least": 20}}';
+  ta.style.cssText='min-height:44px;font-family:var(--mono);font-size:11.5px;width:100%;border:1px solid var(--line);border-radius:5px;background:var(--raised);padding:5px 7px';
+  const err=el('div','fieldnote err');err.style.display='none';
+  ta.addEventListener('input',()=>{
+    const t=ta.value.trim();
+    if(!t){on(undefined);err.style.display='none';save();renderCanvas();renderHealth();return}
+    try{on(JSON.parse(t));err.style.display='none';save();renderCanvas();renderHealth()}
+    catch(e){err.textContent='Not valid JSON - keeping the last saved condition.';err.style.display='block'}
+  });
+  wrap.appendChild(ta);wrap.appendChild(err);
+  return wrap;
+}
 function renderInspector(){
   insp.innerHTML='';
   if(!sel){return renderOverview()}
@@ -616,15 +636,57 @@ function renderInspector(){
       const idr=el('div','id');idr.appendChild(el('span',null,end.title));const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{model.edges.splice(model.edges.indexOf(e),1);save();render()};idr.appendChild(rm);li.appendChild(idr);
       li.appendChild(el('div','carriers'+(w?'':' none'),w?w.plant:'no waypoint chosen'));ul2.appendChild(li)});
     insp.appendChild(ul2);
+
+    insp.appendChild(el('h4',null,'Fails when'));
+    insp.appendChild(el('p','note','A condition (CR-10) - when true, the thread is marked failed. A destination whose uncompleted waypoints are carried only by failed threads is pruned.'));
+    insp.appendChild(jsonConditionField(n.fail_when,v=>{if(v===undefined)delete n.fail_when;else n.fail_when=v},
+      'fail_when (JSON), e.g. {"flag": "lark_departed"}'));
+    insp.appendChild(field('On complete: stat events',textInput(((n.on_complete&&n.on_complete.stat_events)||[]).join(', '),v=>{
+      const events=v.split(',').map(s=>s.trim()).filter(Boolean);
+      if(events.length)n.on_complete={stat_events:events};else delete n.on_complete;
+    },'comma-separated event keys, e.g. lattice.rejoined'),VIS.author,
+      el('div','fieldnote','CR-07: stat-priced events from mechanics.stats.axes.<axis>.costs, applied when this thread completes.')));
   }
   if(n.kind==='ending'){
     insp.appendChild(field('Kind',selectInput(n.ekind,[['destination','Destination: steered toward'],['terminal','Failure: reached through stats']],v=>{n.ekind=v;if(v==='terminal'){model.edges=model.edges.filter(e=>!(e.type==='delivers'&&e.to===n.id))}})));
     if(n.ekind==='terminal'){
       insp.appendChild(field('Trigger',textInput(n.trigger,v=>n.trigger=v,'e.g. FRAME reaches 0')));
       insp.appendChild(el('p','note','Failure endings are never steered toward, so they carry no waypoints. The engine checks the trigger every turn and a judge confirms it.'));
+
+      // CR-05's fuller terminal shape (mechanics.endings, kind: terminal) rather than the
+      // legacy mechanics.failure_conditions shape Trigger alone writes to (D5's retirement of
+      // failure_conditions is still S5, so both shapes stay valid side by side). Filling in
+      // any field below marks this node source:"endings" so author_model writes it under
+      // mechanics.endings instead - the promotion AUTHORING_TOOL_PHASES.md describes as "a
+      // real board action", done here by simply using the fields rather than a separate
+      // button.
+      insp.appendChild(el('p','note','Filling in anything below promotes this to a full CR-05 terminal, authored under mechanics.endings instead of mechanics.failure_conditions.'));
+      const promote=()=>{n.source='endings'};
+      const minTurnInp=el('input');minTurnInp.type='number';minTurnInp.value=n.min_turn??'';minTurnInp.placeholder='e.g. 10';
+      minTurnInp.addEventListener('input',()=>{const v=minTurnInp.value.trim();if(v===''){delete n.min_turn}else{n.min_turn=Number(v);promote()}save()});
+      insp.appendChild(field('Min turn',minTurnInp));
+      insp.appendChild(el('h4',null,'Ready when'));
+      insp.appendChild(el('p','note','Checked every turn - the engine\'s own trigger, e.g. a stat reaching zero.'));
+      insp.appendChild(jsonConditionField(n.ready_when,v=>{if(v===undefined)delete n.ready_when;else{n.ready_when=v;promote()}},
+        'ready_when (JSON), e.g. {"stat": {"axis": "frame", "at_most": 0}}'));
+      insp.appendChild(field('Criteria',area(n.criteria,v=>{if(v.trim()){n.criteria=v;promote()}else delete n.criteria}),VIS.author,
+        el('div','fieldnote','JUDGE-ONLY confirmation once ready_when trips, e.g. "the scene just narrated was lethal, not merely damaging."')));
+      insp.appendChild(el('h4',null,'Arc (narrator-facing once committed)'));
+      insp.appendChild(field('Arc title',textInput((n.arc&&n.arc.title)||'',v=>{n.arc=n.arc||{};if(v.trim()){n.arc.title=v;promote()}else delete n.arc.title})));
+      insp.appendChild(field('Arc description',area((n.arc&&n.arc.description)||'',v=>{n.arc=n.arc||{};if(v.trim()){n.arc.description=v;promote()}else delete n.arc.description})));
+      insp.appendChild(field('Epilogue',area(n.epilogue,v=>{if(v.trim()){n.epilogue=v;promote()}else delete n.epilogue}),VIS.author,
+        el('div','fieldnote','UI-only, shown after THE END. Never reaches the narrator.')));
     }else{
-      const cb=el('label','toggle');const c=el('input');c.type='checkbox';c.checked=!!n.catchAll;c.id='f_catchall';c.onchange=()=>{n.catchAll=c.checked;save();render()};cb.appendChild(c);cb.appendChild(document.createTextNode(' Catch-all: can never be ruled out'));
+      const cb=el('label','toggle');const c=el('input');c.type='checkbox';c.checked=!!n.catchAll;c.id='f_catchall';
+      c.onchange=()=>{n.catchAll=c.checked;if(c.checked)delete n.viable_while;save();render()};
+      cb.appendChild(c);cb.appendChild(document.createTextNode(' Catch-all: can never be ruled out'));
       insp.appendChild(cb);
+      // viable_while and the checkbox stay in sync both ways: typing a condition here clears
+      // the checkbox: clearing this field (or checking the box) makes it the catch-all again.
+      insp.appendChild(jsonConditionField(n.viable_while,v=>{
+        if(v===undefined){delete n.viable_while;n.catchAll=true}else{n.viable_while=v;n.catchAll=false}
+        c.checked=!!n.catchAll;
+      },'viable_while (JSON) - when this goes false, the ending is pruned. Leave blank for the catch-all.'));
       insp.appendChild(el('h4',null,'Waypoints'));
       insp.appendChild(el('p','note','What the story must set up before this ending can happen. Write each as an event on the page, never its meaning. Each one needs a way to recognise it happened - detect (a judge reads the scene) or done_when (a condition the engine checks, e.g. a stat threshold).'));
       const c2=carriers(n),ul=el('ul','list');
@@ -635,23 +697,10 @@ function renderInspector(){
         const detectInp=textInput(w.detect,v=>{if(v.trim())w.detect=v;else delete w.detect},'detect: judge text, e.g. "Lark is named aloud"');
         detectInp.setAttribute('aria-label','Waypoint '+w.id+' detect');li.appendChild(detectInp);
 
-        // done_when is CR-02's condition grammar (JSON) - no structured editor yet (that's
-        // S2's condition editor), so this is a validated raw-JSON textarea: invalid JSON
-        // shows an error and never overwrites the last-valid w.done_when, so a mid-typing
-        // state can't corrupt the model.
-        const dwWrap=el('div');dwWrap.style.cssText='display:grid;gap:3px';
-        const dwTa=el('textarea');dwTa.value=w.done_when?JSON.stringify(w.done_when):'';
-        dwTa.placeholder='done_when (JSON), e.g. {"stat": {"axis": "reach", "at_least": 20}}';
-        dwTa.setAttribute('aria-label','Waypoint '+w.id+' done_when');
-        dwTa.style.cssText='min-height:44px;font-family:var(--mono);font-size:11.5px;width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:5px 7px';
-        const dwErr=el('div','fieldnote err');dwErr.style.display='none';
-        dwTa.addEventListener('input',()=>{
-          const t=dwTa.value.trim();
-          if(!t){delete w.done_when;dwErr.style.display='none';save();renderCanvas();renderHealth();return}
-          try{w.done_when=JSON.parse(t);dwErr.style.display='none';save();renderCanvas();renderHealth()}
-          catch(e){dwErr.textContent='Not valid JSON - keeping the last saved condition.';dwErr.style.display='block'}
-        });
-        dwWrap.appendChild(dwTa);dwWrap.appendChild(dwErr);li.appendChild(dwWrap);
+        const dwField=jsonConditionField(w.done_when,v=>{if(v===undefined)delete w.done_when;else w.done_when=v},
+          'done_when (JSON), e.g. {"stat": {"axis": "reach", "at_least": 20}}');
+        dwField.querySelector('textarea').setAttribute('aria-label','Waypoint '+w.id+' done_when');
+        li.appendChild(dwField);
 
         const cs=c2[w.id];li.appendChild(el('div','carriers'+(cs.length?'':' none'),cs.length?'Carried by '+cs.map(id=>node(id).title).join(', '):'No thread carries this yet'));
         ul.appendChild(li)});
@@ -675,6 +724,20 @@ function renderInspector(){
       const assistResults=el('div');assistResults.id='assist-results';assistResults.style.marginTop='8px';
       insp.appendChild(assistResults);
       if(window.htmx)htmx.process(assistBtn);
+
+      insp.appendChild(el('h4',null,'Ready when'));
+      insp.appendChild(el('p','note','The condition that actually commits the story to this ending, e.g. a relationship score plus every waypoint done.'));
+      insp.appendChild(jsonConditionField(n.ready_when,v=>{if(v===undefined)delete n.ready_when;else n.ready_when=v},
+        'ready_when (JSON), e.g. {"all": [{"stat": {"axis": "quorum", "at_least": 65}}, {"waypoints_done": "all"}]}'));
+      insp.appendChild(field('Hint',textInput(n.hint,v=>{if(v.trim())n.hint=v;else delete n.hint},'a diegetic fragment that may join a pacing nudge, e.g. "the ship is quieter with Lark aboard"'),VIS.every,
+        el('div','fieldnote','May join a pacing nudge at most once per cycle while this ending is steered toward. Never shown in the UI.')));
+      insp.appendChild(field('Criteria',area(n.criteria,v=>{if(v.trim())n.criteria=v;else delete n.criteria}),VIS.author,
+        el('div','fieldnote','JUDGE-ONLY confirmation at commit. Anywhere the narrator can see it, it is the twist on turn one.')));
+      insp.appendChild(el('h4',null,'Arc (narrator-facing once committed)'));
+      insp.appendChild(field('Arc title',textInput((n.arc&&n.arc.title)||'',v=>{n.arc=n.arc||{};if(v.trim())n.arc.title=v;else delete n.arc.title})));
+      insp.appendChild(field('Arc description',area((n.arc&&n.arc.description)||'',v=>{n.arc=n.arc||{};if(v.trim())n.arc.description=v;else delete n.arc.description})));
+      insp.appendChild(field('Epilogue',area(n.epilogue,v=>{if(v.trim())n.epilogue=v;else delete n.epilogue}),VIS.author,
+        el('div','fieldnote','UI-only, shown after THE END. Never reaches the narrator.')));
     }
   }
   if(n.kind!=='start'){
@@ -791,6 +854,32 @@ function renderOverview(){
   iss.forEach(i=>{const b=el('button','issue'+(i.lvl==='error'?' error':''));b.type='button';b.appendChild(el('span','sev',i.lvl==='error'?'Fix':'Check'));b.appendChild(el('span',null,i.text));
     b.onclick=()=>{if(i.char!=null)return openChar(i.char);if(viewMode==='cast')setView('diagram');if(i.edge)sel={type:'edge',key:i.edge};else if(i.id)sel={type:'node',id:i.id};render()};ul.appendChild(b)});
   insp.appendChild(ul);
+
+  insp.appendChild(el('h4',null,'Ending funnel settings'));
+  insp.appendChild(el('p','note','Story-wide timing for mechanics.endings (CR-05). Leave a field blank for the engine default.'));
+  model.endings_settings=model.endings_settings||{};
+  const es=model.endings_settings;
+  const numField=(label,get,set,ph)=>{
+    const i=el('input');i.type='number';const v=get();i.value=(v===undefined||v===null)?'':v;if(ph)i.placeholder=ph;
+    i.addEventListener('input',()=>{const t=i.value.trim();set(t===''?undefined:Number(t));save()});
+    return field(label,i);
+  };
+  insp.appendChild(numField('Check every N turns',()=>es.check_every,v=>{if(v===undefined)delete es.check_every;else es.check_every=v},'e.g. 6'));
+  insp.appendChild(numField('Steer top N destinations',()=>es.steer_top,v=>{if(v===undefined)delete es.steer_top;else es.steer_top=v},'e.g. 2'));
+  const budgetField=(label,key,ph)=>numField(label,()=>es.budget&&es.budget[key],v=>{
+    if(v===undefined){if(es.budget)delete es.budget[key];if(es.budget&&!Object.keys(es.budget).length)delete es.budget}
+    else{es.budget=es.budget||{};es.budget[key]=v}
+  },ph);
+  insp.appendChild(budgetField('Open until (turn)','open_until','e.g. 40'));
+  insp.appendChild(budgetField('Narrow until (turn)','narrow_until','e.g. 90'));
+  insp.appendChild(budgetField('Commit by (turn)','commit_by','e.g. 140'));
+  const finaleField=(label,key,ph)=>numField(label,()=>es.finale_turns&&es.finale_turns[key],v=>{
+    if(v===undefined){if(es.finale_turns)delete es.finale_turns[key];if(es.finale_turns&&!Object.keys(es.finale_turns).length)delete es.finale_turns}
+    else{es.finale_turns=es.finale_turns||{};es.finale_turns[key]=v}
+  },ph);
+  insp.appendChild(finaleField('Finale min turns','min','e.g. 3'));
+  insp.appendChild(finaleField('Finale max turns','max','e.g. 8'));
+
   insp.appendChild(el('h4',null,'Using the board'));
   const tips=el('ul','tips');
   ['Click a box to trace every path into and out of it; turn on Focus to hide everything else instead of dimming it.','Drag a box to move it; drag empty space to pan; scroll to zoom. Auto-layout re-columns everything by how many unlocks it is from the start.','Drag from a round port onto a thread or ending to connect them. Each waypoint gets its own row and its own line — no more guessing which line feeds which slot.','Click a line or its label to edit or remove the link.','Switch to the Matrix tab for a thread-by-waypoint grid — better than the diagram once a story has a lot of threads.','The Cast tab edits the authored characters (world.characters). Each field is badged with what reaches the narrator and what is only stored.','Validate checks the schema and lint rules and shows a diff against the saved file; Save runs the same check and, if nothing blocks it, writes the file.'].forEach(t=>tips.appendChild(el('li',null,t)));
