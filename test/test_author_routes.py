@@ -140,25 +140,24 @@ try:
     assert resp.status_code == 404
     print("OK: /author/<slug>/board 404s for an unknown slug")
 
-    # --- AI assist (§7 "Ending -> waypoints"): offline, requests.post monkeypatched --------
+    # --- AI assist (§7 "Ending -> waypoints"): offline, genai.GenerativeModel monkeypatched --
     clean_model_for_assist = author_model.to_board_model(ss.load_template_raw("author_test_story"))
-    os.environ["OPENROUTER_API_KEY_TOOL_ASSIST"] = "test-key"
+    author_assist.GOOGLE_API_KEY = "test-key"
 
-    def fake_assist_post(url, headers, json, timeout):
-        class _Resp:
-            status_code = 200
+    class _FakeAssistResponse:
+        text = json.dumps(
+            {"waypoints": [{"id": "new_wp", "plant": "a stranger asks the wrong question",
+                            "detect": "someone asks about the operator by name"}]}
+        )
 
-            def raise_for_status(self):
-                pass
+    class _FakeAssistModel:
+        def __init__(self, *a, **k):
+            pass
 
-            def json(self):
-                return {"choices": [{"message": {"content": __import__("json").dumps(
-                    {"waypoints": [{"id": "new_wp", "plant": "a stranger asks the wrong question",
-                                    "detect": "someone asks about the operator by name"}]}
-                )}}]}
-        return _Resp()
+        def generate_content(self, prompt, request_options=None):
+            return _FakeAssistResponse()
 
-    author_assist.requests.post = fake_assist_post
+    author_assist.genai.GenerativeModel = _FakeAssistModel
     resp = client.post("/author/author_test_story/assist", data={
         "model": json.dumps(clean_model_for_assist), "ending_id": "the_end",
     })
@@ -175,12 +174,12 @@ try:
     assert b"No such destination ending" in resp.data
     print("OK: /author/<slug>/assist reports an error for an unknown ending id")
 
-    os.environ.pop("OPENROUTER_API_KEY_TOOL_ASSIST", None)
+    author_assist.GOOGLE_API_KEY = ""
     resp = client.post("/author/author_test_story/assist", data={
         "model": json.dumps(clean_model_for_assist), "ending_id": "the_end",
     })
     assert resp.status_code == 200
-    assert b"OPENROUTER_API_KEY_TOOL_ASSIST" in resp.data
+    assert b"GOOGLE_API_KEY" in resp.data
     print("OK: /author/<slug>/assist reports a clear error with no API key configured")
 
     # --- validate against the real, unmodified example story: known lint errors block save ---

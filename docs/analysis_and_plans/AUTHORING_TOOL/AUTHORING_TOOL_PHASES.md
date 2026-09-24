@@ -713,14 +713,18 @@ spec: one recipe, no Assist tab (a plain button on the ending's Detail panel ins
 `instruction` param, no diff/Accept-Edit-Discard UI (a flat Accept per suggestion), no
 40-entry `assist_log.json`. Still matches the spec's real constraints that matter for safety:
 canon is never in the assembled context (the input-side leak protection §7 describes), and
-it uses its own key (`OPENROUTER_API_KEY_TOOL_ASSIST`) and its own cheap/fast model
-(`AUTHOR_ASSIST_MODEL`, default `deepseek/deepseek-v4-flash-0731`) - never
-`story_engine.py`'s `call_llm`/`call_llm_json`, the gameplay tiers, or the Gemini fail-safe,
-since a storyboard suggestion has nothing to do with a live turn. `POST /author/<slug>/assist`
-takes `{model, ending_id}`, returns a suggestion fragment; accepting one is pure client-side
-(pushes onto the board model, same as any other edit) - nothing is saved until the author
-hits Save. Covered by `test_author_assist.py` (offline, `requests.post` monkeypatched) and
-`test_author_routes.py`.
+it calls Gemini directly with `GOOGLE_API_KEY`/`GEMINI_MODEL` (`AUTHOR_ASSIST_MODEL` overrides
+just the model) - never `story_engine.py`'s `call_llm`/`call_llm_json` or the gameplay tiers'
+prompt-building, since a storyboard suggestion has nothing to do with a live turn. Originally
+used its own OpenRouter key (`OPENROUTER_API_KEY_TOOL_ASSIST`) to keep budget/rate limits
+separate from the gameplay tiers; retired after that key's free-tier workspace guardrail
+404'd the default model and every guardrail-allowed free model left was itself 429ing from
+its own shared upstream pool. It now shares Gemini account quota with `story_engine.py`'s own
+fail-safe path - an accepted trade-off given this module has no fail-safe of its own. `POST
+/author/<slug>/assist` takes `{model, ending_id}`, returns a suggestion fragment; accepting
+one is pure client-side (pushes onto the board model, same as any other edit) - nothing is
+saved until the author hits Save. Covered by `test_author_assist.py` (offline,
+`google.generativeai` stubbed) and `test_author_routes.py`.
 
 ---
 

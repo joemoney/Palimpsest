@@ -3,10 +3,18 @@ early and narrowly, on request, ahead of the full spec). v1 is exactly one recip
 destination ending's `arc`/`criteria`/`hint`, propose 2-4 waypoints for it (`derive` mode,
 the "Ending -> waypoints" recipe, which the spec calls out as "the most valuable mode").
 
-Uses its own OpenRouter key (`OPENROUTER_API_KEY_TOOL_ASSIST`), never `story_engine.py`'s
-`call_llm`/`call_llm_json` or the gameplay tiers' key - a storyboard suggestion has nothing
-to do with a live turn and shouldn't share budget, rate limits, or the Gemini fail-safe with
-one. No fail-safe here at all: a failed suggestion just shows an error in the assist panel,
+Calls Gemini directly (GOOGLE_API_KEY/GEMINI_MODEL - the same pair story_engine.py's Gemini
+fail-safe uses), not OpenRouter. Originally used its own OpenRouter key
+(`OPENROUTER_API_KEY_TOOL_ASSIST`) specifically to avoid sharing budget/rate limits with the
+gameplay tiers; switched after that key's free-tier OpenRouter workspace guardrail 404'd on
+the default model, and the guardrail-allowed free models it left were themselves getting
+429'd by their own shared upstream pool - a free-tier OpenRouter key wasn't reliable enough
+for a feature with no fail-safe of its own. Still never touches
+`story_engine.py`'s `call_llm`/`call_llm_json` or the gameplay tiers' prompt-building - a
+storyboard suggestion has nothing to do with a live turn - but it does now share Gemini
+account quota with story_engine's own fail-safe path; accepted trade-off, not an oversight.
+
+No fail-safe here at all: a failed suggestion just shows an error in the assist panel,
 never anything a player-facing turn depends on.
 
 Canon is never included in the assembled context - the spec's default, without the "use
@@ -17,15 +25,28 @@ there's no canon in the prompt for a suggestion to have leaked from.
 import json
 import os
 
-import requests
+from dotenv import load_dotenv
 
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-# A fast, cheap model is the right default for a suggestion the author is going to read,
-# edit and often discard - not the flagship narration model. Independent of TIER_AB_MODEL/
-# TIER_C_MODEL (story_engine.py) on purpose: this call has nothing to do with a live turn.
-ASSIST_MODEL = os.environ.get("AUTHOR_ASSIST_MODEL", "deepseek/deepseek-v4-flash-0731")
+# Must run before `import google.generativeai as genai` below - the SDK self-configures at
+# import time, reading GOOGLE_API_KEY from the environment right then and caching the result
+# (None, if .env hasn't been loaded yet) in a module-level singleton for the rest of the
+# process's life. See story_engine.py's own load_dotenv()-before-genai ordering and the
+# incident that established it.
+load_dotenv()
+
+import google.generativeai as genai  # noqa: E402
+from google.api_core.exceptions import GoogleAPIError  # noqa: E402
+
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "").strip()
+# Independent of story_engine.py's GEMINI_MODEL only in that it's a separate env var to
+# override - defaults to reading the same one, since this is meant to be "the operator's own
+# Gemini key/model", not a second model to configure.
+ASSIST_MODEL = os.environ.get("AUTHOR_ASSIST_MODEL") or os.environ.get("GEMINI_MODEL", "gemini-3.7-flash")
 _TIMEOUT = 60
 _MAX_WAYPOINTS = 4
+
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
 
 
 class AssistError(Exception):
@@ -34,36 +55,24 @@ class AssistError(Exception):
     fragment shows str(e)); never raised past the route that calls this module."""
 
 
-def _api_key() -> str:
-    key = os.environ.get("OPENROUTER_API_KEY_TOOL_ASSIST", "").strip()
-    if not key:
-        raise AssistError("OPENROUTER_API_KEY_TOOL_ASSIST is not set - AI assist is off until it is.")
-    return key
-
-
 def _call_json(prompt: str) -> dict:
+    if not GOOGLE_API_KEY:
+        raise AssistError("GOOGLE_API_KEY is not set - AI assist is off until it is.")
     try:
-        response = requests.post(
-            OPENROUTER_URL,
-            headers={"Authorization": f"Bearer {_api_key()}"},
-            json={
-                "model": ASSIST_MODEL,
-                "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"},
-                "reasoning": {"enabled": False},
-                "max_tokens": 1024,
-            },
-            timeout=_TIMEOUT,
+        gemini = genai.GenerativeModel(
+            ASSIST_MODEL,
+            generation_config={"response_mime_type": "application/json", "max_output_tokens": 1024},
         )
-        response.raise_for_status()
-        data = response.json()
-    except requests.RequestException as e:
+        response = gemini.generate_content(prompt, request_options={"timeout": _TIMEOUT})
+    except GoogleAPIError as e:
         raise AssistError(f"Assist request failed: {e}")
 
+    # Same empty-response guard as story_engine._call_llm_google - e.g. a prompt-blocked
+    # response has no candidates and response.text raises/returns nothing usable.
     try:
-        content = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError):
-        raise AssistError("Assist call returned no content.")
+        content = response.text
+    except ValueError:
+        content = None
     if not content:
         raise AssistError("Assist call returned empty content.")
     try:
