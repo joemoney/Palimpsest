@@ -31,7 +31,31 @@ reference for what's being rebuilt, not a live spec, and most of their design pr
 If you are about to change something below, read the matching section of
 `docs/Pre-V3 docs/ARCHITECTURE.md` first, and check whether an Authoring tool decision (D1–D7,
 below) has since amended it — every rule here has a reason recorded there, and most of them
-were written after something broke.
+were written after something broke. **If what's being asked would conflict with a decision
+recorded here, say so and lay out the resolution options — don't silently comply (the
+conflict compounds silently) and don't silently refuse (the ask may be exactly the override
+that's needed).** The call is the user's to make, once they can see what's actually at stake.
+
+---
+
+## Build order: the storyboard leads, the engine follows
+Decided 2026-09-24, mid-overhaul. The authoring tool (the storyboard) is the upstream design
+surface — it writes whatever a story needs, including fields and `mechanics` blocks no engine
+can act on yet, and the engine's job is to catch up to what's already been authored, never the
+reverse. This generalizes D1's "final paths, always": a story is allowed to be unplayable,
+*loudly* (`UnknownEngineError`, `load_template()` refusing a template with no endings block,
+a field that round-trips but has no reader), while the engine piece it depends on doesn't
+exist yet. That is correct, not a bug to route around by watering down what gets authored.
+
+**Consequence for how engine work (Phase S5) gets planned: demand-driven, not batch-planned.**
+No pre-planning and building a whole numbered phase step before any of it is exercised against
+real authored content. Engine work lands piece by piece, in whatever order real storyboard
+authoring actually needs next — see `AUTHORING_TOOL_PHASES.md`'s Phase S5 note for the
+concrete instance of this decision. A feature request blocked only by "the engine doesn't do
+that yet" is not a conflict — that is the expected, designed-for state; build the engine piece
+it needs. A feature request that conflicts with a *decided* invariant (this file, a
+D-numbered decision, a locked CR) is a different thing entirely — that is what the paragraph
+above this section exists for.
 
 ---
 
