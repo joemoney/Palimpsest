@@ -580,6 +580,21 @@ function eyebrow(t){return el('div','eyebrow',t)}
 // textarea: invalid JSON shows an inline error and never overwrites the last-valid value, so
 // a mid-typing state can't corrupt the model. `on(value)` is called with `undefined` when
 // the field is cleared, `on` implementations should delete their key in that case.
+// Edge-label text for an unlock condition (display only - the condition itself is cond_raw,
+// real CR-02 grammar). Mirrors author_model._condition_label for conditions loaded from disk.
+function condLabel(c){
+  if(!c||typeof c!=='object')return '';
+  if(Object.keys(c).length===1&&'condition' in c)return String(c.condition);
+  if(c.stat&&typeof c.stat==='object'){
+    for(const [k,op] of [['at_least','>='],['gte','>='],['at_most','<='],['lte','<=']])
+      if(k in c.stat)return `${String(c.stat.axis||'').toUpperCase()} ${op} ${c.stat[k]}`;
+  }
+  for(const k of ['flag','revelation','item_tag'])if(k in c)return `${k}: ${c[k]}`;
+  for(const k of ['all','any','not'])if(k in c)return k+'(...)';
+  return 'condition';
+}
+function setUnlockCond(e,v){if(v===undefined){delete e.cond_raw;e.cond=''}else{e.cond_raw=v;e.cond=condLabel(v)}}
+const UNLOCK_PLACEHOLDER='unlock condition (JSON), e.g. {"stat": {"axis": "reach", "at_least": 20}}';
 function jsonConditionField(current,on,placeholder){
   const wrap=el('div');wrap.style.cssText='display:grid;gap:3px';
   const ta=el('textarea');ta.value=current?JSON.stringify(current):'';
@@ -625,7 +640,7 @@ function renderInspector(){
     const ul=el('ul','list');
     inc.forEach(e=>{const li=el('li','wp');const src=node(e.from);
       li.appendChild(el('div','id',e.type==='opens'?'at the start':`after ${src.title}`));
-      if(e.type==='unlocks'){const i=textInput(e.cond,v=>e.cond=v,'condition, e.g. REACH ≥ 20');li.appendChild(i)}
+      if(e.type==='unlocks')li.appendChild(jsonConditionField(e.cond_raw,v=>setUnlockCond(e,v),UNLOCK_PLACEHOLDER));
       ul.appendChild(li)});
     insp.appendChild(ul);
     insp.appendChild(el('h4',null,'Carries toward'));
@@ -823,7 +838,8 @@ function renderEdgeInspector(){
   if(g.type==='opens'){insp.appendChild(el('p','note',`${b.title} is active from the first turn.`))}
   if(g.type==='unlocks'){
     insp.appendChild(el('p','note',`${b.title} activates ${a.kind==='start'?'when the condition holds':'once '+a.title+' has moved far enough'}.`));
-    insp.appendChild(field('Unlocks when',textInput(g.items[0].cond,v=>g.items[0].cond=v,'e.g. REACH ≥ 20')));
+    insp.appendChild(el('h4',null,'Unlocks when'));
+    insp.appendChild(jsonConditionField(g.items[0].cond_raw,v=>setUnlockCond(g.items[0],v),UNLOCK_PLACEHOLDER));
   }
   if(g.type==='delivers'){
     insp.appendChild(el('p','note',`While ${b.title} is being steered toward, the engine prioritises ${a.title} to plant these waypoints.`));
@@ -935,7 +951,7 @@ function connect(fromId,toId){
   }
   if(b.kind==='subplot'){
     if(model.edges.some(e=>e.from===a.id&&e.to===b.id&&e.type!=='delivers')){say('Already connected.');return renderEdges(related())}
-    const e=a.kind==='start'?{type:'opens',from:a.id,to:b.id}:{type:'unlocks',from:a.id,to:b.id,cond:''};
+    const e=a.kind==='start'?{type:'opens',from:a.id,to:b.id}:{type:'unlocks',from:a.id,to:b.id};
     model.edges.push(e);sel={type:'edge',key:gkey(e)};save();render();say(a.kind==='start'?`${b.title} is now active at the start.`:`${b.title} now unlocks after ${a.title}.`);
   }
 }

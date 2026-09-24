@@ -99,14 +99,37 @@ print("OK: an opens edge loads from and writes back to starts_active")
 # condition) and confirming it writes activate_when in CR-10's shape. ---
 sub_node = next(n for n in model2["nodes"] if n["id"] == "subplot_004")
 assert "starts_active" not in sub_node or not sub_node["starts_active"], \
-    "subplot_004 authors starts_active: false and no activate_when - nothing to unlock from yet"
+    "subplot_004 is not active at start"
+# Drop any activation subplot_004 already authors (the real story now unlocks it) so this
+# stays a test of the writer, not of whatever the story currently says.
+model2["edges"] = [e for e in model2["edges"]
+                   if not (e.get("to") == "subplot_004" and e["type"] in ("opens", "unlocks"))]
 model2["edges"].append({"type": "unlocks", "from": "start", "to": "subplot_004",
-                         "cond": "REACH >= 20", "cond_raw": {"condition": "REACH >= 20"}})
+                         "cond": "REACH >= 20",
+                         "cond_raw": {"stat": {"axis": "reach", "at_least": 20}}})
 written3 = author_model.from_board_model(raw, model2)
-assert written3["plot"]["subplots"]["subplot_004"]["activate_when"] == {"condition": "REACH >= 20"}
+assert written3["plot"]["subplots"]["subplot_004"]["activate_when"] == {"stat": {"axis": "reach", "at_least": 20}}
 assert "starts_active" not in written3["plot"]["subplots"]["subplot_004"], \
     "an unlocks edge clears any starts_active on the same subplot"
 print("OK: adding an unlocks edge on the board writes activate_when, clearing starts_active")
+
+# --- an unlocks edge with no condition writes no activate_when at all. It used to write a
+# {"condition": "TODO"} placeholder, which is not CR-02 grammar and failed L01 on save. ---
+example = json.load(open(os.path.join(REPO_ROOT, "stories", "example", "template.json"), encoding="utf-8"))
+model_ex = author_model.to_board_model(example)
+sid = next(n["id"] for n in model_ex["nodes"] if n["kind"] == "subplot")
+model_ex["edges"] = [e for e in model_ex["edges"] if not (e.get("to") == sid and e["type"] in ("opens", "unlocks"))]
+model_ex["edges"].append({"type": "unlocks", "from": "start", "to": sid})
+written_ex = author_model.from_board_model(example, model_ex)
+assert "condition" not in json.dumps(written_ex["plot"]["subplots"][sid].get("activate_when", {}))
+assert "activate_when" not in written_ex["plot"]["subplots"][sid]
+print("OK: a condition-less unlocks edge writes no activate_when (no TODO placeholder)")
+
+# condition labels: real grammar renders readably, legacy free text still displays
+assert author_model._condition_label({"stat": {"axis": "reach", "at_least": 20}}) == "REACH >= 20"
+assert author_model._condition_label({"flag": "lark_departed"}) == "flag: lark_departed"
+assert author_model._condition_label({"condition": "REACH >= 20"}) == "REACH >= 20"
+print("OK: unlock-edge labels render CR-02 grammar and the legacy free-text shape")
 
 # --- a brand-new thread (added on the board, not present in the original template) with an
 # opens edge is written with starts_active: true - the dict entry for a new subplot doesn't

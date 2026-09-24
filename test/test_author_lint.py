@@ -119,6 +119,17 @@ issues = author_lint.structural_issues(model)
 never = [i for i in issues if "never becomes active" in i["message"]]
 assert len(never) == 1, issues
 
+# --- structural: an unlock link with no condition is an error, not a silent TODO -------------
+model = {"nodes": [
+    {"id": "start", "kind": "start"},
+    {"id": "sp1", "kind": "subplot", "title": "Gated", "role": "spine"},
+], "edges": [{"type": "unlocks", "from": "start", "to": "sp1"}], "characters": []}
+assert any("unlock link with no condition" in i["message"]
+           for i in author_lint.structural_issues(model))
+model["edges"][0]["cond_raw"] = {"stat": {"axis": "reach", "at_least": 20}}
+assert not any("unlock link with no condition" in i["message"]
+               for i in author_lint.structural_issues(model))
+
 # --- structural: spine carries nothing / texture carries something --------------------------
 model = {"nodes": [
     {"id": "start", "kind": "start"},

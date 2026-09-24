@@ -122,6 +122,12 @@ def structural_issues(model: dict) -> list:
     for n in _subplots(nodes):
         title = n.get("title") or n.get("id")
         incoming = [e for e in edges if e.get("to") == n.get("id") and e.get("type") in ("opens", "unlocks")]
+        for e in incoming:
+            if e.get("type") == "unlocks" and not e.get("cond_raw"):
+                out.append({"id": "structural", "severity": "error", "node_id": n.get("id"),
+                            "message": f"{title} has an unlock link with no condition. Give it one "
+                                       "(e.g. {\"stat\": {\"axis\": \"reach\", \"at_least\": 20}}), "
+                                       "or make the thread active at start."})
         if not incoming and not n.get("starts_active") and not n.get("activate_when"):
             out.append({"id": "structural", "severity": "error", "node_id": n.get("id"),
                         "message": f"{title} never becomes active: nothing opens or unlocks it."})

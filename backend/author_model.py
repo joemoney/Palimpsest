@@ -185,11 +185,23 @@ def _thread_edges(sid: str, sp: dict) -> list:
 
 
 def _condition_label(cond) -> str:
-    """A rough, lossy plain-English rendering for the edge label only - never round-tripped
-    from. Good enough to show *something* before S2's condition editor exists; CR-02's real
-    grammar and rendering replace this entirely then."""
-    if isinstance(cond, dict) and "condition" in cond and len(cond) == 1:
+    """A rough, lossy rendering for the edge label only - never round-tripped from. The
+    board's own client-side labeller (`condLabel` in author_board.html) does the same for
+    edits made in the browser; this covers conditions loaded from disk."""
+    if not isinstance(cond, dict) or not cond:
+        return "condition"
+    if len(cond) == 1 and "condition" in cond:  # legacy free-text shape, not CR-02 grammar
         return str(cond["condition"])
+    if "stat" in cond and isinstance(cond["stat"], dict):
+        s = cond["stat"]
+        for key, op in (("at_least", ">="), ("gte", ">="), ("at_most", "<="), ("lte", "<=")):
+            if key in s:
+                return f"{str(s.get('axis', '')).upper()} {op} {s[key]}"
+    for key in ("flag", "revelation", "item_tag"):
+        if key in cond:
+            return f"{key}: {cond[key]}"
+    if "all" in cond or "any" in cond or "not" in cond:
+        return next(k for k in ("all", "any", "not") if k in cond) + "(...)"
     return "condition"
 
 
@@ -326,11 +338,13 @@ def _apply_subplots(out: dict, nodes: list, edges: list) -> None:
             sp["starts_active"] = True
             sp.pop("activate_when", None)
         elif sid in unlocks:
-            conds = [e["cond_raw"] for e in unlocks[sid] if e.get("cond_raw") is not None]
-            if not conds:
-                conds = [{"condition": e.get("cond") or "TODO"} for e in unlocks[sid]]
-            sp["activate_when"] = conds[0] if len(conds) == 1 else {"any": conds}
-            sp.pop("starts_active", None)
+            # Only real CR-02 grammar is ever written. An unlocks edge with no condition yet
+            # contributes nothing (author_lint flags it) rather than a {"condition": "TODO"}
+            # placeholder, which is not grammar and fails L01 the moment it is saved.
+            conds = [e["cond_raw"] for e in unlocks[sid] if e.get("cond_raw")]
+            if conds:
+                sp["activate_when"] = conds[0] if len(conds) == 1 else {"any": conds}
+                sp.pop("starts_active", None)
         # else: no opens/unlocks edge for this subplot - starts_active/activate_when, if the
         # node carried either as a pass-through field, are left exactly as loaded.
 
