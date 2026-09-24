@@ -12,6 +12,7 @@ works. For that:
 | **Authoring tool: what it is, view by view** | `docs/Authoring_Tool_Spec.md` |
 | **The mechanic change requests the overhaul is built from (CR-01–CR-12)** | `docs/Story_Mechanics_Update.md` |
 | **Authoring tool phases, gates, and the decisions (D1–D7) that bind them** | `docs/analysis_and_plans/AUTHORING_TOOL/AUTHORING_TOOL_PHASES.md` |
+| How threads (spine/personal/texture) relate to acts and endings, with a diagram | `docs/How_Threads_Work.md` |
 | How the engine actually worked, pre-overhaul | `docs/Pre-V3 docs/ARCHITECTURE.md` |
 | The mechanic registry, as built | `docs/Pre-V3 docs/ARCHITECTURE.md` § *The Mechanic Registry* |
 | Template/save schema, pre-overhaul design principles | `docs/Pre-V3 docs/SCHEMA_V2_SPEC.md` |
