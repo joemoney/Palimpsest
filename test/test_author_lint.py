@@ -281,6 +281,29 @@ dup = _flag_issues([{"id": "a", "detect": "x"}, {"id": "a", "detect": "y"}])
 assert [i["severity"] for i in dup] == ["error"], dup
 print("OK: a declared flag with no detect warns; a duplicate id is an error")
 
+# --- L06/L07: stat tier ladders (S3) ------------------------------------------------------------
+def _tier_issues(axes, **stats):
+    raw = {"protagonist": {"stats": {"grit": 1}},
+           "mechanics": {"stats": {"engine": "bounded_counter", "floor": 0, **stats, "axes": axes}}}
+    return author_lint.stat_tier_issues(raw)
+
+
+assert not _tier_issues({"grit": {"tiers": [{"at": 0}, {"at": 10}]}})
+none = _tier_issues({})
+assert [(i["id"], i["severity"], i["axis"]) for i in none] == [("L06", "warning", "grit")], none
+high = _tier_issues({"grit": {"tiers": [{"at": 5}, {"at": 10}]}})
+assert [(i["id"], i["severity"]) for i in high] == [("L06", "warning")] and "floor" in high[0]["message"], high
+# The floor is the axis's own when it overrides the block's.
+assert not _tier_issues({"grit": {"floor": -10, "tiers": [{"at": -10}]}})
+unsorted = _tier_issues({"grit": {"tiers": [{"at": 0}, {"at": 20}, {"at": 10}]}})
+assert [(i["id"], i["severity"]) for i in unsorted] == [("L07", "error")], unsorted
+dupe = _tier_issues({"grit": {"tiers": [{"at": 0}, {"at": 10}, {"at": 10}]}})
+assert [(i["id"], i["severity"]) for i in dupe] == [("L07", "error")] and "10" in dupe[0]["message"], dupe
+# No bound stats engine: nothing to tier, nothing to say (the engine warning covers it).
+assert not author_lint.stat_tier_issues({"protagonist": {"stats": {"grit": 1}}, "mechanics": {"stats": {}}})
+assert not author_lint.stat_tier_issues({"meta": {}})
+print("OK: L06 warns on a tierless axis or a ladder above its floor; L07 errors on disorder and duplicates")
+
 # --- has_errors -------------------------------------------------------------------------------
 assert author_lint.has_errors([{"severity": "error"}])
 assert not author_lint.has_errors([{"severity": "warning"}])

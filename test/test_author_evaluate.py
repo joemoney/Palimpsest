@@ -91,4 +91,17 @@ if os.path.exists(mc):
 else:
     print("SKIPPED (real story): stories/private/the_missing_core is not checked out")
 
+
+# --- stat_tiers: the S3 sidebar's readout, through the real BoundedCounter.tier_for ------------
+TIERED = copy.deepcopy(STORY)
+TIERED["mechanics"]["stats"]["axes"]["sync"] = {"tiers": [{"at": 0, "label": "low"}, {"at": 50, "label": "high"}]}
+tiers = author_evaluate.stat_tiers(TIERED, {"stats": {"sync": 50}})
+assert tiers["sync"] == {"value": 50, "tier": "high"}, tiers
+assert tiers["reach"] == {"value": 0, "tier": None}, tiers
+assert author_evaluate.stat_tiers(TIERED, {})["sync"] == {"value": 20, "tier": "low"}, "seeded value when unsampled"
+unbound = copy.deepcopy(TIERED)
+del unbound["mechanics"]["stats"]["engine"]
+assert author_evaluate.stat_tiers(unbound, {"stats": {"sync": 50}}) == {}, "no stats engine, no tier line"
+print("OK: stat_tiers reports each axis's sample value and engine-resolved tier")
+
 print("\nALL CHECKS PASSED: test_author_evaluate")

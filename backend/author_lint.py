@@ -1,11 +1,12 @@
-"""S1's server-side lint subset (AUTHORING_TOOL_PHASES.md decision D3): L01/L08/L09/L16, the
+"""The board's server-side lint (AUTHORING_TOOL_PHASES.md decision D3): L01/L06/L07/L08/L09/L10/L16, the
 board's structural-flow checks (Authoring_Tool_Spec.md §4.6), and the Cast checks carried over
 from the reference prototype (`docs/Missing_Core_Storyboard_Reference_Design.html`,
 `issues()`/`canonLeaks()`). Pure and offline-testable - no Flask, no engine imports. L10 (S2) is the one check that
-reads a condition: it walks `conditions.iter_conditions`. Everything else runs entirely against `author_model.to_board_model`'s `{story, nodes, edges, characters}`
+reads a condition: it walks `conditions.iter_conditions`. L06/L07 (S3) read the stat ladders from
+the raw template. Everything else runs entirely against `author_model.to_board_model`'s `{story, nodes, edges, characters}`
 projection plus the raw template dict (for L01).
 
-Every issue is `{id, severity, message, node_id?, char?}`. `severity` is `"error"` (blocks a
+Every issue is `{id, severity, message, node_id?, char?, axis?}`. `severity` is `"error"` (blocks a
 save) or `"warning"` (doesn't) - CLAUDE.md's "schema -> lint (errors block, warnings don't)".
 """
 import json
@@ -13,6 +14,7 @@ import os
 
 import jsonschema
 
+import author_model
 import conditions
 
 _SCHEMA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -236,14 +238,63 @@ def flag_issues(raw: dict) -> list:
     return out
 
 
+def _number(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def stat_tier_issues(raw: dict) -> list:
+    """L06 and L07, over every axis a `bounded_counter` story seeds (`author_model.
+    stat_axis_names`). Read from `raw`, not the board model, because the floor it checks against
+    is resolved the engine's way - per axis, falling back to the block (`BoundedCounter.bounds`).
+
+    L06 (warning): an axis with no tiers gives the narrator no band guidance at all (CR-01 tiers
+    every axis), and a ladder whose lowest tier sits above the floor leaves the bottom of the
+    range with no tier - `tier_for` returns None there and the axis drops out of the prompt.
+    L07 (error): an unsorted ladder or a duplicate `at`. The engine sorts before it scans, so an
+    unsorted list still plays; it is an error because the ladder the author reads is then not the
+    ladder that runs, and with two tiers at one `at` which of them wins is an accident of sort
+    stability."""
+    stats = (raw.get("mechanics") or {}).get("stats")
+    if not isinstance(stats, dict) or stats.get("engine") != "bounded_counter":
+        return []
+    axes = stats.get("axes") if isinstance(stats.get("axes"), dict) else {}
+    labels = (stats.get("readout") or {}).get("labels") or {}
+    out = []
+    for axis in author_model.stat_axis_names(raw):
+        spec = axes.get(axis) if isinstance(axes.get(axis), dict) else {}
+        name = labels.get(axis, axis.upper())
+        ats = [t.get("at") for t in spec.get("tiers") or [] if isinstance(t, dict) and _number(t.get("at"))]
+        if not ats:
+            out.append({"id": "L06", "severity": "warning", "axis": axis,
+                        "message": f"{name} has no tiers, so the narrator gets no guidance on what "
+                                   "its value means."})
+            continue
+        floor = spec.get("floor", stats.get("floor", 0))
+        if _number(floor) and min(ats) != floor:
+            out.append({"id": "L06", "severity": "warning", "axis": axis,
+                        "message": f"{name}'s lowest tier starts at {min(ats)}, not at its floor "
+                                   f"({floor}). Below {min(ats)} it has no tier and drops out of "
+                                   "the prompt."})
+        if ats != sorted(ats):
+            out.append({"id": "L07", "severity": "error", "axis": axis,
+                        "message": f"{name}'s tiers are out of order ({', '.join(str(a) for a in ats)}). "
+                                   "List them from lowest to highest."})
+        dupes = sorted({a for a in ats if ats.count(a) > 1})
+        if dupes:
+            out.append({"id": "L07", "severity": "error", "axis": axis,
+                        "message": f"{name} has more than one tier at {', '.join(str(a) for a in dupes)}. "
+                                   "Only one of them can ever be current."})
+    return out
+
+
 def lint(raw: dict, model: dict) -> list:
-    """L01 and L10 against `raw`, everything else against `model`
+    """L01, L06/L07 and L10 against `raw`, everything else against `model`
     (`author_model.to_board_model(raw)`). L10 is skipped when the schema already rejected the
     template: a condition that isn't an object at all is L01's finding, and reporting it twice
     in two vocabularies is noise."""
     schema = schema_errors(raw)
     return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw)
-            + structural_issues(model) + cast_issues(model))
+            + stat_tier_issues(raw) + structural_issues(model) + cast_issues(model))
 
 
 def has_errors(issues: list) -> bool:

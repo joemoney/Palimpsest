@@ -6,7 +6,7 @@ import time
 from functools import wraps
 
 from dotenv import load_dotenv
-from flask import Flask, Response, redirect, render_template, request, session, url_for
+from flask import Flask, Response, make_response, redirect, render_template, request, session, url_for
 
 import author_assist
 import author_evaluate
@@ -884,7 +884,13 @@ def author_evaluate_route(story_slug):
     except (ValueError, FileNotFoundError, json.JSONDecodeError, TypeError) as e:
         return render_template("_author_evaluate_result.html", error=f"Could not read the board state: {e}")
     rows, left_out = author_evaluate.evaluate_all(written, sample)
-    return render_template("_author_evaluate_result.html", rows=rows, left_out=left_out, error=None)
+    response = make_response(render_template("_author_evaluate_result.html", rows=rows,
+                                             left_out=left_out, error=None))
+    # D4: the canvas (the S3 stat sidebar) needs data, not a fragment, so it rides an HX-Trigger
+    # payload. ASCII-only JSON, since it is a header.
+    response.headers["HX-Trigger"] = json.dumps(
+        {"author-stat-tiers": author_evaluate.stat_tiers(written, sample)})
+    return response
 
 
 @app.route("/author/<story_slug>/raw", methods=["GET", "POST"])

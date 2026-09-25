@@ -259,7 +259,18 @@
         "at": { "type": "number" },
         "label": { "type": "string" },
         "narration": { "type": "string" },
-        "clause_max_words": { "type": "integer" }
+        "clause_max_words": { "type": "integer" },
+        "on_enter": {
+          "$comment": "CR-01: fires on an upward crossing into this tier. Not built until S5 step 2; mechanics.validate() warns while nothing reads it.",
+          "type": "object",
+          "properties": {
+            "once": { "type": "boolean" },
+            "directive": { "type": "string", "minLength": 1 }
+          },
+          "required": ["directive"],
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        }
       },
       "required": ["at"],
       "if": { "required": ["narration"] },

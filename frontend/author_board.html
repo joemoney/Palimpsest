@@ -213,6 +213,57 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .cb-group{border:1px solid var(--line);border-radius:7px;padding:6px 8px;display:grid;gap:5px;background:var(--raised)}
 .cb-leaf{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
 .cb select,.cb input[type=text],.cb input[type=number]{height:26px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);padding:0 6px;font-size:12.5px;max-width:100%}
+/* ---- S3: "not built" chip, timeline bar, stat sidebar, tier ladder ---- */
+.vis.notbuilt{color:var(--warn);background:var(--warn-bg);border-style:dashed}
+.timeline{top:12px;left:12px;right:12px;display:grid;gap:6px;padding:8px 12px 10px;align-items:stretch}
+.tl-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px;color:var(--muted)}
+.tl-head strong{font:600 13px var(--display);color:var(--ink)}
+.tl-head input{width:58px;height:24px;border:1px solid var(--line);border-radius:5px;background:var(--raised);color:var(--ink);padding:0 6px;font-size:12px}
+.tl-track{position:relative;margin:0 8px}
+.tl-phases{position:relative;height:26px}
+.tl-phase{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;font:500 10.5px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--ink);border-radius:4px}
+.tl-phase.open{background:color-mix(in srgb,var(--e3) 18%,transparent)}
+.tl-phase.narrow{background:color-mix(in srgb,var(--e4) 22%,transparent)}
+.tl-phase.commit{background:color-mix(in srgb,var(--e1) 22%,transparent)}
+.tl-phase.forced{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--terminal) 18%,transparent) 0 6px,transparent 6px 12px)}
+.tl-handle{position:absolute;top:-3px;width:14px;margin-left:-7px;height:32px;cursor:ew-resize;touch-action:none;display:flex;justify-content:center}
+.tl-handle::before{content:"";width:3px;height:100%;border-radius:2px;background:var(--ink)}
+.tl-handle:hover::before,.tl-handle:focus-visible::before{background:var(--focus)}
+.tl-handle span{position:absolute;top:33px;font:500 10px var(--mono);color:var(--ink);background:var(--surface);padding:0 3px;border-radius:3px;white-space:nowrap}
+.tl-rows{display:grid;gap:3px;margin-top:14px}
+.tl-row{position:relative;height:16px}
+.tl-band{position:absolute;top:3px;height:10px;border-radius:5px;background:var(--k);opacity:.8}
+.tl-band.drive{opacity:.45}
+.tl-rowlabel{position:absolute;left:0;top:0;font-size:11px;line-height:16px;color:var(--muted);white-space:nowrap;max-width:30%;overflow:hidden;text-overflow:ellipsis}
+.tl-check{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
+.tl-tick{position:absolute;top:0;height:16px;width:12px;margin-left:-6px;border:none;background:none;padding:0;cursor:pointer;display:flex;justify-content:center}
+.tl-tick::before{content:"";width:2px;height:100%;background:var(--terminal)}
+.tl-tick.unset::before{background:repeating-linear-gradient(var(--terminal) 0 3px,transparent 3px 6px)}
+.tl-scale{position:relative;height:12px;font:10px var(--mono);color:var(--muted)}
+.tl-scale span{position:absolute;transform:translateX(-50%)}
+.statbar{left:12px;top:12px;display:grid;gap:2px;padding:6px;min-width:170px;max-width:220px;align-items:stretch}
+.statbar .sb-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0 4px;font:500 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.statbar .sb-head button{border:none;background:none;cursor:pointer;color:var(--muted);font:inherit;padding:2px 4px}
+.sb-axis{display:grid;grid-template-columns:1fr auto;gap:0 8px;text-align:left;border:1px solid transparent;border-radius:6px;background:none;cursor:pointer;padding:4px 6px;color:var(--ink)}
+.sb-axis:hover{background:var(--raised)}
+.sb-axis.sel{border-color:var(--focus)}
+.sb-axis b{font:600 13px var(--display);letter-spacing:.02em}
+.sb-axis small{grid-column:1/-1;font:11px var(--mono);color:var(--muted)}
+.sb-axis small.warn{color:var(--warn)}
+.sb-axis .val{font:500 12px var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.ladder{position:relative;height:320px;margin:4px 0 14px 44px;border-left:1px solid var(--line)}
+.ld-band{position:absolute;left:0;right:0;border-top:1px solid var(--surface);display:flex;align-items:flex-start;gap:8px;padding:3px 8px;font-size:12px;overflow:hidden;cursor:pointer}
+.ld-band b{font:600 12.5px var(--display)}
+.ld-band.gap{background:repeating-linear-gradient(135deg,var(--warn-bg) 0 6px,transparent 6px 12px);color:var(--warn);cursor:default}
+.ld-band.sel{box-shadow:inset 3px 0 0 var(--focus)}
+.ld-handle{position:absolute;left:-44px;right:0;height:14px;margin-top:-7px;cursor:ns-resize;touch-action:none;display:flex;align-items:center}
+.ld-handle::after{content:"";flex:1;height:2px;background:var(--ink);opacity:.65}
+.ld-handle:hover::after,.ld-handle:focus-visible::after{background:var(--focus);opacity:1}
+.ld-handle span{width:38px;text-align:right;padding-right:6px;font:500 11px var(--mono);color:var(--ink)}
+.ld-pin{position:absolute;right:6px;width:10px;height:10px;margin-top:-5px;transform:rotate(45deg);background:var(--warn);border:1px solid var(--surface)}
+.ld-sample{position:absolute;left:-6px;right:-6px;height:0;border-top:2px dashed var(--focus);pointer-events:none}
+.ld-sample span{position:absolute;right:0;top:-17px;font:500 10.5px var(--mono);color:var(--focus);background:var(--surface);padding:0 3px}
+.ld-scale{position:absolute;left:-44px;width:38px;text-align:right;padding-right:6px;font:10px var(--mono);color:var(--muted);transform:translateY(-50%)}
 /* ---- validate/save results ---- */
 /* Capped so a long error/warning list can't grow the header's "auto" grid row until it
    crushes .main's "1fr" row to nothing - board-app is display:grid;grid-template-rows:auto 1fr
@@ -253,6 +304,7 @@ main.app{max-width:none}
       <label class="toggle"><input type="checkbox" id="tLabels" checked> Waypoint labels</label>
       <label class="toggle"><input type="checkbox" id="tUnlocks" checked> Unlock links</label>
       <label class="toggle"><input type="checkbox" id="tFocus"> Focus (hide unrelated)</label>
+      <label class="toggle"><input type="checkbox" id="tTimeline"> Timeline</label>
       <span class="sep" aria-hidden="true"></span>
       <button class="btn" id="autoLayoutBtn" type="button">Auto-layout</button>
       <button class="btn" id="addThread" type="button">+ Thread</button>
@@ -297,6 +349,8 @@ main.app{max-width:none}
         <span><i class="dot" style="--k:var(--e3)"></i>waypoint covered</span>
         <span><i class="dot open"></i>waypoint with no thread</span>
       </div>
+      <div class="overlay timeline" id="timeline" hidden aria-label="Ending funnel timeline"></div>
+      <div class="overlay statbar" id="statBar" hidden aria-label="Stat axes"></div>
       <div class="overlay zoom">
         <button class="btn small" id="zOut" type="button" aria-label="Zoom out">&minus;</button>
         <button class="btn small" id="zFit" type="button">Fit</button>
@@ -451,14 +505,14 @@ function issues(){
 
 /* ---------- render ---------- */
 // The canvas measures nodes as it draws, so it only renders while visible; setView redraws it on return.
-function render(){if(viewMode==='diagram')renderCanvas();renderInspector();renderHealth();if(viewMode==='matrix')renderMatrix();if(viewMode==='cast')renderCast()}
+function render(){if(viewMode==='diagram'){renderCanvas();renderTimeline();renderStatBar()}renderInspector();renderHealth();if(viewMode==='matrix')renderMatrix();if(viewMode==='cast')renderCast()}
 function renderHealth(){
   const n=issues().length,b=$('#healthBtn');
   b.textContent=n?`${n} issue${n>1?'s':''}`:'Story holds';
   b.classList.toggle('ok',!n);
 }
 function related(){
-  if(!sel||sel.type==='char')return null;
+  if(!sel||sel.type==='char'||sel.type==='axis')return null;
   const ids=new Set(),keys=new Set();
   if(sel.type==='edge'){const g=groups().find(g=>g.key===sel.key);if(g){ids.add(g.from);ids.add(g.to);keys.add(g.key)}return {ids,keys}}
   const walk=(start,dir)=>{const q=[start];while(q.length){const c=q.shift();for(const e of model.edges){const [a,b]=dir==='down'?[e.from,e.to]:[e.to,e.from];if(a===c){keys.add(gkey(e));if(!ids.has(b)){ids.add(b);q.push(b)}}}}};
@@ -846,6 +900,7 @@ function renderInspector(){
   if(!sel){return renderOverview()}
   if(sel.type==='edge')return renderEdgeInspector();
   if(sel.type==='char')return renderCharInspector();
+  if(sel.type==='axis')return renderAxisInspector();
   const n=node(sel.id);if(!n){sel=null;return renderOverview()}
   insp.appendChild(eyebrow(n.kind==='start'?'Start':n.kind==='subplot'?`Thread · ${n.id}`:n.ekind==='terminal'?`Failure ending · ${n.id}`:`Ending · ${n.id}`));
   insp.appendChild(el('h2',null,n.title||'Untitled'));
@@ -909,7 +964,7 @@ function renderInspector(){
       insp.appendChild(el('p','note','Filling in anything below promotes this to a full CR-05 terminal, authored under mechanics.endings instead of mechanics.failure_conditions.'));
       const promote=()=>{n.source='endings'};
       const minTurnInp=el('input');minTurnInp.type='number';minTurnInp.value=n.min_turn??'';minTurnInp.placeholder='e.g. 10';
-      minTurnInp.addEventListener('input',()=>{const v=minTurnInp.value.trim();if(v===''){delete n.min_turn}else{n.min_turn=Number(v);promote()}save()});
+      minTurnInp.addEventListener('input',()=>{const v=minTurnInp.value.trim();if(v===''){delete n.min_turn}else{n.min_turn=Number(v);promote()}save();renderTimeline()});
       insp.appendChild(field('Min turn',minTurnInp));
       insp.appendChild(el('h4',null,'Ready when'));
       insp.appendChild(el('p','note','Checked every turn - the engine\'s own trigger, e.g. a stat reaching zero.'));
@@ -1124,7 +1179,7 @@ function renderOverview(){
   const es=model.endings_settings;
   const numField=(label,get,set,ph)=>{
     const i=el('input');i.type='number';const v=get();i.value=(v===undefined||v===null)?'':v;if(ph)i.placeholder=ph;
-    i.addEventListener('input',()=>{const t=i.value.trim();set(t===''?undefined:Number(t));save()});
+    i.addEventListener('input',()=>{const t=i.value.trim();set(t===''?undefined:Number(t));save();renderTimeline()});
     return field(label,i);
   };
   insp.appendChild(numField('Check every N turns',()=>es.check_every,v=>{if(v===undefined)delete es.check_every;else es.check_every=v},'e.g. 6'));
@@ -1145,7 +1200,7 @@ function renderOverview(){
 
   insp.appendChild(el('h4',null,'Using the board'));
   const tips=el('ul','tips');
-  ['Click a box to trace every path into and out of it; turn on Focus to hide everything else instead of dimming it.','Drag a box to move it; drag empty space to pan; scroll to zoom. Auto-layout re-columns everything by how many unlocks it is from the start.','Drag from a round port onto a thread or ending to connect them. Each waypoint gets its own row and its own line — no more guessing which line feeds which slot.','Click a line or its label to edit or remove the link.','Switch to the Matrix tab for a thread-by-waypoint grid — better than the diagram once a story has a lot of threads.','The Cast tab edits the authored characters (world.characters). Each field is badged with what reaches the narrator and what is only stored.','Validate checks the schema and lint rules and shows a diff against the saved file; Save runs the same check and, if nothing blocks it, writes the file.'].forEach(t=>tips.appendChild(el('li',null,t)));
+  ['Click a box to trace every path into and out of it; turn on Focus to hide everything else instead of dimming it.','Drag a box to move it; drag empty space to pan; scroll to zoom. Auto-layout re-columns everything by how many unlocks it is from the start.','Drag from a round port onto a thread or ending to connect them. Each waypoint gets its own row and its own line — no more guessing which line feeds which slot.','Click a line or its label to edit or remove the link.','Switch to the Matrix tab for a thread-by-waypoint grid — better than the diagram once a story has a lot of threads.','The Cast tab edits the authored characters (world.characters). Each field is badged with what reaches the narrator and what is only stored.','The Stats panel (top left of the diagram) lists every stat axis. Click one to open its tier ladder: drag a boundary to move where a tier starts. After Evaluate, it shows each axis\'s sample value and tier.','Turn on Timeline to see the ending funnel\'s phases. Drag a boundary to set open_until, narrow_until or commit_by; failure endings appear as ticks at their min_turn.','Validate checks the schema and lint rules and shows a diff against the saved file; Save runs the same check and, if nothing blocks it, writes the file.'].forEach(t=>tips.appendChild(el('li',null,t)));
   const k=el('li');k.appendChild(el('kbd',null,'Esc'));k.appendChild(document.createTextNode(' clears the selection; '));k.appendChild(el('kbd',null,'Delete'));k.appendChild(document.createTextNode(' removes it.'));tips.appendChild(k);
   insp.appendChild(tips);
 }
@@ -1207,6 +1262,7 @@ document.addEventListener('keydown',ev=>{
   if(ev.key==='Escape'&&sel){sel=null;render()}
   if((ev.key==='Delete'||ev.key==='Backspace')&&sel){
     if(sel.type==='edge'){model.edges=model.edges.filter(e=>gkey(e)!==sel.key)}
+    else if(sel.type==='axis')return;
     else if(sel.type==='char'){const c=chr(sel.name);if(!c)return;model.characters.splice(model.characters.indexOf(c),1);say('Deleted '+c.name)}
     else{const n=node(sel.id);if(!n||n.kind==='start')return;model.nodes=model.nodes.filter(x=>x!==n);model.edges=model.edges.filter(e=>e.from!==n.id&&e.to!==n.id)}
     sel=null;save();render();ev.preventDefault();
@@ -1397,6 +1453,201 @@ $('#addThread').onclick=()=>{let i=1;while(node('subplot_'+String(i).padStart(3,
   model.nodes.push({id,kind:'subplot',role:'spine',title:'New thread',theme:'',x:p.x,y:p.y});sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();say('Thread added. Connect it from the start or another thread.')};
 $('#addEnding').onclick=()=>{let i=1;while(node('ending_'+i))i++;const id='ending_'+i;const p=spot();const cols=['e1','e2','e3','e4'];
   model.nodes.push({id,kind:'ending',ekind:'destination',color:cols[model.nodes.filter(n=>n.kind==='ending').length%4],title:'New ending',theme:'',waypoints:[],x:p.x,y:p.y});sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();say('Ending added. Give it waypoints, then connect threads to it.')};
+
+/* ---------- stat sidebar and tier ladder (Phase S3, Authoring_Tool_Spec.md §4.8) ----------
+   model.stat_axes is author_model._stats_to_board: one entry per seeded axis, `tiers` written
+   back verbatim to mechanics.stats.axes.<axis>.tiers. Nothing here decides which tier a value
+   sits in - that comes from the server (author_evaluate.stat_tiers, the real
+   BoundedCounter.tier_for) after Evaluate, through the author-stat-tiers HX-Trigger (D3/D4). */
+let statTiers={};           // last Evaluate's {axis:{value,tier}}; empty until one has run
+let statBarOpen=true;
+function axisEntry(a){return (model.stat_axes||[]).find(x=>x.axis===a)}
+function ladderRange(ax){
+  const ats=(ax.tiers||[]).map(t=>t.at).filter(v=>typeof v==='number');
+  const lo=typeof ax.floor==='number'?ax.floor:Math.min(0,...ats);
+  const hi=typeof ax.ceiling==='number'?ax.ceiling:Math.max(lo+10,...ats.map(a=>a+20));
+  return {lo,hi:Math.max(hi,lo+1)};
+}
+function renderStatBar(){
+  const bar=$('#statBar');const axes=model.stat_axes||[];
+  bar.hidden=!axes.length;if(!axes.length)return;
+  bar.innerHTML='';
+  const head=el('div','sb-head');head.appendChild(el('span',null,`Stats · ${axes.length}`));
+  const tg=el('button',null,statBarOpen?'hide':'show');tg.type='button';tg.setAttribute('aria-expanded',statBarOpen);
+  tg.onclick=()=>{statBarOpen=!statBarOpen;renderStatBar()};head.appendChild(tg);bar.appendChild(head);
+  if(statBarOpen)for(const ax of axes){
+    const b=el('button','sb-axis'+(sel&&sel.type==='axis'&&sel.axis===ax.axis?' sel':''));b.type='button';
+    b.appendChild(el('b',null,ax.label));
+    const cur=statTiers[ax.axis];
+    b.appendChild(el('span','val',cur?String(cur.value):''));
+    const n=(ax.tiers||[]).length;
+    const sub=!n?'no tiers':cur?(cur.tier?`tier: ${cur.tier}`:'below every tier'):`${n} tier${n>1?'s':''}`;
+    b.appendChild(el('small',(!n||(cur&&!cur.tier))?'warn':null,sub));
+    b.title='Open the tier ladder for '+ax.label;
+    b.onclick=()=>{sel={type:'axis',axis:ax.axis};render()};
+    bar.appendChild(b);
+  }
+  placeOverlays();
+}
+// The stat sidebar sits under the timeline when both are showing.
+function placeOverlays(){const tl=$('#timeline'),sb=$('#statBar');sb.style.top=(tl.hidden?12:tl.offsetHeight+24)+'px'}
+document.body.addEventListener('author-stat-tiers',ev=>{statTiers=ev.detail||{};renderStatBar();if(sel&&sel.type==='axis')renderInspector()});
+
+function renderAxisInspector(){
+  const ax=axisEntry(sel.axis);if(!ax){sel=null;return renderOverview()}
+  ax.tiers=ax.tiers||[];
+  insp.appendChild(eyebrow(`Stat axis · mechanics.stats.axes.${ax.axis}`));
+  insp.appendChild(el('h2',null,ax.label));
+  const {lo,hi}=ladderRange(ax);
+  insp.appendChild(el('p','note',`Runs ${lo} to ${typeof ax.ceiling==='number'?ax.ceiling:'no ceiling'}. The narrator gets one line for this axis - the current tier's narration - and never the table. Drag a boundary to move where a tier starts.`));
+  const after=()=>{save();renderStatBar();renderHealth()};
+  const ladder=el('div','ladder');insp.appendChild(ladder);
+  const y=v=>(1-(v-lo)/(hi-lo))*100;
+  let selTier=null;
+  function paintLadder(){
+    ladder.innerHTML='';
+    const order=ax.tiers.filter(t=>typeof t.at==='number').slice().sort((a,b)=>a.at-b.at);
+    [lo,hi].forEach(v=>{const s=el('div','ld-scale',String(v));s.style.top=y(v)+'%';ladder.appendChild(s)});
+    if(!order.length||order[0].at>lo){const top=order.length?order[0].at:hi;const g=el('div','ld-band gap',order.length?'no tier: drops out of the prompt':'no tiers yet');g.style.top=y(top)+'%';g.style.height=(y(lo)-y(top))+'%';ladder.appendChild(g)}
+    order.forEach((t,i)=>{
+      const top=i+1<order.length?order[i+1].at:hi;
+      const band=el('div','ld-band'+(t===selTier?' sel':''));band.style.top=y(Math.min(top,hi))+'%';band.style.height=Math.max(0,y(Math.max(t.at,lo))-y(Math.min(top,hi)))+'%';
+      band.style.background=`color-mix(in srgb,var(--e${(i%4)+1}) ${14+i*6}%,transparent)`;
+      band.appendChild(el('b',null,t.label||'(no label)'));
+      if(t.narration)band.appendChild(el('span',null,t.narration.length>60?t.narration.slice(0,57)+'...':t.narration));
+      band.title=t.narration||'';
+      band.onclick=()=>{selTier=t;paintLadder();const row=insp.querySelector(`[data-tier="${ax.tiers.indexOf(t)}"]`);row&&row.scrollIntoView({block:'nearest',behavior:'smooth'})};
+      ladder.appendChild(band);
+      if(t.on_enter&&t.on_enter.directive){const p=el('div','ld-pin');p.style.top=y(t.at)+'%';p.title='on_enter: '+t.on_enter.directive+(t.on_enter.once?' (once)':'');ladder.appendChild(p)}
+      const h=el('div','ld-handle');h.style.top=y(t.at)+'%';h.tabIndex=0;h.setAttribute('role','slider');
+      h.setAttribute('aria-label',`${t.label||'tier'} starts at`);h.setAttribute('aria-valuenow',t.at);
+      h.appendChild(el('span',null,String(t.at)));
+      // Constrained between its sorted neighbours, so a drag can never reorder the ladder or
+      // create a duplicate - those are L07's errors, and a drag shouldn't be a way to make one.
+      const minAt=i>0?order[i-1].at+1:lo,maxAt=i+1<order.length?order[i+1].at-1:hi;
+      const setAt=v=>{t.at=Math.max(minAt,Math.min(maxAt,Math.round(v)));};
+      h.addEventListener('pointerdown',ev=>{ev.preventDefault();ev.stopPropagation();h.setPointerCapture(ev.pointerId);selTier=t;
+        const r=ladder.getBoundingClientRect();
+        const move=e=>{setAt(hi-(e.clientY-r.top)/r.height*(hi-lo));h.style.top=y(t.at)+'%';h.firstChild.textContent=String(t.at)};
+        const up=()=>{h.removeEventListener('pointermove',move);h.removeEventListener('pointerup',up);after();renderInspector()};
+        h.addEventListener('pointermove',move);h.addEventListener('pointerup',up)});
+      h.addEventListener('keydown',ev=>{const d=ev.key==='ArrowUp'?1:ev.key==='ArrowDown'?-1:0;if(!d)return;ev.preventDefault();setAt(t.at+d*(ev.shiftKey?5:1));after();paintLadder();ladder.querySelectorAll('.ld-handle')[i].focus()});
+      ladder.appendChild(h);
+    });
+    const cur=statTiers[ax.axis];
+    if(cur&&typeof cur.value==='number'){const m=el('div','ld-sample');m.style.top=y(Math.max(lo,Math.min(hi,cur.value)))+'%';m.appendChild(el('span',null,`sample ${cur.value}${cur.tier?' · '+cur.tier:''}`));ladder.appendChild(m)}
+  }
+  paintLadder();
+
+  const ats=ax.tiers.map(t=>t.at);
+  if(ats.some((a,i)=>i&&a<ats[i-1])){const b=el('button','btn small','Sort tiers by where they start');b.type='button';b.onclick=()=>{ax.tiers.sort((a,b)=>a.at-b.at);after();render()};insp.appendChild(b)}
+
+  insp.appendChild(el('h4',null,'Tiers'));
+  const setOrDrop=(o,k,v)=>{if(v===''||v==null||Number.isNaN(v))delete o[k];else o[k]=v};
+  const num=(val,on,ph)=>{const i=el('input');i.type='number';i.value=val??'';if(ph)i.placeholder=ph;i.addEventListener('input',()=>{on(i.value.trim()===''?'':Number(i.value));after();paintLadder()});return i};
+  const ul=el('ul','list');
+  ax.tiers.forEach((t,i)=>{
+    const li=el('li','wp');li.dataset.tier=i;
+    const idr=el('div','id');idr.appendChild(el('span',null,`tier ${i+1}`));
+    const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{ax.tiers.splice(i,1);after();render()};idr.appendChild(rm);li.appendChild(idr);
+    li.appendChild(field('Starts at',num(t.at,v=>{if(v!=='')t.at=v})));
+    li.appendChild(field('Label',textInput(t.label,v=>setOrDrop(t,'label',v.trim()?v:''),'e.g. surfacing'),VIS.every,
+      el('div','fieldnote','Shown beside the axis in the tier line, e.g. "'+ax.label+' ('+(t.label||'label')+')".')));
+    li.appendChild(field('Narration',area(t.narration,v=>{setOrDrop(t,'narration',v.trim()?v:'');paintLadder()}),['narrator','narrator · while current'],
+      el('div','fieldnote','The whole tier line while the value sits here. A tier with narration needs a label.')));
+    li.appendChild(field('Clause max words',num(t.clause_max_words,v=>setOrDrop(t,'clause_max_words',v),'optional'),null,
+      el('div','fieldnote','Only read when readout.delta_block.clause_max_words_axis names this axis.')));
+    const dir=textInput(t.on_enter&&t.on_enter.directive,v=>{if(v.trim()){t.on_enter=t.on_enter||{};t.on_enter.directive=v}else delete t.on_enter;once.disabled=!t.on_enter;paintLadder()},'e.g. the belt goes quiet around the ship');
+    const onF=field('On enter: directive',dir,['notbuilt','not built'],
+      el('div','fieldnote','CR-01: injected for one turn when the value climbs into this tier. Saved now; nothing reads it until S5, and the engine warns at load.'));
+    li.appendChild(onF);
+    const ob=el('label','toggle');const once=el('input');once.type='checkbox';once.checked=!!(t.on_enter&&t.on_enter.once);once.disabled=!t.on_enter;
+    once.onchange=()=>{if(!t.on_enter)return;if(once.checked)t.on_enter.once=true;else delete t.on_enter.once;after();paintLadder()};
+    ob.appendChild(once);ob.appendChild(document.createTextNode(' Only the first time'));li.appendChild(ob);
+    ul.appendChild(li);
+  });
+  insp.appendChild(ul);
+  const add=el('button','btn small','+ Tier');add.type='button';add.style.marginTop='8px';
+  add.onclick=()=>{const at=ax.tiers.length?Math.min(hi,Math.max(...ax.tiers.map(t=>t.at))+10):lo;ax.tiers.push({at,label:''});after();render()};
+  insp.appendChild(add);
+}
+
+/* ---------- timeline bar (Phase S3, Authoring_Tool_Spec.md §4.7) ----------
+   mechanics.endings.budget/check_every/steer_top - the same model.endings_settings the
+   overview's funnel fields edit, so the two stay in sync by construction. */
+let showTimeline=false;
+const PHASES=[['open_until','Open','open'],['narrow_until','Narrow','narrow'],['commit_by','Commit window','commit']];
+function renderTimeline(){
+  const tl=$('#timeline');tl.hidden=!showTimeline;
+  if(!showTimeline){placeOverlays();return}
+  tl.innerHTML='';
+  const es=model.endings_settings=model.endings_settings||{};
+  const touched=()=>{save();if(!sel)renderInspector()};
+  const head=el('div','tl-head');
+  const t=el('strong',null,'Timeline');head.appendChild(t);head.appendChild(el('span','vis notbuilt','not built'));
+  const numIn=(label,key,ph)=>{const w=el('label');w.style.cssText='display:inline-flex;gap:5px;align-items:center';w.appendChild(document.createTextNode(label));
+    const i=el('input');i.type='number';i.min='1';i.value=es[key]??'';i.placeholder=ph;
+    i.addEventListener('input',()=>{const v=i.value.trim();if(v===''||Number(v)<1)delete es[key];else es[key]=Number(v);touched();paint()});
+    w.appendChild(i);return w};
+  head.appendChild(numIn('Check every','check_every','6'));
+  head.appendChild(numIn('Steer top','steer_top','2'));
+  tl.appendChild(head);
+  const b=es.budget;
+  if(!b||PHASES.some(([k])=>typeof b[k]!=='number')){
+    const p=el('div','tl-head');
+    p.appendChild(el('span',null,'No complete turn budget (open_until, narrow_until, commit_by) - the funnel has no phases to draw.'));
+    const s=el('button','btn small','Start from 40 / 90 / 140');s.type='button';s.title='CR-05\'s own placeholder values. Drag the boundaries to set your own.';
+    s.onclick=()=>{es.budget=Object.assign({open_until:40,narrow_until:90,commit_by:140},b||{});touched();renderTimeline()};
+    p.appendChild(s);tl.appendChild(p);placeOverlays();return;
+  }
+  const terms=model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='terminal');
+  const dests=model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='destination');
+  // Fixed while a drag is in progress, so the scale doesn't slide under the pointer.
+  const span=()=>{const m=Math.max(b.commit_by,...terms.map(n=>n.min_turn||0));return Math.ceil(m*1.15/10)*10};
+  let T=span();
+  const track=el('div','tl-track');tl.appendChild(track);
+  const pct=v=>Math.max(0,Math.min(100,v/T*100))+'%';
+  const phases=el('div','tl-phases');track.appendChild(phases);
+  const segs=[...PHASES.map(([,label,cls])=>el('div','tl-phase '+cls,label)),el('div','tl-phase forced','Forced / finale')];
+  segs.forEach(s=>phases.appendChild(s));
+  const handles=PHASES.map(([key,label],i)=>{
+    const h=el('div','tl-handle');h.tabIndex=0;h.setAttribute('role','slider');h.setAttribute('aria-label',key);h.title=`${key}: drag to move where ${label} ends`;
+    h.appendChild(el('span'));
+    const clamp=v=>{const lo=i?b[PHASES[i-1][0]]+1:1,hi=i<2?b[PHASES[i+1][0]]-1:Infinity;return Math.max(lo,Math.min(hi,Math.round(v)))};
+    h.addEventListener('pointerdown',ev=>{ev.preventDefault();ev.stopPropagation();h.setPointerCapture(ev.pointerId);const r=track.getBoundingClientRect();
+      const move=e=>{b[key]=clamp((e.clientX-r.left)/r.width*T);paint()};
+      const up=()=>{h.removeEventListener('pointermove',move);h.removeEventListener('pointerup',up);touched();renderTimeline()};
+      h.addEventListener('pointermove',move);h.addEventListener('pointerup',up)});
+    h.addEventListener('keydown',ev=>{const d=ev.key==='ArrowRight'?1:ev.key==='ArrowLeft'?-1:0;if(!d)return;ev.preventDefault();b[key]=clamp(b[key]+d*(ev.shiftKey?5:1));touched();paint()});
+    phases.appendChild(h);return h});
+  const rows=el('div','tl-rows');track.appendChild(rows);
+  const checks=el('div','tl-row');checks.title='Scoring checks, every check_every turns through Narrow and the commit window';rows.appendChild(checks);
+  const bands=dests.map(n=>{const r=el('div','tl-row');r.style.setProperty('--k',`var(--${n.color||'e4'})`);
+    const lab=el('div','tl-rowlabel',n.title||n.id);const band=el('div','tl-band');const drive=el('div','tl-band drive');
+    band.title=`${n.title}: can commit once ready, from open_until`;drive.title=`${n.title}: drive nudges from narrow_until; forced commit at commit_by if it leads`;
+    r.appendChild(band);r.appendChild(drive);r.appendChild(lab);rows.appendChild(r);return [band,drive,lab]});
+  const tickRow=el('div','tl-row');rows.appendChild(tickRow);
+  if(terms.length){const lab=el('div','tl-rowlabel','Failure endings');tickRow.appendChild(lab)}
+  terms.forEach(n=>{const k=el('button','tl-tick'+(typeof n.min_turn==='number'?'':' unset'));k.type='button';
+    k.style.left=pct(typeof n.min_turn==='number'?n.min_turn:0);
+    k.title=`${n.title||n.id}: ${typeof n.min_turn==='number'?'can trigger from turn '+n.min_turn:'no min_turn - can trigger from the first turn'}`;
+    k.setAttribute('aria-label',k.title);k.onclick=()=>{sel={type:'node',id:n.id};render()};tickRow.appendChild(k)});
+  const scale=el('div','tl-scale');track.appendChild(scale);
+  function paint(){
+    const cuts=[0,...PHASES.map(([k])=>b[k]),T];
+    segs.forEach((s,i)=>{s.style.left=pct(cuts[i]);s.style.width=`calc(${pct(cuts[i+1])} - ${pct(cuts[i])})`});
+    handles.forEach((h,i)=>{const v=b[PHASES[i][0]];h.style.left=pct(v);h.firstChild.textContent=String(v);h.setAttribute('aria-valuenow',v)});
+    bands.forEach(([band,drive,lab])=>{band.style.left=pct(b.open_until);band.style.width=`calc(${pct(b.narrow_until)} - ${pct(b.open_until)})`;
+      drive.style.left=pct(b.narrow_until);drive.style.width=`calc(${pct(b.commit_by)} - ${pct(b.narrow_until)})`;
+      lab.style.maxWidth=`calc(${pct(b.open_until)} - 6px)`});
+    checks.innerHTML='';const every=es.check_every;
+    if(every>0)for(let v=b.open_until;v<=b.commit_by;v+=every){const c=el('div','tl-check');c.style.left=pct(v);checks.appendChild(c)}
+    checks.appendChild(el('div','tl-rowlabel',every>0?`checks every ${every}`+(es.steer_top?` · steers top ${es.steer_top}`:''):'no check_every'));
+    scale.innerHTML='';const step=T<=60?10:T<=150?20:50;for(let v=0;v<=T;v+=step){const s=el('span',null,String(v));s.style.left=pct(v);scale.appendChild(s)}
+  }
+  paint();placeOverlays();
+}
+$('#tTimeline').onchange=e=>{showTimeline=e.target.checked;renderTimeline()};
 
 /* ---------- sample state (Phase S2, D3) ----------
    The inputs only *describe* a state; every answer comes from the server, which runs the real

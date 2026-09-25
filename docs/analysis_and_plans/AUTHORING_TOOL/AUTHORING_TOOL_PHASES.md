@@ -654,7 +654,53 @@ warning about becoming a general expression language still applies; it just move
 
 ## Phase S3: Stats, tiers and the timeline
 
-**Goal.** Stat progression and funnel timing are visible and editable.
+**Status: CLOSED (2026-09-25).** The gate is met against the real Missing Core template
+(`test/test_tier_ladder.py`), and every piece below was also driven end to end in headless
+Chromium: drag a QUORUM boundary, drag a budget boundary, Evaluate a sample, Save, and read the
+file back.
+
+**Done:**
+- **`stat_axes` in the board model** (`author_model._stats_to_board` / `_apply_stat_tiers`). One
+  entry per seeded axis - `mechanics.stats.axes`, then `protagonist.stats`, then creation
+  `starting_stats`, via the new `author_model.stat_axis_names` (the condition builder's stat
+  list uses it too now, so it matches `conditions._stat_axes`). `label`/`floor`/`ceiling` are
+  read-only display data; only `tiers` is written back, verbatim and in the order sent. An axis
+  whose list is unchanged is not touched, so an authored `tiers: []` survives; emptying a ladder
+  removes `tiers`, then the axis entry and `axes` if they are left empty (P-2). Adding tiers never
+  adds `costs`, so it can never switch a story to priced stats. Absent entirely when the story
+  has no `mechanics.stats` block.
+- **Stat sidebar** (canvas overlay, top left): every axis, its tier count, and after Evaluate the
+  sample value and tier. The tier comes from the server - `author_evaluate.stat_tiers`, through
+  the bound `BoundedCounter.tier_for` - carried on an `author-stat-tiers` `HX-Trigger` payload
+  from `/api/evaluate` (D3, D4). There is no tier lookup in JS.
+- **Tier ladder** (inspector, on clicking an axis): a vertical strip from floor to ceiling with
+  draggable boundaries (also arrow keys), each drag clamped between its neighbours so it can
+  never create an L07 error. Bands show label and narration, a hatched band marks the range below
+  the lowest tier, `on_enter` shows as a pin, and the last Evaluate's sample value as a dashed
+  line. Each tier row edits `at`, `label`, `narration`, `clause_max_words` and `on_enter`
+  (`directive`, `once`), badged by visibility; `on_enter` carries the first **"not built"** chip.
+- **CR-01 `on_enter` in the schema**, and the D1 "field with no reader" warning for it in
+  `mechanics.validate()` - to delete when S5 step 2 gives it a reader.
+- **L06** (warning: an axis with no tiers, or a lowest tier above the axis's floor) and **L07**
+  (error: tiers out of order, or a duplicate `at`) in `author_lint.stat_tier_issues`, read from
+  the raw template so the floor resolves the engine's way (per axis, falling back to the block).
+  The Missing Core now carries four L06 warnings (FRAME, REACH, SYNC and TRACE have no tiers,
+  which is CR-01's own migration still to do); errors are unchanged everywhere.
+- **Timeline bar** (toolbar toggle, canvas overlay, "not built" chip since `ending_funnel` is):
+  Open / Narrow / Commit window / Forced phases with draggable `open_until`/`narrow_until`/
+  `commit_by` boundaries (clamped to stay ordered), `check_every` cadence ticks, `check_every`
+  and `steer_top` inputs, one band per destination (can commit from `open_until`, drive nudges
+  from `narrow_until`), and a tick per terminal at its `min_turn` - dashed at 0 when it has none,
+  which is every legacy `failure_conditions` terminal. It edits the same `endings_settings` the
+  overview's funnel fields do. With no complete budget it offers CR-05's placeholder 40 / 90 /
+  140 as a starting point rather than inventing an engine default.
+
+**Decisions made in passing - flag if wrong:**
+- **An unsorted ladder is an error (L07), as the spec says, even though the engine sorts before
+  it scans.** The ladder the author reads would not be the ladder that runs. The inspector offers
+  a one-click sort when it finds one.
+- **Destination bands are the same span for every destination** until the simulator (S6) has
+  commit-turn distributions to draw on them. Destinations have no per-ending timing field today.
 
 **Work.**
 - **Stat sidebar and tier ladder** on `mechanics.stats.axes.<axis>.tiers`, including CR-01's

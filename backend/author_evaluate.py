@@ -113,3 +113,20 @@ def evaluate_all(story: dict, sample: dict) -> tuple:
             "unknown": result.unknown,
         })
     return rows, left_out
+
+
+def stat_tiers(story: dict, sample: dict) -> dict:
+    """`{axis: {"value": v, "tier": label-or-None}}` for the stat sidebar (Phase S3): each axis's
+    value in the sample state and the tier the real engine puts it in (`BoundedCounter.tier_for`,
+    through the bound engine - never a JS copy of the rule, D3). Empty when the projected story
+    binds no stats engine, since then no tier line would reach the prompt either."""
+    projected, _ = author_model.playable_projection(story, set(mechanics.registered_engines()))
+    ctx = build_ctx(projected, sample)
+    bound = next((b for b in mechanics.bind(projected) if b.slot == "stats"), None)
+    if bound is None:
+        return {}
+    out = {}
+    for axis, value in ctx["state"]["protagonist"]["stats"].items():
+        tier = bound.engine.tier_for(bound.cfg, axis, value)
+        out[axis] = {"value": value, "tier": tier.get("label") if tier else None}
+    return out

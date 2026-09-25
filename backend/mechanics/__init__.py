@@ -241,6 +241,17 @@ def validate(story):
                   f"§2.2 marks non-latching - the act can un-satisfy its own precondition "
                   f"after advancing. Prefer revelation or flag.")
 
+    # D1 lets the board write a CR field before the engine that reads it exists; this is the
+    # "names every CR field present with no reader" warning for CR-01's tier hooks, so an
+    # author playing a half-built story is told why a tier crossing does nothing. Delete it in
+    # the change that gives on_enter a reader (AUTHORING_TOOL_PHASES.md S5 step 2).
+    stat_axes = ((story.get("mechanics") or {}).get("stats") or {}).get("axes") or {}
+    hooked = sorted(axis for axis, spec in stat_axes.items()
+                    if any(isinstance(t, dict) and t.get("on_enter") for t in (spec or {}).get("tiers") or []))
+    if hooked:
+        print(f"WARNING: tiers on {', '.join(hooked)} author on_enter (CR-01), which this build "
+              f"does not read yet - crossing into those tiers fires nothing.")
+
     for slot, cfg in _declared(story):
         if (slot, cfg["engine"]) not in _REGISTRY:
             known = sorted(n for s, n in _REGISTRY if s == slot)

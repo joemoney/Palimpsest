@@ -39,10 +39,14 @@ make the round-trip gate a lie about round-tripping. When S2 ships, promoting a 
 condition to a CR-05 terminal becomes an explicit board action, not something this loader
 does silently underfoot.
 
-**Two things this module deliberately does not cover yet**, both still true to fact 2 in
-AUTHORING_TOOL_PHASES.md: stat tiers (S3's tier ladder) and `plot.main_thread`/lore/timeline
-(Forms tab, S4/S6). Nothing here reads or writes them, so they pass through untouched inside
-`raw` the same way any other key this module has never heard of does.
+**Stat tiers (S3)** round-trip through `stat_axes`: one entry per seeded axis, carrying that
+axis's `mechanics.stats.axes.<axis>.tiers` list verbatim. The writer only touches an axis whose
+tier list actually changed, so an unedited axis - including an authored empty `tiers: []` -
+survives byte for byte.
+
+**Not covered yet:** `plot.main_thread`/lore (Forms tab, S4/S6). Nothing here reads or writes
+them, so they pass through untouched inside `raw` the same way any other key this module has
+never heard of does.
 """
 import copy
 
@@ -142,7 +146,52 @@ def to_board_model(raw: dict) -> dict:
         for f in (declared or []) if isinstance(f, dict)
     ]
     result["refs"] = _condition_refs(raw)
+    # stat_axes: the tier ladder's data (S3). P-2: omitted when the story has no
+    # mechanics.stats block at all - there is no ladder to draw for stats that don't exist.
+    stat_axes = _stats_to_board(raw)
+    if stat_axes is not None:
+        result["stat_axes"] = stat_axes
     return result
+
+
+def stat_axis_names(raw: dict) -> list:
+    """Every stat axis a save of this story can hold, in authored order: `mechanics.stats.axes`
+    first, then `protagonist.stats`, then any `character_creation` `starting_stats` - the same
+    set `conditions._stat_axes` accepts, ordered so the board lists them stably. CLAUDE.md:
+    those are the only seeding sources, and the model can never add an axis."""
+    names = list((((raw.get("mechanics") or {}).get("stats") or {}).get("axes") or {}).keys())
+    sources = [(raw.get("protagonist") or {}).get("stats") or {}]
+    for step in raw.get("character_creation") or []:
+        for opt in step.get("options") or []:
+            sources.append(opt.get("starting_stats") or {})
+    for source in sources:
+        for axis in source:
+            if axis not in names:
+                names.append(axis)
+    return names
+
+
+def _stats_to_board(raw: dict):
+    """One entry per seeded axis: `{axis, label, floor, ceiling, tiers}`. `label`, `floor` and
+    `ceiling` are read-only display data for the ladder's scale (resolved the way
+    `BoundedCounter.bounds` resolves them - per axis, falling back to the block); only `tiers`
+    is ever written back. None when there is no stats block."""
+    stats = (raw.get("mechanics") or {}).get("stats")
+    if not isinstance(stats, dict):
+        return None
+    axes = stats.get("axes") or {}
+    labels = (stats.get("readout") or {}).get("labels") or {}
+    out = []
+    for axis in stat_axis_names(raw):
+        spec = axes.get(axis) or {}
+        out.append({
+            "axis": axis,
+            "label": labels.get(axis, axis.upper()),
+            "floor": spec.get("floor", stats.get("floor", 0)),
+            "ceiling": spec.get("ceiling", stats.get("ceiling")),
+            "tiers": copy.deepcopy(spec.get("tiers") or []),
+        })
+    return out
 
 
 def _condition_refs(raw: dict) -> dict:
@@ -151,10 +200,7 @@ def _condition_refs(raw: dict) -> dict:
     builder offers real axes/revelations instead of a free-text box where a typo reads as an
     unknown referent (L10)."""
     mechanics = raw.get("mechanics", {}) or {}
-    stats = list(((mechanics.get("stats") or {}).get("axes") or {}).keys())
-    for axis in (raw.get("protagonist", {}) or {}).get("stats", {}) or {}:
-        if axis not in stats:
-            stats.append(axis)
+    stats = stat_axis_names(raw)
     revelations = mechanics.get("revelations")
     entries = revelations.get("entries", []) if isinstance(revelations, dict) else []
     flags = ((mechanics.get("flags") or {}).get("declared") or []) if isinstance(mechanics.get("flags"), dict) else []
@@ -308,6 +354,7 @@ def from_board_model(raw: dict, model: dict) -> dict:
     _apply_terminals(out, nodes)
     _apply_endings(out, nodes, model.get("endings_settings"))
     _apply_flags(out, model.get("flags_declared"))
+    _apply_stat_tiers(out, model.get("stat_axes"))
     _apply_characters(out, model.get("characters"))
     _apply_positions(out, nodes)
 
@@ -442,6 +489,42 @@ def _apply_flags(out: dict, declared) -> None:
             mechanics["flags"] = block
         else:
             mechanics.pop("flags", None)
+
+
+def _apply_stat_tiers(out: dict, stat_axes) -> None:
+    """Write each axis's tier list back to `mechanics.stats.axes.<axis>.tiers`. `None` (an older
+    client) leaves the template alone, and so does a story with no stats block - the board never
+    invents one. An axis whose list is unchanged is not touched at all, which is what keeps an
+    authored `tiers: []` (or an axis entry the board has no opinion on) byte-identical.
+
+    Tiers are written verbatim, in the order the board sent them: sorting is the engine's job
+    (`BoundedCounter.tiers`), and an unsorted list is L07's to report, not this writer's to hide.
+    Emptying an axis's ladder removes the `tiers` key, then the axis entry and the `axes` block if
+    that left them empty - P-2, an absent module stays absent."""
+    if not isinstance(stat_axes, list):
+        return
+    stats = (out.get("mechanics") or {}).get("stats")
+    if not isinstance(stats, dict):
+        return
+    for entry in stat_axes:
+        if not isinstance(entry, dict) or not entry.get("axis") or not isinstance(entry.get("tiers"), list):
+            continue
+        axis = entry["axis"]
+        tiers = [t for t in entry["tiers"] if isinstance(t, dict)]
+        axes = stats.get("axes") if isinstance(stats.get("axes"), dict) else None
+        spec = axes.get(axis) if axes is not None and isinstance(axes.get(axis), dict) else None
+        if tiers == ((spec or {}).get("tiers") or []):
+            continue
+        if tiers:
+            if axes is None:
+                axes = stats["axes"] = {}
+            axes.setdefault(axis, {})["tiers"] = copy.deepcopy(tiers)
+        else:
+            spec.pop("tiers", None)
+            if not spec:
+                del axes[axis]
+            if not axes:
+                del stats["axes"]
 
 
 def _apply_endings(out: dict, nodes: list, settings: dict = None) -> None:

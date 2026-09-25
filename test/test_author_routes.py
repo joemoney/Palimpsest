@@ -222,6 +222,9 @@ try:
     assert resp.status_code == 200, resp.status_code
     assert b"Conditions against the sample state" in resp.data
     assert b"ending_funnel" in resp.data, "an unbuilt engine must be named, not swallowed"
+    # D4: the stat sidebar's data rides an HX-Trigger payload, not the fragment. This story
+    # has no stats block, so the payload is present but empty.
+    assert json.loads(resp.headers["HX-Trigger"]) == {"author-stat-tiers": {}}, resp.headers.get("HX-Trigger")
     print("OK: /api/evaluate renders the condition table and names engines this build lacks")
 
     resp = client.post("/author/author_test_story/api/evaluate", data={"model": "not json", "sample": "{}"})
