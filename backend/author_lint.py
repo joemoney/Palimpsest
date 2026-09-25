@@ -36,6 +36,17 @@ def _get_validator():
     return _validator
 
 
+def template_schema() -> dict:
+    """The template JSON Schema, loaded once (the Forms tab embeds it; L01 validates with it).
+    Read directly rather than through _get_validator, so rendering the board never depends on
+    the jsonschema version installed."""
+    global _schema
+    if _schema is None:
+        with open(_SCHEMA_PATH, "r", encoding="utf-8") as f:
+            _schema = json.load(f)
+    return _schema
+
+
 def schema_errors(raw: dict) -> list:
     """L01. One issue per schema violation, path included in the message so an author can find
     the field without a JSON viewer."""
@@ -43,8 +54,22 @@ def schema_errors(raw: dict) -> list:
     out = []
     for e in sorted(validator.iter_errors(raw), key=lambda e: list(e.path)):
         path = ".".join(str(p) for p in e.path) or "(top level)"
-        out.append({"id": "L01", "severity": "error", "message": f"{path}: {e.message}"})
+        message = f"{path}: {e.message}"
+        hint = _schema_hint(path, e)
+        out.append({"id": "L01", "severity": "error", "message": message + (f" {hint}" if hint else "")})
     return out
+
+
+def _schema_hint(path: str, error) -> str:
+    """The fix, for schema errors that come from the storyboard's vocabulary not being the
+    schema's: its "Failure ending" is kind terminal, and its "Catch-all" is a destination with no
+    viable_while, not a key. Both happened once in a hand-edited template."""
+    if path.startswith("mechanics.endings.entries") and path.endswith(".kind") and error.instance == "failure":
+        return "A Failure ending on the storyboard is kind \"terminal\"."
+    if path.startswith("mechanics.endings.entries") and "'catch_all'" in error.message:
+        return ("There is no catch_all key: a destination with no viable_while is the catch-all "
+                "(the storyboard's Catch-all checkbox).")
+    return ""
 
 
 def _node(nodes: list, node_id: str):

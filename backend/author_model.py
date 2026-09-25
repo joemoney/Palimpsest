@@ -161,6 +161,8 @@ def to_board_model(raw: dict) -> dict:
     result["world"] = _world_to_board(raw)
     result["lore"] = _lore_to_board(raw)
     result["main_thread"] = _main_thread_to_board(raw)
+    result["forms"] = _forms_to_board(raw)
+    result["form_sections"] = [list(s) for s in FORM_SECTIONS]  # read-only: the tab's section list
     result["refs"] = _condition_refs(raw)
     # stat_axes: the tier ladder's data (S3). P-2: omitted when the story has no
     # mechanics.stats block at all - there is no ladder to draw for stats that don't exist.
@@ -389,6 +391,65 @@ def _world_to_board(raw: dict) -> dict:
     }
 
 
+# The Forms tab: every template section with no dedicated editor elsewhere on the board, as
+# (path, label). Each is carried whole - the page renders its form from the schema - and written
+# back whole when changed. Order is the tab's section order.
+FORM_SECTIONS = (
+    ("narration", "Narration"),
+    ("protagonist", "Protagonist"),
+    ("character_creation", "Character creation"),
+    ("plot.opening_scene", "Opening narration"),
+    ("plot.initial_scene", "Opening scene"),
+    ("plot.pacing", "Pacing"),
+    ("mechanics.stats", "Stats"),
+    ("mechanics.relationships", "Relationships"),
+    ("mechanics.inventory", "Inventory"),
+    ("mechanics.subplots", "Thread progress"),
+    ("mechanics.pacing_loop", "Pacing loop"),
+    ("mechanics.progression", "Progression"),
+    ("mechanics.gate", "Gates"),
+    ("mechanics.tracked_entity", "Tracked entity"),
+)
+
+
+def _get_path(raw: dict, path: str):
+    node = raw
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
+
+
+def _forms_to_board(raw: dict) -> dict:
+    """`{path: subtree or None}` for every FORM_SECTIONS path. None means the template doesn't
+    author that section (P-2: the form offers to add it, and never writes an empty one)."""
+    return {path: copy.deepcopy(_get_path(raw, path)) for path, _ in FORM_SECTIONS}
+
+
+def _apply_forms(out: dict, raw: dict, forms) -> None:
+    """Write back each Forms-tab section the author changed; an unchanged one is not touched.
+    None (or an emptied object/list) removes the section. Runs before every other applier, so the
+    tabs that own part of a section - the tier ladder's `mechanics.stats.axes.*.tiers`, the World
+    tab's `plot.initial_scene.location` - still have the last word on their part."""
+    if not isinstance(forms, dict):
+        return
+    for path, _ in FORM_SECTIONS:
+        if path not in forms:
+            continue
+        value = forms[path]
+        if value == _get_path(raw, path):
+            continue
+        *parents, leaf = path.split(".")
+        target = out
+        for part in parents:
+            target = target.setdefault(part, {})
+        if value in (None, {}, []):
+            target.pop(leaf, None)
+        else:
+            target[leaf] = copy.deepcopy(value)
+
+
 def _main_thread_to_board(raw: dict) -> dict:
     """`plot.main_thread` for the Diagram tab's acts strip: the main plot's title/description,
     `max_acts`, and the authored acts in order. `orig` is each act's index as loaded, so an edited
@@ -396,9 +457,10 @@ def _main_thread_to_board(raw: dict) -> dict:
     mt = (raw.get("plot") or {}).get("main_thread") or {}
     return {
         "title": mt.get("title", ""), "description": mt.get("description", ""),
-        "max_acts": mt.get("max_acts"),
+        "plot_notes": mt.get("plot_notes", ""), "max_acts": mt.get("max_acts"),
         "acts": [{"orig": i, "title": a.get("title", ""), "description": a.get("description", ""),
-                  "completion_signals": list(a.get("completion_signals") or [])}
+                  "completion_signals": list(a.get("completion_signals") or []),
+                  "requires": copy.deepcopy(a.get("requires"))}
                  for i, a in enumerate(mt.get("acts") or []) if isinstance(a, dict)],
     }
 
@@ -446,6 +508,7 @@ def from_board_model(raw: dict, model: dict) -> dict:
     nodes = model.get("nodes", [])
     edges = model.get("edges", [])
 
+    _apply_forms(out, raw, model.get("forms"))
     _apply_subplots(out, nodes, edges)
     _apply_terminals(out, nodes)
     _apply_endings(out, nodes, model.get("endings_settings"))
@@ -890,6 +953,7 @@ def _apply_main_thread(out: dict, raw: dict, mt) -> None:
     originals = list(((raw.get("plot") or {}).get("main_thread") or {}).get("acts") or [])
     target["title"] = mt.get("title", "")
     target["description"] = mt.get("description", "")
+    _set_or_drop(target, "plot_notes", mt.get("plot_notes", ""))
     _set_or_drop(target, "max_acts", mt.get("max_acts"))
     acts = []
     for i, row in enumerate(mt.get("acts") or [], start=1):
@@ -899,6 +963,7 @@ def _apply_main_thread(out: dict, raw: dict, mt) -> None:
         entry["title"] = row.get("title", "")
         entry["description"] = row.get("description", "")
         _set_or_drop(entry, "completion_signals", [c for c in row.get("completion_signals") or [] if c.strip()])
+        _set_or_drop(entry, "requires", row.get("requires") or None)
         acts.append(entry)
     target["acts"] = acts
 

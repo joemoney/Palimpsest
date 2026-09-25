@@ -341,16 +341,16 @@ your story:
 Optionally, add a `README.md` next to the template. After every save, the
 board rewrites its `## Synopsis` section from `meta.synopsis`.
 
-> **The opening narration and character creation are edited in Raw JSON.** The
-> title, synopsis, genre, tone, setting, rules, locations and factions all have
-> editors on the board (the **World** tab, Step 4), so the starter file only
-> needs enough to load. Change `plot.opening_scene` and `character_creation`
-> through **Raw JSON** (Step 16) or in the file itself.
+> **Everything in the template can be edited on the board.** The title,
+> synopsis, setting, rules, locations and factions are in the **World** tab
+> (Step 4). Narration, the protagonist, character creation, the opening, pacing
+> and every mechanic's settings are in the **Forms** tab (Step 16). So the
+> starter file only needs enough to load.
 
 #### Step 3 - Open the board and find your way around
 Go to `/author` and click your story. The board has four parts:
 
-- **The toolbar** (top): the **Diagram / Matrix / Cast / Fragments / World**
+- **The toolbar** (top): the **Diagram / Matrix / Cast / Fragments / World / Forms**
   views; the *Free canvas* and *Timeline* toggles; the **+ Thread**,
   **+ Ending**, **Sample state**, **Raw JSON**, **Validate** and **Save**
   buttons; and the health badge at far right.
@@ -649,7 +649,30 @@ play would do. Nothing is saved.
 A good check for each ending that can be lost: set up the state that should
 rule it out, and confirm its *Viable while* no longer holds.
 
-#### Step 16 - Validate and save
+#### Step 16 - Fill in everything else in the Forms tab
+The **Forms** tab covers every part of the template that has no dedicated
+editor: narration, the protagonist, character creation, the opening narration
+and scene, pacing, and the settings of every mechanic (stats, relationships,
+inventory, thread progress, the pacing loop, progression, gates, the tracked
+entity). Pick a section on the left.
+
+- **The forms are built from the template schema itself**, so they offer
+  exactly the fields the story format allows. Each field's help text comes
+  from the schema.
+- **A section the story doesn't author** says so, with an **+ Add** button.
+  An absent section means that feature doesn't exist in the story. Nothing
+  about it is prompted or tracked.
+- **Author notes** (keys starting with `_`, such as `_authored`) are shown
+  as editable notes. They're never read by the engine.
+- **Edit as JSON** switches a section to its raw JSON.
+- **Fields other tabs own are left out** so each field has one editor: stat
+  tiers are on the tier ladder, and the opening location is in the World tab.
+
+Only the sections you change are written on Save. A thread's priority, span,
+completion threshold and "ties to the main plot" are in its own panel on the
+Diagram tab, and an act's **Requires** condition is in the act's panel.
+
+#### Step 17 - Validate and save
 - **The health badge** (top right) counts open issues and reads
   **Story holds** when there are none. Click an issue to jump to the box,
   link or character it's about. *Fix* marks an error and *Check* marks a
@@ -661,10 +684,9 @@ rule it out, and confirm its *Viable while* no longer holds.
   so you can save half-finished work and come back to it. It bumps the
   story's `story_version` and refreshes the README synopsis. **A story with
   lint errors is hidden from players** until they're fixed.
-- **Raw JSON** is the escape hatch. It opens the whole template as text, for
-  anything the board can't edit yet (the opening narration, character
-  creation, stat costs, and so on). **Validate & save** there runs the same lint and refuses
-  to save if there are errors.
+- **Raw JSON** opens the whole template as text, for when you'd rather edit
+  it all at once. **Validate & save** there runs the same lint and refuses to
+  save if there are errors.
 
 Nothing about a story's structure is locked in. Reopen the board at any time
 and keep going. If the story authors something the engine doesn't support

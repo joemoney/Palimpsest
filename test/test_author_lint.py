@@ -308,6 +308,16 @@ assert not author_lint.stat_tier_issues({"protagonist": {"stats": {"grit": 1}}, 
 assert not author_lint.stat_tier_issues({"meta": {}})
 print("OK: L06 warns on a tierless axis or a ladder above its floor; L07 errors on disorder and duplicates")
 
+# --- L01 hints for the storyboard's vocabulary ---------------------------------------------------
+hinted = copy.deepcopy(_base)
+hinted.setdefault("mechanics", {})["endings"] = {"engine": "ending_funnel", "entries": [
+    {"id": "e1", "kind": "destination", "name": "A", "waypoints": []},
+    {"id": "e2", "kind": "failure", "catch_all": True, "name": "B"}]}
+msgs = [i["message"] for i in author_lint.schema_errors(hinted)]
+assert any("kind" in m and 'is kind "terminal"' in m for m in msgs), msgs
+assert any("catch_all" in m and "no viable_while is the catch-all" in m for m in msgs), msgs
+print("OK: L01 names the fix for kind \"failure\" and a catch_all key")
+
 # --- has_errors -------------------------------------------------------------------------------
 assert author_lint.has_errors([{"severity": "error"}])
 assert not author_lint.has_errors([{"severity": "warning"}])

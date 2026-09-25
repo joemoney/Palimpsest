@@ -662,9 +662,15 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "kind": { "enum": ["destination", "terminal"] },
+        "kind": {
+          "description": "destination: an ending the story is steered toward (the storyboard's Destination ending). terminal: an ending reached through stats at any time, never steered toward (the storyboard's Failure ending). A catch-all is not a kind: it is a destination with no viable_while (the storyboard's Catch-all checkbox).",
+          "enum": ["destination", "terminal"]
+        },
         "name": { "type": "string" },
-        "viable_while": { "$ref": "#/$defs/condition" },
+        "viable_while": {
+          "$comment": "The ending stays possible only while this holds; the moment it goes false the ending is pruned for good. Leave it off to make this destination the catch-all (at least one is required).",
+          "$ref": "#/$defs/condition"
+        },
         "ready_when": { "$ref": "#/$defs/condition" },
         "waypoints": { "type": "array", "items": { "$ref": "#/$defs/waypoint" } },
         "hint": { "type": "string" },

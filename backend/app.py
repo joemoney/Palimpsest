@@ -821,8 +821,11 @@ def author_board(story_slug):
     # </ escaped so no authored field (an NPC hook, a waypoint plant...) can break out of the
     # <script type="application/json"> tag this is embedded in.
     model_json = json.dumps(model).replace("</", "<\\/")
+    # The Forms tab renders its forms from the template schema itself, so a form can never drift
+    # from what L01 accepts. Same </ escaping as the model.
+    schema_json = json.dumps(author_lint.template_schema()).replace("</", "<\\/")
     return render_template(
-        "author_board.html", story_slug=story_slug, model_json=model_json,
+        "author_board.html", story_slug=story_slug, model_json=model_json, schema_json=schema_json,
         story_title=raw.get("meta", {}).get("title", story_slug),
     )
 

@@ -265,7 +265,25 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .ewp .chip{margin-left:auto}
 .ecard.term{border-top-color:var(--terminal)}
 .lanelegend{margin:18px 0 0;font-size:12px;color:var(--muted)}
-#castView,#fragView,#worldView{display:none;overflow:auto;min-height:0;background:var(--ground)}
+/* ---- forms tab ---- */
+.formsWrap{display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;padding:16px;align-items:start}
+.fnav{display:grid;gap:4px;position:sticky;top:0}
+.fnavb{display:grid;text-align:left;gap:1px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink);padding:6px 10px;cursor:pointer;font:inherit;height:auto}
+.fnavb small{font:500 10.5px var(--mono);color:var(--muted)}
+.fnavb.sel{box-shadow:0 0 0 2px var(--focus)}
+.fmain{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px 18px;display:grid;gap:10px;min-width:0}
+.fbody{display:grid;gap:10px}
+.ffield{display:grid;gap:4px}
+.fhead{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.fhead label{font:600 12px var(--body);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.fnest{display:grid;gap:10px;border-left:2px solid var(--line);padding-left:12px}
+.flist{display:grid;gap:8px}
+.fcard{border:1px solid var(--line);border-radius:7px;padding:8px 10px;background:var(--raised);display:grid;gap:8px}
+.fcardh{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.fcardh b{font:600 13.5px var(--display)}
+.fjson{font-family:var(--mono);font-size:12px}
+.fkv{display:grid;grid-template-columns:minmax(0,1fr) 120px auto;gap:6px;align-items:center}
+#castView,#fragView,#worldView,#formsView{display:none;overflow:auto;min-height:0;background:var(--ground)}
 .wsec{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px 14px;display:grid;gap:8px}
 .wsec h3{font:600 15px/1.2 var(--display);margin:0}
 .wsec textarea{width:100%}
@@ -388,6 +406,7 @@ main.app{max-width:none}
         <button class="tab" id="tabCast" type="button" role="tab" aria-selected="false">Cast</button>
         <button class="tab" id="tabFrags" type="button" role="tab" aria-selected="false">Fragments</button>
         <button class="tab" id="tabWorld" type="button" role="tab" aria-selected="false">World</button>
+        <button class="tab" id="tabForms" type="button" role="tab" aria-selected="false">Forms</button>
       </div>
       <span class="sep" aria-hidden="true"></span>
       <label class="toggle" title="The original drag-and-pan canvas. Lanes is the default view."><input type="checkbox" id="tCanvas"> Free canvas</label>
@@ -451,12 +470,14 @@ main.app{max-width:none}
     <div id="castView" aria-label="Authored cast"></div>
     <div id="fragView" aria-label="Memory fragments"></div>
     <div id="worldView" aria-label="World building"></div>
+    <div id="formsView" aria-label="Template sections"></div>
     <aside class="inspector" id="inspector" aria-live="polite"></aside>
   </div>
   <div id="matrixView" aria-label="Thread by waypoint matrix"></div>
 </div>
 
 <script type="application/json" id="board-data">{{ model_json|safe }}</script>
+<script type="application/json" id="schema-data">{{ schema_json|safe }}</script>
 
 <script>
 (function(){
@@ -662,7 +683,7 @@ function issues(){
 
 /* ---------- render ---------- */
 // The canvas measures nodes as it draws, so it only renders while visible; setView redraws it on return.
-function render(){if(viewMode==='diagram'){renderCanvas();renderTimeline();renderStatBar()}renderInspector();renderHealth();if(viewMode==='matrix')renderMatrix();if(viewMode==='cast')renderCast();if(viewMode==='frags')renderFrags();if(viewMode==='world')renderWorld()}
+function render(){if(viewMode==='diagram'){renderCanvas();renderTimeline();renderStatBar()}renderInspector();renderHealth();if(viewMode==='matrix')renderMatrix();if(viewMode==='cast')renderCast();if(viewMode==='frags')renderFrags();if(viewMode==='world')renderWorld();if(viewMode==='forms')renderForms()}
 function renderHealth(){
   const n=issues().length,b=$('#healthBtn');
   b.textContent=n?`${n} issue${n>1?'s':''}`:'Story holds';
@@ -1111,6 +1132,7 @@ function renderInspector(){
   if(n.kind==='subplot'){
     insp.appendChild(field('Role',selectInput(n.role,[['spine','Spine: carries waypoints'],['personal','Personal: a relationship arc'],['texture','Texture: episodic, generated']],v=>n.role=v)));
     insp.appendChild(el('p','note',ROLE_NOTE[n.role]));
+    renderThreadDetails(n);
     renderActivationField(n);
     renderCarriesField(n);
 
@@ -2119,7 +2141,9 @@ function renderMainThreadInspector(){
   insp.appendChild(eyebrow('Main thread · plot.main_thread'));
   const h2=el('h2',null,MT.title||'Untitled main thread');insp.appendChild(h2);
   insp.appendChild(field('Title',textInput(MT.title,v=>{MT.title=v;h2.textContent=v||'Untitled main thread'}),VIS.every));
+  const pn=area(MT.plot_notes,v=>{MT.plot_notes=v});
   const d=area(MT.description,v=>{MT.description=v});insp.appendChild(field('Description',d,VIS.every,el('div','fieldnote','The story’s through-line: what the whole playthrough is about. Every generated act works toward it.')));
+  insp.appendChild(field('Plot notes',pn,null,el('div','fieldnote','Guidance on how the main plot may evolve, e.g. that acts are generated one at a time.')));
   const m=el('input');m.type='number';m.min='1';m.value=MT.max_acts??'';m.placeholder='e.g. 6';
   m.addEventListener('input',()=>{const v=m.value.trim();MT.max_acts=v===''?null:Number(v);save();renderLanes()});
   insp.appendChild(field('Max acts',m,['notbuilt','not built'],el('div','fieldnote','CR-05: once this many acts exist, no new act is generated and play continues in the last one until an ending commits. The engine doesn’t enforce it yet.')));
@@ -2132,6 +2156,9 @@ function renderActInspector(){
   insp.appendChild(field('Title',textInput(a.title,v=>{a.title=v;h2.textContent=v||'Untitled act'}),['narrator','narrator · while current']));
   const d=area(a.description,v=>{a.description=v});insp.appendChild(field('Description',d,['narrator','narrator · while current'],el('div','fieldnote','What happens in this act. Sent as CURRENT ACT while it runs.')));
   const box=el('div');box.appendChild(listEditor(a.completion_signals,'e.g. the player has been warned away from the lighthouse at least once',()=>{save()}));
+  insp.appendChild(el('h4',null,'Requires'));
+  insp.appendChild(el('p','note','A condition that must hold before this act can advance (a floor, not a trigger). Use something that stays true once reached - a flag or a revealed fragment - since an act can\u2019t un-advance.'));
+  insp.appendChild(jsonConditionField(a.requires,v=>{a.requires=v===undefined?null:v;save()}));
   insp.appendChild(field('Completion signals',box,['stored','act judge'],el('div','fieldnote','What the act-advancement judge looks for to decide this act has resolved. Never sent to the narrator.')));
   const r=el('div','row');r.style.marginTop='14px';
   const mv=dlt=>{const j=i+dlt;if(j<0||j>=MT.acts.length)return;MT.acts.splice(i,1);MT.acts.splice(j,0,a);sel.idx=j;save();render()};
@@ -2152,15 +2179,204 @@ function setDiagramMode(m){
   if(viewMode==='diagram'){canvas.style.display=m==='canvas'?'':'none';$('#lanesView').style.display=m==='lanes'?'grid':'none'}
   render();if(m==='canvas')requestAnimationFrame(fit);
 }
+/* ---------- Forms tab (Authoring_Tool_Spec.md §5) ----------
+   Every template section with no dedicated editor elsewhere (author_model.FORM_SECTIONS), each
+   rendered from the template's own JSON Schema - so a form can never offer a field L01 rejects,
+   or miss one it accepts. model.forms is {path: subtree or null}; the server writes a section
+   back whole when it changed and leaves it untouched otherwise. Parts another tab owns are
+   hidden here (FORM_OWNED) so there is one editor per field. */
+const SCHEMA=JSON.parse(document.getElementById('schema-data').textContent);
+model.forms=model.forms||{};
+let formSel=null,formRaw={};
+const FORM_OWNED={
+  'mechanics.stats':[['axes.*.tiers','Tiers are edited on the Diagram tab: click an axis in the stats bar to open its tier ladder.']],
+  'plot.initial_scene':[['location','The opening location is picked in the World tab, under Locations.']],
+};
+function schemaAt(path){
+  let n={properties:SCHEMA.properties};
+  for(const part of path.split('.')){n=resolveSchema(n);n=n&&n.properties&&n.properties[part];if(!n)return null}
+  return n;
+}
+function resolveSchema(n){let guard=0;while(n&&n.$ref&&guard++<20){n=SCHEMA.$defs[n.$ref.split('/').pop()]}return n}
+function isConditionSchema(n){return !!(n&&n.$ref&&n.$ref.endsWith('/condition'))}
+function prettyKey(k){k=String(k).replace(/^_+/,'').replace(/_/g,' ');return k.charAt(0).toUpperCase()+k.slice(1)}
+function schemaNote(n){const t=(n&&(n.description||n.$comment))||'';return t.length>260?t.slice(0,257)+'…':t}
+function ownedNote(section,rel){for(const [pat,note] of FORM_OWNED[section]||[]){const re=new RegExp('^'+pat.split('.').map(p=>p==='*'?'[^.]+':p.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('\\.')+'$');if(re.test(rel))return note}return null}
+// A fresh value for a schema: an object gets its const (engine) and required keys; everything
+// else is empty. Never invents creative content.
+function defaultFor(n){
+  n=resolveSchema(n)||{};
+  if(n.const!==undefined)return n.const;
+  if(n.oneOf)return defaultFor(n.oneOf[0]);
+  const t=n.type;
+  if(t==='array')return [];
+  if(t==='object'||n.properties||n.additionalProperties){const o={};
+    for(const [k,p] of Object.entries(n.properties||{})){const r=resolveSchema(p)||{};if(r.const!==undefined)o[k]=r.const;else if((n.required||[]).includes(k))o[k]=defaultFor(p)}return o}
+  if(t==='number'||t==='integer')return 0;
+  if(t==='boolean')return false;
+  return '';
+}
+function formsChanged(){save();renderHealth()}
+function renderFormField(holder,key,sch,ctx){
+  // holder[key] is the value; ctx = {section, rel, label, required, onStructure}
+  const raw=sch;sch=resolveSchema(sch)||{};
+  const label=ctx.label||prettyKey(key),rel=ctx.rel;
+  const owned=ownedNote(ctx.section,rel);
+  if(owned)return el('div','fieldnote',`${label}: ${owned}`);
+  const wrap=el('div','ffield');
+  const head=el('div','fhead');head.appendChild(el('label',null,label));
+  const note=schemaNote(raw.$comment?raw:sch);
+  const val=holder[key];
+  const setV=v=>{if(v===undefined)delete holder[key];else holder[key]=v;formsChanged()};
+  const removable=!ctx.required&&val!==undefined&&!ctx.inList&&sch.const===undefined;
+  if(removable){const rm=el('button','btn small','Remove');rm.type='button';rm.title='Remove this field from the template';rm.onclick=()=>{delete holder[key];formsChanged();ctx.onStructure()};head.appendChild(rm)}
+  wrap.appendChild(head);
+  if(note)wrap.appendChild(el('div','fieldnote',note));
+  // conditions: the board's condition builder
+  if(isConditionSchema(raw)){wrap.appendChild(jsonConditionField(val,v=>{setV(v)}));return wrap}
+  // absent optional composite: offer to add it
+  const composite=sch.type==='object'||sch.properties||sch.additionalProperties||sch.type==='array'||sch.oneOf;
+  if(val===undefined&&composite){const add=el('button','btn small','+ Add '+label.toLowerCase());add.type='button';add.onclick=()=>{holder[key]=defaultFor(sch);formsChanged();ctx.onStructure()};wrap.appendChild(add);return wrap}
+  if(sch.const!==undefined){const c=el('span','chip',String(sch.const));c.style.justifySelf='start';c.title='Fixed by the schema: this names the engine that runs the section.';wrap.appendChild(c);if(val===undefined){holder[key]=sch.const}return wrap}
+  if(sch.oneOf){
+    const variants=sch.oneOf.map(v=>resolveSchema(v));
+    const cur=Math.max(0,variants.findIndex(v=>(v.required||[]).every(r=>val&&r in val)));
+    const pick=cbSelect(variants.map((v,i)=>[String(i),(v.required||Object.keys(v.properties||{})).map(prettyKey).join(' + ')||('Form '+(i+1))]),String(cur),v=>{holder[key]=defaultFor(variants[Number(v)]);formsChanged();ctx.onStructure()});
+    wrap.appendChild(pick);
+    const inner=el('div','fnest');renderObjectBody(holder[key],variants[cur],inner,ctx);wrap.appendChild(inner);return wrap;
+  }
+  if(sch.enum){
+    const opts=(ctx.required?[]:[['','(not set)']]).concat(sch.enum.map(e=>[String(e),String(e)]));
+    wrap.appendChild(cbSelect(opts,val===undefined?'':String(val),v=>{setV(v===''?undefined:(typeof sch.enum[0]==='number'?Number(v):v))}));return wrap}
+  const t=Array.isArray(sch.type)?sch.type[0]:sch.type;
+  if(t==='string'){
+    const long=/description|summary|narration|content|prompt|style|note|goals|rule|text|background|hint|criteria|directive/i.test(key)||(typeof val==='string'&&val.length>70);
+    const i=el(long?'textarea':'input');if(!long)i.type='text';i.value=val??'';if(long)i.rows=Math.min(8,Math.max(2,Math.ceil((val||'').length/90)));
+    i.addEventListener('input',()=>{setV(i.value===''&&!ctx.required?undefined:i.value)});wrap.appendChild(i);return wrap}
+  if(t==='number'||t==='integer'){
+    const i=el('input');i.type='number';if(t==='integer')i.step='1';i.value=val??'';
+    i.addEventListener('input',()=>{const v=i.value.trim();setV(v===''?undefined:Number(v))});wrap.appendChild(i);return wrap}
+  if(t==='boolean'){
+    wrap.appendChild(cbSelect([['','(default)'],['true','yes'],['false','no']],val===undefined?'':String(val),v=>{setV(v===''?undefined:v==='true')}));return wrap}
+  if(t==='array'){
+    const items=resolveSchema(sch.items)||{};const arr=val;
+    if(items.type==='string'&&!items.enum){wrap.appendChild(listEditor(arr,'',()=>formsChanged()));return wrap}
+    if(items.type==='number'||items.type==='integer'){const i=el('input');i.type='text';i.value=arr.join(', ');i.placeholder='comma-separated numbers';
+      i.addEventListener('input',()=>{holder[key]=i.value.split(',').map(x=>x.trim()).filter(Boolean).map(Number).filter(x=>!Number.isNaN(x));formsChanged()});wrap.appendChild(i);return wrap}
+    const list=el('div','flist');
+    arr.forEach((item,idx)=>{const card=el('div','fcard');const ch=el('div','fcardh');
+      const nm=item&&typeof item==='object'?(item.name||item.label||item.title||item.id||item.key||''):String(item);
+      ch.appendChild(el('b',null,`${idx+1}. ${nm}`));
+      const up=el('button','btn small','↑');up.type='button';up.disabled=idx===0;up.onclick=()=>{arr.splice(idx-1,0,arr.splice(idx,1)[0]);formsChanged();ctx.onStructure()};
+      const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{arr.splice(idx,1);formsChanged();ctx.onStructure()};ch.appendChild(up);ch.appendChild(rm);card.appendChild(ch);
+      card.appendChild(renderFormField(arr,idx,sch.items,{...ctx,rel:rel+'.*',label:'Item',required:true,inList:true}));list.appendChild(card)});
+    wrap.appendChild(list);
+    const add=el('button','btn small','+ Add item');add.type='button';add.onclick=()=>{arr.push(defaultFor(sch.items));formsChanged();ctx.onStructure()};wrap.appendChild(add);return wrap}
+  if(t==='object'||sch.properties||sch.additionalProperties){const inner=el('div','fnest');renderObjectBody(val,sch,inner,ctx);wrap.appendChild(inner);return wrap}
+  // anything the schema doesn't type: raw JSON
+  wrap.appendChild(rawJsonBox(val,v=>{setV(v)}));return wrap;
+}
+function rawJsonBox(val,on){
+  const t=el('textarea','fjson');t.value=val===undefined?'':JSON.stringify(val,null,2);t.rows=Math.min(18,Math.max(3,t.value.split('\n').length));
+  const err=el('div','fieldnote err');err.style.display='none';
+  t.addEventListener('input',()=>{const s=t.value.trim();if(!s){on(undefined);err.style.display='none';return}
+    try{on(JSON.parse(s));err.style.display='none'}catch(e){err.textContent='Not valid JSON - keeping the last valid value.';err.style.display='block'}});
+  const w=el('div');w.appendChild(t);w.appendChild(err);return w;
+}
+function renderObjectBody(obj,sch,into,ctx){
+  sch=resolveSchema(sch)||{};
+  const props=sch.properties||{};
+  for(const [k,p] of Object.entries(props))into.appendChild(renderFormField(obj,k,p,{...ctx,rel:(ctx.rel?ctx.rel+'.':'')+k,label:null,required:(sch.required||[]).includes(k),inList:false}));
+  // author notes: `_`-prefixed strings (e.g. _authored) are the author's own record of intent
+  for(const k of Object.keys(obj).filter(k=>k.startsWith('_')&&typeof obj[k]==='string')){
+    const f=el('div','ffield');const h=el('div','fhead');h.appendChild(el('label',null,'Author note ('+k+')'));h.appendChild(el('span','vis author','author only'));f.appendChild(h);
+    const t=el('textarea');t.value=obj[k];t.rows=Math.min(6,Math.max(2,Math.ceil(obj[k].length/90)));t.addEventListener('input',()=>{obj[k]=t.value;formsChanged()});f.appendChild(t);into.appendChild(f)}
+  const addl=sch.additionalProperties;
+  const extra=Object.keys(obj).filter(k=>!(k in props)&&!k.startsWith('_'));
+  if(addl&&typeof addl==='object'){
+    const ar=resolveSchema(addl)||{};const scalar=['number','integer','string','boolean'].includes(Array.isArray(ar.type)?ar.type[0]:ar.type)&&!ar.enum;
+    for(const k of extra){
+      if(scalar){const row=el('div','fkv');const ki=el('input');ki.type='text';ki.value=k;ki.setAttribute('aria-label','Key');
+        ki.addEventListener('change',()=>{const v=ki.value.trim();if(!v||v===k||v in obj){ki.value=k;return}const o={};for(const [kk,vv] of Object.entries(obj))o[kk===k?v:kk]=vv;for(const kk of Object.keys(obj))delete obj[kk];Object.assign(obj,o);formsChanged();ctx.onStructure()});
+        const num=ar.type==='number'||ar.type==='integer';const vi=el('input');vi.type=num?'number':'text';vi.value=obj[k]??'';vi.setAttribute('aria-label',k+' value');
+        vi.addEventListener('input',()=>{obj[k]=num?(vi.value.trim()===''?0:Number(vi.value)):vi.value;formsChanged()});
+        const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{delete obj[k];formsChanged();ctx.onStructure()};
+        row.appendChild(ki);row.appendChild(vi);row.appendChild(rm);into.appendChild(row);continue}
+      const card=el('div','fcard');const ch=el('div','fcardh');
+      const ki=el('input');ki.type='text';ki.value=k;ki.setAttribute('aria-label','Key');
+      ki.addEventListener('change',()=>{const v=ki.value.trim();if(!v||v===k||v in obj){ki.value=k;return}const o={};for(const [kk,vv] of Object.entries(obj))o[kk===k?v:kk]=vv;for(const kk of Object.keys(obj))delete obj[kk];Object.assign(obj,o);formsChanged();ctx.onStructure()});
+      const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{delete obj[k];formsChanged();ctx.onStructure()};
+      ch.appendChild(ki);ch.appendChild(rm);card.appendChild(ch);
+      const inner=el('div','fbody');const ro=resolveSchema(addl)||{};
+      if(ro.properties||ro.type==='object'){if(obj[k]==null||typeof obj[k]!=='object')obj[k]={};renderObjectBody(obj[k],addl,inner,{...ctx,rel:(ctx.rel?ctx.rel+'.':'')+'*'})}
+      else inner.appendChild(renderFormField(obj,k,addl,{...ctx,rel:(ctx.rel?ctx.rel+'.':'')+'*',label:'Value',required:true,inList:true}));
+      card.appendChild(inner);into.appendChild(card)}
+    const row=el('div','row');const ni=el('input');ni.type='text';ni.placeholder='new key';ni.setAttribute('aria-label','New key');
+    const ab=el('button','btn small','+ Add entry');ab.type='button';ab.onclick=()=>{const v=ni.value.trim();if(!v||v in obj){say(v?`${v} already exists.`:'Type a key first.');return}obj[v]=defaultFor(addl);formsChanged();ctx.onStructure()};
+    row.appendChild(ni);row.appendChild(ab);into.appendChild(row);
+  }else if(extra.length){
+    for(const k of extra){const f=el('div','ffield');f.appendChild(el('div','fieldnote err',`${k}: not in the schema, so Validate reports it (L01). Edit or remove it as JSON:`));
+      f.appendChild(rawJsonBox(obj[k],v=>{if(v===undefined)delete obj[k];else obj[k]=v;formsChanged()}));into.appendChild(f)}
+  }
+}
+function renderForms(){
+  const fv=$('#formsView');const top=fv.scrollTop;fv.innerHTML='';
+  const sections=model.form_sections||[];
+  if(!formSel&&sections.length)formSel=sections[0][0];
+  const wrap=el('div','formsWrap');
+  const nav=el('nav','fnav');
+  for(const [path,label] of sections){const b=el('button','fnavb'+(formSel===path?' sel':''));b.type='button';
+    b.appendChild(el('span',null,label));b.appendChild(el('small',null,model.forms[path]==null?'not authored':path));b.onclick=()=>{formSel=path;renderForms()};nav.appendChild(b)}
+  wrap.appendChild(nav);
+  const main=el('section','fmain');
+  const entry=sections.find(s=>s[0]===formSel);
+  if(entry){const [path,label]=entry;const sch=schemaAt(path);
+    const h=el('div','castHead');const t=el('div');t.appendChild(eyebrow(path));t.appendChild(el('h2',null,label));h.appendChild(t);
+    const tog=el('button','btn small',formRaw[path]?'Use form':'Edit as JSON');tog.type='button';tog.onclick=()=>{formRaw[path]=!formRaw[path];renderForms()};h.appendChild(tog);main.appendChild(h);
+    const sn=schemaNote(resolveSchema(sch));if(sn)main.appendChild(el('p','note',sn));
+    const holder={v:model.forms[path]==null?undefined:model.forms[path]};
+    const sync=()=>{model.forms[path]=holder.v===undefined?null:holder.v};
+    const structure=()=>{sync();renderForms()};
+    if(formRaw[path]){main.appendChild(rawJsonBox(holder.v,v=>{holder.v=v;sync();formsChanged()}))}
+    else if(holder.v===undefined){main.appendChild(el('p','note','This story doesn’t author this section, so the feature doesn’t exist in it (nothing is prompted or tracked).'));
+      const add=el('button','btn','+ Add '+label.toLowerCase());add.type='button';add.onclick=()=>{holder.v=defaultFor(sch);sync();formsChanged();renderForms()};main.appendChild(add)}
+    else{
+      const body=el('div','fbody');
+      const ctx={section:path,rel:'',onStructure:structure};
+      const rs=resolveSchema(sch)||{};
+      if(rs.type==='array'||rs.oneOf||!(rs.properties||rs.additionalProperties))body.appendChild(renderFormField(holder,'v',sch,{...ctx,label,required:true}));
+      else renderObjectBody(holder.v,sch,body,ctx);
+      main.appendChild(body);
+      const rm=el('button','btn danger','Remove this section');rm.type='button';rm.style.marginTop='18px';
+      rm.onclick=()=>{if(!confirm(`Remove ${label} from the template? The feature then doesn’t exist in this story.`))return;holder.v=undefined;sync();formsChanged();renderForms()};main.appendChild(rm);
+      sync();
+    }
+  }
+  wrap.appendChild(main);fv.appendChild(wrap);fv.scrollTop=top;
+}
+function renderThreadDetails(n){
+  // Plain subplot fields with no canvas meaning. They are node pass-through fields, written back
+  // as they are; a blank removes the key.
+  const setOrDrop=(k,v)=>{if(v===''||v==null||Number.isNaN(v))delete n[k];else n[k]=v;save();renderCanvas()};
+  const pr=cbSelect([['','(default: medium)'],['high','high'],['medium','medium'],['low','low']],n.priority||'',v=>setOrDrop('priority',v));
+  insp.appendChild(field('Priority',pr,['stored','pacing nudge'],el('div','fieldnote','Which active thread the pacing nudge puts first.')));
+  const sp=cbSelect([['','(default: single act)'],['single_act','single act'],['multi_act','multi-act']],n.span||'',v=>setOrDrop('span',v));
+  insp.appendChild(field('Span',sp,null,el('div','fieldnote','A multi-act thread develops over several acts.')));
+  const ct=el('input');ct.type='number';ct.value=n.completion_threshold??'';ct.placeholder='default 100';ct.addEventListener('input',()=>setOrDrop('completion_threshold',ct.value.trim()===''?undefined:Number(ct.value)));
+  insp.appendChild(field('Completion threshold',ct,null,el('div','fieldnote','Progress needed to complete. Beats are priced absolutely (a decisive beat is worth the same everywhere), so a higher threshold takes more beats.')));
+  const tm=area(n.ties_to_main_plot,v=>{if(v.trim())n.ties_to_main_plot=v;else delete n.ties_to_main_plot});
+  insp.appendChild(field('Ties to the main plot',tm,null,el('div','fieldnote','How this thread connects to the main thread.')));
+}
 function setView(v){
   viewMode=v;
-  for(const [id,name] of [['#tabDiagram','diagram'],['#tabMatrix','matrix'],['#tabCast','cast'],['#tabFrags','frags'],['#tabWorld','world']]){$(id).classList.toggle('active',v===name);$(id).setAttribute('aria-selected',v===name)}
+  for(const [id,name] of [['#tabDiagram','diagram'],['#tabMatrix','matrix'],['#tabCast','cast'],['#tabFrags','frags'],['#tabWorld','world'],['#tabForms','forms']]){$(id).classList.toggle('active',v===name);$(id).setAttribute('aria-selected',v===name)}
   document.querySelector('.main').style.display=v==='matrix'?'none':'grid';
   canvas.style.display=v==='diagram'&&diagramMode==='canvas'?'':'none';
   $('#lanesView').style.display=v==='diagram'&&diagramMode==='lanes'?'grid':'none';
   $('#castView').style.display=v==='cast'?'block':'none';
   $('#fragView').style.display=v==='frags'?'block':'none';
   $('#worldView').style.display=v==='world'?'block':'none';
+  $('#formsView').style.display=v==='forms'?'block':'none';
   $('#matrixView').style.display=v==='matrix'?'block':'none';
   // Leaving the cast drops a character selection; entering it drops a node or edge one.
   if(sel&&(sel.type==='char')!==(v==='cast')){sel=null;renderInspector()}
@@ -2171,12 +2387,14 @@ function setView(v){
   if(v==='cast')renderCast();
   if(v==='frags')renderFrags();
   if(v==='world')renderWorld();
+  if(v==='forms')renderForms();
 }
 $('#tabDiagram').onclick=()=>setView('diagram');
 $('#tabMatrix').onclick=()=>setView('matrix');
 $('#tabCast').onclick=()=>setView('cast');
 $('#tabFrags').onclick=()=>setView('frags');
 $('#tabWorld').onclick=()=>setView('world');
+$('#tabForms').onclick=()=>setView('forms');
 $('#healthBtn').onclick=()=>{sel=null;render();insp.scrollTop=0;if(window.matchMedia('(max-width:900px)').matches)insp.scrollIntoView({behavior:'smooth'})};
 function spot(){const r=canvas.getBoundingClientRect();const p=toWorld(r.left+r.width/2,r.top+r.height/2);return {x:Math.round(p.x-118),y:Math.round(p.y-70)}}
 $('#addThread').onclick=()=>{if(diagramMode==='lanes'&&viewMode==='diagram')return newThread('spine');let i=1;while(node('subplot_'+String(i).padStart(3,'0')))i++;const id='subplot_'+String(i).padStart(3,'0');const p=spot();
