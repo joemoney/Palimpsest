@@ -1,9 +1,8 @@
 """S1's server-side lint subset (AUTHORING_TOOL_PHASES.md decision D3): L01/L08/L09/L16, the
 board's structural-flow checks (Authoring_Tool_Spec.md §4.6), and the Cast checks carried over
 from the reference prototype (`docs/Missing_Core_Storyboard_Reference_Design.html`,
-`issues()`/`canonLeaks()`). Pure and offline-testable - no Flask, no engine imports. None of
-this subset needs condition truth (that's L10, deferred to S2's `backend/conditions.py`), so it
-runs entirely against `author_model.to_board_model`'s `{story, nodes, edges, characters}`
+`issues()`/`canonLeaks()`). Pure and offline-testable - no Flask, no engine imports. L10 (S2) is the one check that
+reads a condition: it walks `conditions.iter_conditions`. Everything else runs entirely against `author_model.to_board_model`'s `{story, nodes, edges, characters}`
 projection plus the raw template dict (for L01).
 
 Every issue is `{id, severity, message, node_id?, char?}`. `severity` is `"error"` (blocks a
@@ -13,6 +12,8 @@ import json
 import os
 
 import jsonschema
+
+import conditions
 
 _SCHEMA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                              "schema", "template.v3.schema.json")
@@ -204,10 +205,25 @@ def cast_issues(model: dict) -> list:
     return out
 
 
+def condition_issues(raw: dict) -> list:
+    """L10. Every condition field in the template, checked by `conditions.check` - the same
+    static half of the evaluator's unknown-referent rule, so lint and the engine cannot disagree
+    about what is unknown. Save-blocking for every field, not just the fail-closed ones: a typo
+    in `ready_when` would silently never fire, and one in a gate silently opens it."""
+    out = []
+    for path, cond, _polarity, _ending in conditions.iter_conditions(raw):
+        for problem in conditions.check(cond, raw):
+            out.append({"id": "L10", "severity": "error", "message": f"{path}: {problem}"})
+    return out
+
+
 def lint(raw: dict, model: dict) -> list:
-    """The full S1 subset: L01 against `raw`, everything else against `model`
-    (`author_model.to_board_model(raw)`)."""
-    return schema_errors(raw) + structural_issues(model) + cast_issues(model)
+    """L01 and L10 against `raw`, everything else against `model`
+    (`author_model.to_board_model(raw)`). L10 is skipped when the schema already rejected the
+    template: a condition that isn't an object at all is L01's finding, and reporting it twice
+    in two vocabularies is noise."""
+    schema = schema_errors(raw)
+    return schema + ([] if schema else condition_issues(raw)) + structural_issues(model) + cast_issues(model)
 
 
 def has_errors(issues: list) -> bool:

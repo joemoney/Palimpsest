@@ -46,6 +46,8 @@ AUTHORING_TOOL_PHASES.md: stat tiers (S3's tier ladder) and `plot.main_thread`/l
 """
 import copy
 
+import conditions
+
 TEMPLATE_SCHEMA_VERSION = 3
 
 # Node/edge keys that are board bookkeeping, never a template field - stripped before any
@@ -206,40 +208,15 @@ def _thread_edges(sid: str, sp: dict) -> list:
 
 
 def _condition_label(cond) -> str:
-    """A rough, lossy rendering for the edge label only - never round-tripped from. The
-    board's own client-side labeller (`condLabel` in author_board.html) does the same for
-    edits made in the browser; this covers conditions loaded from disk."""
+    """Edge label for a condition loaded from disk: `conditions.describe`, shortened to fit on
+    a canvas edge, never round-tripped from. The board's client-side labeller (`condLabel` in
+    author_board.html) covers an edit the server hasn't seen yet."""
     if not isinstance(cond, dict) or not cond:
         return "condition"
     if len(cond) == 1 and "condition" in cond:  # legacy free-text shape, not CR-02 grammar
         return str(cond["condition"])
-    if isinstance(cond.get("stat"), str):  # CR-02 canonical: {"stat": "reach", "gte": 50}
-        axis = cond["stat"].upper()
-        for key, op in (("gte", ">="), ("lte", "<=")):
-            if key in cond:
-                return f"{axis} {op} {cond[key]}"
-        if "between" in cond:
-            return f"{axis} {cond['between'][0]}-{cond['between'][1]}"
-    if isinstance(cond.get("stat"), dict):  # pre-overhaul gate form, still accepted
-        s = cond["stat"]
-        for key, op in (("at_least", ">="), ("gte", ">="), ("at_most", "<="), ("lte", "<=")):
-            if key in s:
-                return f"{str(s.get('axis', '')).upper()} {op} {s[key]}"
-    if isinstance(cond.get("relationship"), str):
-        for key in ("tier_gte", "tier_lte", "peak_gte"):
-            if key in cond:
-                return f"{cond['relationship']} {key} {cond[key]}"
-    if "subplot_status" in cond and isinstance(cond["subplot_status"], dict):
-        return "thread " + ", ".join(f"{k} {v}" for k, v in cond["subplot_status"].items())
-    for key in ("flag", "revealed", "revelation", "item_tag"):
-        if key in cond:
-            return f"{key}: {cond[key]}"
-    for key in ("turn_gte", "act_gte"):
-        if key in cond:
-            return f"{key.split('_')[0]} >= {cond[key]}"
-    if "all" in cond or "any" in cond or "not" in cond:
-        return next(k for k in ("all", "any", "not") if k in cond) + "(...)"
-    return "condition"
+    text = conditions.describe(cond)
+    return text if len(text) <= 56 else text[:53] + "..."
 
 
 def _terminal_node(cond: dict) -> dict:

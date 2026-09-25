@@ -98,6 +98,18 @@
           "refusal_hint": "The clerk does not refuse you. He simply keeps finding other things to attend to, and the door stays where it is."
         }
       ]
+    },
+    "flags": {
+      "declared": [
+        {
+          "id": "defence_rested",
+          "detect": "The defence formally rests its case"
+        },
+        {
+          "id": "clerk_persuaded",
+          "detect": "The clerk agrees to open the records room"
+        }
+      ]
     }
   },
   "plot": {

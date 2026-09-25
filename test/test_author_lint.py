@@ -223,6 +223,51 @@ for c in BAD:
     assert not _cond.is_valid(c), c
 print("OK: conditions validate as CR-02 canonical grammar; free text and half-built leaves are L01")
 
+# --- L10: every condition field names only what the story defines ------------------------------
+import copy  # noqa: E402
+_base = json.load(open(os.path.join(REPO_ROOT, "stories", "example", "template.json"), encoding="utf-8"))
+_base["schema_version"] = author_model.TEMPLATE_SCHEMA_VERSION
+_sid = next(iter(_base["plot"]["subplots"]))
+
+
+def _l10(mutate):
+    raw = copy.deepcopy(_base)
+    mutate(raw)
+    return by_id(author_lint.lint(raw, author_model.to_board_model(raw)), "L10")
+
+
+assert not _l10(lambda r: None), "the untouched example story has no L10 finding"
+hit = _l10(lambda r: r["plot"]["subplots"][_sid].update(activate_when={"flag": "typo"}))
+assert len(hit) == 1 and "typo" in hit[0]["message"] and hit[0]["severity"] == "error", hit
+assert f"plot.subplots.{_sid}.activate_when" in hit[0]["message"], hit
+print("OK: L10 - an undeclared flag in a condition is a save-blocking error naming the field")
+
+
+def _declare(r):
+    r["mechanics"]["flags"] = {"declared": [{"id": "typo", "detect": "the typo happens"}]}
+    r["plot"]["subplots"][_sid]["activate_when"] = {"flag": "typo"}
+
+
+assert not _l10(_declare), "declaring the flag clears it"
+print("OK: L10 - mechanics.flags.declared makes the flag a legitimate referent")
+
+for field, cond in [("fail_when", {"stat": "no_such_axis", "gte": 1}),
+                    ("activate_when", {"revealed": "no_such_frag"}),
+                    ("fail_when", {"relationship": "No One", "tier_gte": "warm"})]:
+    assert _l10(lambda r, f=field, c=cond: r["plot"]["subplots"][_sid].update({f: c})), (field, cond)
+
+
+def _gate_and_ending(r):
+    r["mechanics"]["endings"] = {"engine": "ending_funnel", "entries": [
+        {"id": "e1", "kind": "destination", "name": "E", "ready_when": {"flag": "nope"},
+         "waypoints": [{"id": "w", "plant": "p", "done_when": {"stat": "ghost", "gte": 1}}]}]}
+
+
+found = _l10(_gate_and_ending)
+assert {("ready_when" in i["message"]) for i in found} == {True, False}, found
+assert any("done_when" in i["message"] for i in found), found
+print("OK: L10 covers gates, activate_when/fail_when, and every ending condition field")
+
 # --- has_errors -------------------------------------------------------------------------------
 assert author_lint.has_errors([{"severity": "error"}])
 assert not author_lint.has_errors([{"severity": "warning"}])

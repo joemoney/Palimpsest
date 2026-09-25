@@ -281,7 +281,30 @@
         "failure_conditions": { "$ref": "#/$defs/engine_failure_conditions" },
         "gate": { "$ref": "#/$defs/engine_gate" },
         "endings": { "$ref": "#/$defs/engine_endings" },
-        "tracked_entity": { "$ref": "#/$defs/tracked_entity" }
+        "tracked_entity": { "$ref": "#/$defs/tracked_entity" },
+        "flags": { "$ref": "#/$defs/flags" }
+      },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "flags": {
+      "$comment": "CR-02: every flag a condition names must be declared here. Not an engine - no `engine` key, nothing to bind; the state-update pass is handed each `detect` so a declared flag can actually be set.",
+      "type": "object",
+      "properties": {
+        "declared": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "detect": { "type": "string" }
+            },
+            "required": ["id"],
+            "patternProperties": { "^_": true },
+            "additionalProperties": false
+          }
+        }
       },
       "patternProperties": { "^_": true },
       "additionalProperties": false
