@@ -268,6 +268,19 @@ assert {("ready_when" in i["message"]) for i in found} == {True, False}, found
 assert any("done_when" in i["message"] for i in found), found
 print("OK: L10 covers gates, activate_when/fail_when, and every ending condition field")
 
+# --- declared-flag hygiene ---------------------------------------------------------------------
+def _flag_issues(declared):
+    raw = copy.deepcopy(_base)
+    raw["mechanics"]["flags"] = {"declared": declared}
+    return by_id(author_lint.lint(raw, author_model.to_board_model(raw)), "flags")
+
+
+assert not _flag_issues([{"id": "a", "detect": "a happens"}])
+assert [i["severity"] for i in _flag_issues([{"id": "a"}])] == ["warning"]
+dup = _flag_issues([{"id": "a", "detect": "x"}, {"id": "a", "detect": "y"}])
+assert [i["severity"] for i in dup] == ["error"], dup
+print("OK: a declared flag with no detect warns; a duplicate id is an error")
+
 # --- has_errors -------------------------------------------------------------------------------
 assert author_lint.has_errors([{"severity": "error"}])
 assert not author_lint.has_errors([{"severity": "warning"}])

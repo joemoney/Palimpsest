@@ -131,6 +131,16 @@ def to_board_model(raw: dict) -> dict:
                          if k in endings_cfg}
     if endings_settings:
         result["endings_settings"] = endings_settings
+    # flags_declared: mechanics.flags.declared, the ids a condition may name (CR-02) and the
+    # `detect` text that will let the state-update pass set each one. Always present (an empty
+    # list when none) so the board has something to add to; from_board_model omits the block
+    # again if it is still empty, so P-2 holds on disk.
+    flags = (raw.get("mechanics", {}) or {}).get("flags")
+    declared = flags.get("declared") if isinstance(flags, dict) else None
+    result["flags_declared"] = [
+        {"id": f.get("id", ""), "detect": f.get("detect", "")}
+        for f in (declared or []) if isinstance(f, dict)
+    ]
     result["refs"] = _condition_refs(raw)
     return result
 
@@ -297,6 +307,7 @@ def from_board_model(raw: dict, model: dict) -> dict:
     _apply_subplots(out, nodes, edges)
     _apply_terminals(out, nodes)
     _apply_endings(out, nodes, model.get("endings_settings"))
+    _apply_flags(out, model.get("flags_declared"))
     _apply_characters(out, model.get("characters"))
     _apply_positions(out, nodes)
 
@@ -392,6 +403,45 @@ def _apply_terminals(out: dict, nodes: list) -> None:
     fc["conditions"] = conditions
     if not conditions and not fc.get("_authored"):
         mechanics.pop("failure_conditions", None)
+
+
+def _apply_flags(out: dict, declared) -> None:
+    """Write the board's declared-flag list to `mechanics.flags.declared`. `None` means the
+    board sent no such key (an older client): leave the template alone. An entry keeps whatever
+    else the template already carried for that id (an author-only `_note`, say) - the board only
+    ever owns `id` and `detect`. A blank id is dropped, and an emptied list removes the block
+    again, so an absent module stays absent (P-2)."""
+    if not isinstance(declared, list):
+        return
+    mechanics = out.get("mechanics")
+    block = mechanics.get("flags") if isinstance(mechanics, dict) else None
+    block = block if isinstance(block, dict) else {}
+    existing = {f.get("id"): f for f in block.get("declared") or [] if isinstance(f, dict)}
+    entries = []
+    for f in declared:
+        fid = (f.get("id") or "").strip() if isinstance(f, dict) else ""
+        if not fid:
+            continue
+        entry = dict(existing.get(fid, {}))
+        entry["id"] = fid
+        detect = (f.get("detect") or "").strip()
+        if detect:
+            entry["detect"] = detect
+        else:
+            entry.pop("detect", None)
+        entries.append(entry)
+    if not entries and not block:
+        return  # nothing declared and nothing to remove: leave `mechanics` exactly as it was
+    mechanics = out.setdefault("mechanics", {})
+    if entries:
+        block["declared"] = entries
+        mechanics["flags"] = block
+    else:
+        block.pop("declared", None)
+        if block:
+            mechanics["flags"] = block
+        else:
+            mechanics.pop("flags", None)
 
 
 def _apply_endings(out: dict, nodes: list, settings: dict = None) -> None:

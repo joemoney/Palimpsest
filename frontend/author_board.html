@@ -680,7 +680,7 @@ function defaultLeaf(kind){
   switch(kind){
     case 'stat':return {stat:(R.stats||[])[0]||'',gte:0};
     case 'relationship':return {relationship:(model.characters[0]||{}).name||'',peak_gte:0};
-    case 'flag':return {flag:''};
+    case 'flag':return {flag:(R.flags||[])[0]||''};
     case 'revealed':return {revealed:(R.revelations||[])[0]||''};
     case 'subplot_status':return {subplot_status:{[thread?thread.id:'']:'progressed'}};
     case 'turn_gte':return {turn_gte:10};
@@ -740,7 +740,9 @@ function cbLeaf(c,kind,set){
       cmp=v;val=cmp==='peak_gte'?0:'';set(build())}));
     row.appendChild(cmp==='peak_gte'?cbNumber(val,v=>{val=v;set(build())}):cbText(val,v=>{val=v;set(build())}));
   }else if(kind==='flag'){
-    row.appendChild(cbText(c.flag,v=>set({flag:v}),R.flags||[]));
+    const declared=R.flags||[];
+    if(declared.length)row.appendChild(cbSelect(declared,c.flag,v=>set({flag:v})));
+    else{row.appendChild(cbText(c.flag,v=>set({flag:v})));row.appendChild(el('span','fieldnote warn','No flags declared yet - add them under Story flags (click the health badge, top right).'))}
   }else if(kind==='revealed'){
     const revs=R.revelations||[];
     row.appendChild(revs.length?cbSelect(revs,c.revealed,v=>set({revealed:v})):cbText(c.revealed,v=>set({revealed:v})));
@@ -831,7 +833,9 @@ function conditionBuilder(current,on){
       allB.onclick=()=>commit({all:[value,defaultLeaf((model.refs&&(model.refs.stats||[]).length)?'stat':'flag')]});
       const anyB=el('button','btn small','+ OR another');anyB.type='button';
       anyB.onclick=()=>commit({any:[value,defaultLeaf((model.refs&&(model.refs.stats||[]).length)?'stat':'flag')]});
-      combine.appendChild(allB);combine.appendChild(anyB);wrap.appendChild(combine);
+      const notB=el('button','btn small','Negate (NOT)');notB.type='button';notB.title='Turn this into: this must NOT hold';
+      notB.onclick=()=>commit({not:value});
+      combine.appendChild(allB);combine.appendChild(anyB);combine.appendChild(notB);wrap.appendChild(combine);
     }
   }
   paint();return wrap;
@@ -925,6 +929,8 @@ function renderInspector(){
       insp.appendChild(cb);
       // viable_while and the checkbox stay in sync both ways: typing a condition here clears
       // the checkbox: clearing this field (or checking the box) makes it the catch-all again.
+      insp.appendChild(el('h4',null,'Viable while'));
+      insp.appendChild(el('p','note','The ending stays in play only while this holds. The moment it goes false the ending is pruned for good, e.g. "not flag lark_departed" removes it once Lark has left. Leave it empty for the catch-all, which can never be ruled out.'));
       insp.appendChild(jsonConditionField(n.viable_while,v=>{
         if(v===undefined){delete n.viable_while;n.catchAll=true}else{n.viable_while=v;n.catchAll=false}
         c.checked=!!n.catchAll;
@@ -1096,6 +1102,21 @@ function renderOverview(){
   iss.forEach(i=>{const b=el('button','issue'+(i.lvl==='error'?' error':''));b.type='button';b.appendChild(el('span','sev',i.lvl==='error'?'Fix':'Check'));b.appendChild(el('span',null,i.text));
     b.onclick=()=>{if(i.char!=null)return openChar(i.char);if(viewMode==='cast')setView('diagram');if(i.edge)sel={type:'edge',key:i.edge};else if(i.id)sel={type:'node',id:i.id};render()};ul.appendChild(b)});
   insp.appendChild(ul);
+
+  insp.appendChild(el('h4',null,'Story flags'));
+  insp.appendChild(el('p','note','Every flag a condition names has to be declared here (mechanics.flags.declared). The detect text is what the state-update pass looks for in the scene to set the flag - a flag with no detect text can never be set.'));
+  model.flags_declared=model.flags_declared||[];
+  const syncFlagRefs=()=>{model.refs=model.refs||{};model.refs.flags=model.flags_declared.map(f=>f.id.trim()).filter(Boolean)};
+  model.flags_declared.forEach((f,i)=>{
+    const box=el('div');box.style.cssText='display:grid;gap:4px;margin-bottom:8px;padding:8px;border:1px solid var(--line);border-radius:6px';
+    const id=textInput(f.id,v=>{f.id=v.replace(/\s+/g,'_');syncFlagRefs();save()},'flag id, e.g. lark_departed');id.setAttribute('aria-label','Flag id');
+    const det=textInput(f.detect,v=>{f.detect=v;save()},'detect: what on the page sets this, e.g. "Lark has left the story for good"');det.setAttribute('aria-label','Flag detect text');
+    const rm=el('button','btn small','Remove flag');rm.type='button';rm.onclick=()=>{model.flags_declared.splice(i,1);syncFlagRefs();save();render()};
+    box.appendChild(id);box.appendChild(det);box.appendChild(rm);insp.appendChild(box);
+  });
+  const addFlag=el('button','btn small','+ Flag');addFlag.type='button';
+  addFlag.onclick=()=>{model.flags_declared.push({id:'',detect:''});syncFlagRefs();render();const ins=insp.querySelectorAll('input[aria-label="Flag id"]');if(ins.length)ins[ins.length-1].focus()};
+  insp.appendChild(addFlag);
 
   insp.appendChild(el('h4',null,'Ending funnel settings'));
   insp.appendChild(el('p','note','Story-wide timing for mechanics.endings (CR-05). Leave a field blank for the engine default.'));

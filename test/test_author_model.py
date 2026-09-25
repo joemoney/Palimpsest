@@ -305,4 +305,33 @@ assert projected3["mechanics"]["subplots"] == {"engine": "weighted_threads"}
 assert ("subplots", "weighted_threads") not in left_out3
 print("OK: playable_projection leaves a registered engine's block untouched")
 
+# --- declared flags (mechanics.flags.declared) round-trip through the board ---------------------
+ex_flags = copy.deepcopy(example)
+assert "flags" not in ex_flags["mechanics"], "the example story declares no flags"
+m_flags = author_model.to_board_model(ex_flags)
+assert m_flags["flags_declared"] == [] and m_flags["refs"]["flags"] == []
+assert author_model.from_board_model(ex_flags, m_flags)["mechanics"] == ex_flags["mechanics"], \
+    "no flags declared and none authored: mechanics is untouched, no empty block appears (P-2)"
+
+m_flags["flags_declared"] = [{"id": "lark_departed", "detect": "Lark leaves for good"},
+                             {"id": "  ", "detect": "a blank id is dropped"}]
+w1 = author_model.from_board_model(ex_flags, m_flags)
+assert w1["mechanics"]["flags"] == {"declared": [{"id": "lark_departed", "detect": "Lark leaves for good"}]}
+assert author_model.to_board_model(w1)["refs"]["flags"] == ["lark_departed"]
+
+w1["mechanics"]["flags"]["declared"][0]["_note"] = "author scratch"
+m2 = author_model.to_board_model(w1)
+m2["flags_declared"][0]["detect"] = "Lark walks out"
+w2 = author_model.from_board_model(w1, m2)
+assert w2["mechanics"]["flags"]["declared"][0] == {"id": "lark_departed", "detect": "Lark walks out",
+                                                   "_note": "author scratch"}, "unknown keys on an entry survive"
+
+m3 = author_model.to_board_model(w2)
+m3["flags_declared"] = []
+w3 = author_model.from_board_model(w2, m3)
+assert "flags" not in w3["mechanics"], "emptying the list removes the block again"
+assert author_model.from_board_model(w2, {**m3, "flags_declared": None}) == w2, \
+    "a client that sends no flags_declared leaves the template alone"
+print("OK: declared flags round-trip - add, edit (keeping unknown keys), remove, and stay absent when unused")
+
 print("\nALL CHECKS PASSED: test_author_model")

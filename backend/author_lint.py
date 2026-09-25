@@ -217,13 +217,33 @@ def condition_issues(raw: dict) -> list:
     return out
 
 
+def flag_issues(raw: dict) -> list:
+    """Declared-flag hygiene (`mechanics.flags.declared`): a duplicate id is an error (the second
+    would be unreachable by name), and a flag with no `detect` is a warning - the state-update
+    pass is only ever told what to look for from that text, so nothing could ever set it."""
+    block = (raw.get("mechanics") or {}).get("flags")
+    out, seen = [], set()
+    for f in (block.get("declared") or []) if isinstance(block, dict) else []:
+        if not isinstance(f, dict):
+            continue
+        fid = f.get("id", "")
+        if fid in seen:
+            out.append({"id": "flags", "severity": "error", "message": f"Flag {fid} is declared twice."})
+        seen.add(fid)
+        if not (f.get("detect") or "").strip():
+            out.append({"id": "flags", "severity": "warning",
+                        "message": f"Flag {fid} has no detect text, so nothing can ever set it."})
+    return out
+
+
 def lint(raw: dict, model: dict) -> list:
     """L01 and L10 against `raw`, everything else against `model`
     (`author_model.to_board_model(raw)`). L10 is skipped when the schema already rejected the
     template: a condition that isn't an object at all is L01's finding, and reporting it twice
     in two vocabularies is noise."""
     schema = schema_errors(raw)
-    return schema + ([] if schema else condition_issues(raw)) + structural_issues(model) + cast_issues(model)
+    return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw)
+            + structural_issues(model) + cast_issues(model))
 
 
 def has_errors(issues: list) -> bool:

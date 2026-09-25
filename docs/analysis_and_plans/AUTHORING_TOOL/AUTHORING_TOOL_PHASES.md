@@ -539,8 +539,9 @@ remaining risk in S1 is schedule/scope, not data loss.
 **Goal.** Conditions on the board are real CR-02 grammar, evaluated by engine code against a
 sample state.
 
-**Status: in progress. The evaluator, L10 and the sample-state bar are built; the CR-11
-authoring surfaces are not started.**
+**Status: in progress. The evaluator, L10, the sample-state bar and the flag/viable_while
+authoring are built; the CR-11 authoring surfaces are not started, and the gate's real-board
+run is waiting on the author.**
 
 **Done:**
 - **`backend/conditions.py` (D2).** Every CR-02 leaf, `all`/`any`/`not` to depth 3, proximity,
@@ -562,8 +563,17 @@ authoring surfaces are not started.**
   engine is named in the result and its leaves read *unknown* - never silently dropped. Edge
   labels on the canvas use `describe()` (server) and a matching `condLabel` (client, for edits
   the server hasn't seen).
-- The board's condition builder (dropdowns for every condition field) predates S2 and is
-  unchanged.
+- **Everything S2 needs is authorable on the board, none of it by hand-editing JSON.**
+  - **Story flags:** the overview panel (health badge, top right) declares
+    `mechanics.flags.declared` - an id and a `detect` text per flag. A flag leaf in the
+    condition builder is then a dropdown of declared flags, not free text.
+  - **Viable while:** it has its own heading and explanation in a destination ending's
+    inspector (it used to sit unlabelled under the catch-all checkbox).
+  - **Negate (NOT):** a lone condition can be wrapped in NOT, so `not flag lark_departed` is
+    buildable; before, NOT only existed as an extra clause inside an AND/OR group.
+  - Lint: a declared flag with no `detect` text warns (nothing could ever set it); a duplicate
+    id is an error.
+- The board's condition builder (dropdowns for every condition field) predates S2.
 
 **Decisions made in passing - flag if wrong:**
 - **`viable_while` is `OPEN` (unknown reads true).** D2 names `ready_when`, `done_when` and
@@ -589,10 +599,11 @@ authoring surfaces are not started.**
 - **All the CR-11 surfaces:** the `bond` leaf, the directed bond grid and `protected` toggles,
   `mechanics.side_threads` recipe cards, location/item cast slots, the vignette seed list, and
   `player_threads` settings. Still "not built" until S5 step 4, as written below.
-- The gate's last item, run against the real Missing Core board: "SYNC 85 and `lark_departed`
-  set" pruning The Handover's `viable_while`. Covered on a synthetic story by
-  `test_author_evaluate.py`; The Missing Core's saved storyboard does not author that
-  `viable_while` yet, so there is nothing real to run it against.
+- **The gate's last item, on the real Missing Core board:** "SYNC 85 and `lark_departed` set"
+  pruning The Handover's `viable_while`. The tooling is all there (see above) and was driven
+  end to end on a copy of the saved board - declare the flag, build `not flag lark_departed`,
+  Evaluate with `lark_departed` set: "does not hold", and 0 lint issues - but the saved
+  storyboard itself still authors neither. That is the author's step, on the board.
 
 **Work.**
 - **`backend/conditions.py` (D2).**
