@@ -37,7 +37,18 @@ assert model["revelations"] == [
      "after": ["frag_1"]},
 ], model["revelations"]
 assert author_model.to_board_model({"meta": {}})["revelations"] == []
-print("OK: fragments load into the board model, titled from the author-only _title")
+print("OK: fragments load into the board model, titled from the older _title spelling")
+
+# `title` is the schema's field (what a hand-edited template naturally uses - The Missing Core's
+# fragments are titled this way); it loads, wins over _title, and passes the schema.
+titled = copy.deepcopy(RAW)
+titled["mechanics"]["revelations"]["entries"][0]["title"] = "Kept Warm"
+titled["mechanics"]["revelations"]["entries"][1]["title"] = "Standing Up"
+rows = author_model.to_board_model(titled)["revelations"]
+assert [r["title"] for r in rows] == ["Kept Warm", "Standing Up"], rows
+assert not [e for e in author_lint.schema_errors(titled) if "revelations" in e["message"]], author_lint.schema_errors(titled)
+assert conditions.revelation_labels(titled)["frag_1"] == "Kept Warm"
+print("OK: a fragment's `title` loads, outranks _title, labels its conditions, and is schema-valid")
 
 # --- an unchanged list touches nothing ----------------------------------------------------------
 assert author_model.from_board_model(RAW, model)["mechanics"]["revelations"] == RAW["mechanics"]["revelations"]
@@ -53,7 +64,7 @@ out = author_model.from_board_model(RAW, m)
 entries = out["mechanics"]["revelations"]["entries"]
 assert entries[0] == {"id": "frag_warm", "trigger": RAW["mechanics"]["revelations"]["entries"][0]["trigger"],
                       "content": "It is exactly as warm as you are.",
-                      "_note": "an author field the tab has no editor for", "_title": "first warmth"}, entries[0]
+                      "_note": "an author field the tab has no editor for", "title": "first warmth"}, entries[0]
 assert entries[1] == {"id": "frag_2", "trigger": "t2", "content": "c2", "after": ["frag_warm"]}, entries[1]
 assert out["mechanics"]["revelations"]["engine"] == "triggered_reveal"
 assert RAW["mechanics"]["revelations"]["entries"][0]["id"] == "frag_1", "the input is never mutated"

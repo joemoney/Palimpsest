@@ -59,11 +59,16 @@ TEMPLATE_SCHEMA_VERSION = 3
 _NODE_ONLY_KEYS = ("id", "kind", "ekind", "x", "y", "_w", "_h")
 
 
-def _node_base(source: dict, **extra) -> dict:
-    """A full, verbatim copy of `source` (never the caller's dict itself - the board mutates
+def _node_base(entry: dict, /, **extra) -> dict:
+    """A full, verbatim copy of `entry` (never the caller's dict itself - the board mutates
     nodes freely, and a shared reference would let a canvas edit leak back into `raw` before
-    `from_board_model` ever runs), plus the board-standard `id`/`kind`/position fields."""
-    node = copy.deepcopy(source)
+    `from_board_model` ever runs), plus the board-standard `id`/`kind`/position fields.
+
+    Positional-only, so any node field can be passed through `extra` - including one called
+    `source`, which a terminal authored under mechanics.endings carries (`source="endings"`).
+    With a keyword-capable first parameter of that name, every such story crashed the board on
+    load; no real story had one until The Missing Core's "Open to the Belt"."""
+    node = copy.deepcopy(entry)
     node.update(extra)
     node.setdefault("x", 0)
     node.setdefault("y", 0)
@@ -342,12 +347,12 @@ def _revelation_entries(raw: dict) -> list:
 
 
 def _revelations_to_board(raw: dict) -> list:
-    """One row per fragment: `id`, `title` (the author-only `_title`), `trigger` (what the
+    """One row per fragment: `id`, `title` (author-only; `_title` is read too), `trigger` (what the
     state-update pass watches for), `content` (what the narrator is given once revealed),
     `after` (fragments that must be revealed first). `orig` is the id as loaded, so a renamed
     fragment still patches its own entry on save rather than being rebuilt."""
     return [{
-        "orig": e.get("id", ""), "id": e.get("id", ""), "title": e.get("_title", ""),
+        "orig": e.get("id", ""), "id": e.get("id", ""), "title": e.get("title") or e.get("_title", ""),
         "trigger": e.get("trigger", ""), "content": e.get("content", ""),
         "after": list(e.get("after") or []),
     } for e in _revelation_entries(raw)]
@@ -666,20 +671,34 @@ def _apply_endings(out: dict, nodes: list, settings: dict = None) -> None:
             }.items() if v is not None}
             for w in (n.get("waypoints") or [])
         ]
-        entries.append(entry)
+        entries.append(_ordered_like(entry, n))
     for n in term_nodes:
         entry = _strip_node_only(n)
         for k in ("title", "theme", "trigger", "source"):
             entry.pop(k, None)
         entry["id"] = n["id"]
         entry["kind"] = "terminal"
-        entry.setdefault("arc", {})
+        # The title goes back where _terminal_node_from_entry read it from: `name` when the entry
+        # authors one, else `arc.title`. Always writing arc.title invented an `arc` for a terminal
+        # that authors only a name.
         if n.get("title"):
-            entry["arc"]["title"] = n["title"]
+            if "name" in entry:
+                entry["name"] = n["title"]
+            else:
+                entry.setdefault("arc", {})["title"] = n["title"]
         if n.get("theme"):
             entry["epilogue"] = n["theme"]
-        entries.append(entry)
+        entries.append(_ordered_like(entry, n))
     endings_cfg["entries"] = entries
+
+
+def _ordered_like(entry: dict, node: dict) -> dict:
+    """`entry` with its keys in the order the node carried them - which is the order the template
+    authored them, since a node starts as a copy of its entry (`_node_base`). `_strip_node_only`
+    drops `id` and `kind` and the writers re-add them, which would otherwise move them to the end
+    and break the byte-identical round trip for any entry that doesn't author them last."""
+    order = [k for k in node if k in entry]
+    return {**{k: entry[k] for k in order}, **{k: v for k, v in entry.items() if k not in order}}
 
 
 def _apply_characters(out: dict, characters) -> None:
@@ -734,10 +753,13 @@ def _apply_revelations(out: dict, raw: dict, rows) -> None:
             entry["after"] = after
         else:
             entry.pop("after", None)
+        # `title` is the schema's author-only field; `_title` is the board's earlier spelling,
+        # still read, and replaced by `title` the first time an edited fragment is saved.
+        entry.pop("_title", None)
         if (row.get("title") or "").strip():
-            entry["_title"] = row["title"].strip()
+            entry["title"] = row["title"].strip()
         else:
-            entry.pop("_title", None)
+            entry.pop("title", None)
         entries.append(entry)
     mechanics = out.setdefault("mechanics", {})
     if not entries:

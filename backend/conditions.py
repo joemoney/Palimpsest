@@ -484,7 +484,7 @@ FRAGMENT_LABEL_MAX = 48
 def revelation_labels(story) -> dict:
     """`{fragment id: short human label}` for every `mechanics.revelations` entry, so a
     `revealed` leaf reads as what the fragment *is* rather than a bare `frag_0006`. The label is
-    the author-only `_title` when there is one, else the start of the trigger (the event that
+    the author-only `title` (or the older `_title`) when there is one, else the start of the trigger (the event that
     reveals it). Never the `content`: that is what the narrator is given once the fragment is
     revealed, and an edge label is not the place to read it early."""
     block = ((story or {}).get("mechanics") or {}).get("revelations")
@@ -493,7 +493,7 @@ def revelation_labels(story) -> dict:
     for e in entries or []:
         if not isinstance(e, dict) or not e.get("id"):
             continue
-        text = (e.get("_title") or "").strip() or (e.get("trigger") or "").strip()
+        text = (e.get("title") or e.get("_title") or "").strip() or (e.get("trigger") or "").strip()
         if len(text) > FRAGMENT_LABEL_MAX:
             text = text[:FRAGMENT_LABEL_MAX - 1].rstrip() + "\u2026"
         out[e["id"]] = text or e["id"]

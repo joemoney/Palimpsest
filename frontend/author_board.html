@@ -537,7 +537,7 @@ function chr(name){return model.characters.find(c=>c.name===name)}
 function words(s){return (s||'').trim().split(/\s+/).filter(Boolean).length}
 /* ---------- memory fragments (mechanics.revelations) ----------
    model.revelations is author_model._revelations_to_board: {orig,id,title,trigger,content,after}.
-   The title is author-only (`_title`); a fragment with none is labelled by its trigger - the
+   The title is author-only (`title`); a fragment with none is labelled by its trigger - the
    event that reveals it - and never by its content, which the narrator only gets once revealed.
    Mirrors conditions.revelation_labels, which labels the same way server-side. */
 model.revelations=model.revelations||[];

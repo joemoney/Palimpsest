@@ -76,7 +76,13 @@ def missing_core_gate(raw):
     axes = {a["axis"]: a for a in model["stat_axes"]}
     assert list(axes) == author_model.stat_axis_names(raw)
     assert axes["quorum"]["label"] == "QUORUM" and axes["quorum"]["floor"] == 0 and axes["quorum"]["ceiling"] == 100
-    assert axes["sync"]["tiers"] == []
+    # Each axis carries exactly the tiers the template authors (derived, not pinned: the story's
+    # tiering changes as it is authored - SYNC had none when this test was written).
+    stats_axes = raw["mechanics"]["stats"].get("axes") or {}
+    for name, entry in axes.items():
+        if name == "quorum":
+            continue  # the model above carries the dragged QUORUM boundary, by design
+        assert entry["tiers"] == (stats_axes.get(name) or {}).get("tiers", []), name
     print("OK: stat_axes lists every seeded axis with its display bounds")
 
 

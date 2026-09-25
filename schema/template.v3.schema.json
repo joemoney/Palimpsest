@@ -515,6 +515,10 @@
               "id": { "type": "string" },
               "trigger": { "type": "string" },
               "content": { "type": "string" },
+              "title": {
+                "$comment": "Author-only name for the fragment, shown on the storyboard wherever a condition names it. The engine never reads it and it is never prompted.",
+                "type": "string"
+              },
               "after": { "type": "array", "items": { "type": "string" } }
             },
             "required": ["id", "trigger", "content"],

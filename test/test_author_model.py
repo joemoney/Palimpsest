@@ -334,4 +334,17 @@ assert author_model.from_board_model(w2, {**m3, "flags_declared": None}) == w2, 
     "a client that sends no flags_declared leaves the template alone"
 print("OK: declared flags round-trip - add, edit (keeping unknown keys), remove, and stay absent when unused")
 
+# --- a CR-05 terminal authored under mechanics.endings loads onto the board -------------------
+# Regression: _node_base's first parameter was named `source`, and a mechanics.endings terminal
+# node carries source="endings", so every such story crashed to_board_model with a TypeError.
+term_raw = {"schema_version": 3, "meta": {"title": "T"}, "mechanics": {"endings": {
+    "engine": "ending_funnel", "entries": [
+        {"id": "catch", "kind": "destination", "name": "Catch", "waypoints": []},
+        {"id": "belt", "kind": "terminal", "name": "Open to the Belt",
+         "ready_when": {"stat": "frame", "lte": 0}, "arc": {"title": "Open to the Belt"}}]}}}
+term_nodes = {n["id"]: n for n in author_model.to_board_model(term_raw)["nodes"]}
+assert term_nodes["belt"]["ekind"] == "terminal" and term_nodes["belt"]["source"] == "endings"
+assert author_model.from_board_model(term_raw, author_model.to_board_model(term_raw))["mechanics"] == term_raw["mechanics"]
+print("OK: a mechanics.endings terminal loads onto the board and round-trips")
+
 print("\nALL CHECKS PASSED: test_author_model")
