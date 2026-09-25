@@ -688,7 +688,7 @@ def subplot_manager_view(story_slug):
         elif command == "advance-act":
             subplot_manager.advance_act(ctx)
         elif command == "reveal":
-            subplot_manager.reveal_memory_fragment(ctx, request.form.get("fragment_id", ""))
+            subplot_manager.reveal_fragment(ctx, request.form.get("fragment_id", ""))
         state_store.save_state(ctx, user_id, story_slug)
         return redirect(url_for("subplot_manager_view", story_slug=story_slug))
 
@@ -698,7 +698,7 @@ def subplot_manager_view(story_slug):
     bound = mechanics.bound_for(ctx["story"], "revelations")
     revelations = bound.engine.entries(bound.cfg) if bound else []
     revealed_map = plot_state["revelations_revealed"]
-    memory_fragments = [dict(r, revealed=(r["id"] in revealed_map)) for r in revelations]
+    fragments = [dict(r, revealed=(r["id"] in revealed_map)) for r in revelations]
     pacing_view = {
         "turn_count": pacing_state["turn_count"],
         "turns_since_last_pacing_nudge": pacing_state["turns_since_nudge"],
@@ -711,7 +711,7 @@ def subplot_manager_view(story_slug):
     return render_template(
         "subplot_manager.html", story_title=ctx["story"]["meta"]["title"], story_slug=story_slug,
         current_act=story_engine._current_act(ctx), subplots=story_engine._all_subplots(ctx),
-        pacing=pacing_view, endgame=plot_state["endgame"], memory_fragments=memory_fragments,
+        pacing=pacing_view, endgame=plot_state["endgame"], fragments=fragments,
         entity_contact_count=plot_state["entity_contact_count"],
         tracked_entity_name=tracked_entity["name"] if tracked_entity else "Entity",
     )

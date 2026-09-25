@@ -34,7 +34,7 @@ ROLLOVER_BATCH_TURNS = 10
 SUMMARY_MAX_WORDS = 2000
 SUBPLOT_TITLE_HISTORY_LIMIT = 15
 FLAGS_ACTIVE_LIMIT = 25
-# CR-03: revealed memory fragments accumulate for the whole game, same shape of problem as
+# CR-03: revealed fragments accumulate for the whole game, same shape of problem as
 # SUBPLOT_TITLE_HISTORY_LIMIT - bound how many of them reach the narration prompt, keyed off
 # revealed_turn so the most recently revealed ones are the ones that survive the cap.
 # The completion_threshold a "multi_act"-span subplot gets instead of the normal 100 (see
@@ -914,7 +914,7 @@ def _waits_on_condition(ctx: dict, sid: str) -> bool:
 
 def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -> dict:
     """Separate LLM pass (kept apart from narration) that extracts a state diff from the
-    turn just narrated: subplot progress, flags, revealed memory fragments, entity contact,
+    turn just narrated: subplot progress, flags, revealed fragments, entity contact,
     scene, and - through the bound mechanic engines - inventory, relationships and stats."""
     characters = ctx["state"]["characters"]
     # Phase 4: relationships are the `scored_axis` engine's now (backend/mechanics/
@@ -1618,7 +1618,7 @@ CURRENT ACT: {current_act['title']} - {current_act['description']}
 SIGNALS THIS ACT WAS BUILT AROUND: {', '.join(current_act.get('completion_signals', [])) or 'none'}
 SUBPLOTS COMPLETED THIS ACT: {', '.join(completed_titles) or 'none'}
 ONGOING MULTI-ACT SUBPLOTS (deliberately still running, expected to continue beyond this act - their non-completion is not a sign the act hasn't resolved): {', '.join(ongoing_multi_act) or 'none'}
-MEMORY FRAGMENTS REVEALED: {revealed_fragments}
+FRAGMENTS REVEALED: {revealed_fragments}
 {entity_line}EXISTING CHARACTERS (do not repeat): {', '.join(existing_characters) or 'none'}
 STORY SO FAR: {summary}
 RECENT EXCHANGES:
@@ -2043,7 +2043,7 @@ def _section_revelations(ctx: dict) -> str | None:
     # CR-03 lives in the triggered_reveal engine now: only revealed content reaches the
     # narrator, only unrevealed triggers reach the observation pass, and neither pass sees
     # the other half. This keeps the placement only.
-    return mechanics.prompt_sections(ctx).get("revelations.memories")
+    return mechanics.prompt_sections(ctx).get("revelations.revealed")
 
 
 def _section_protagonist(ctx: dict) -> str:
@@ -2382,7 +2382,7 @@ def update_state_after_turn(
     pacing_state["turns_since_nudge"] += 1
     pacing_state["turns_since_act_check"] = pacing_state.get("turns_since_act_check", 0) + 1
 
-    # Separate state-update pass: subplot progress, flags, memory fragments, entity contact
+    # Separate state-update pass: subplot progress, flags, revealed fragments, entity contact
     update_progress_from_turn(ctx, player_action, ai_response)
 
     # The engine pipeline runs inside update_progress_from_turn above, where the diff it

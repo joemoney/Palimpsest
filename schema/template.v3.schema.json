@@ -521,6 +521,7 @@
     },
 
     "engine_revelations": {
+      "$comment": "Fragments: information held back until a trigger happens on the page - backstory, a memory, lore, a secret, a clue. Not only memories: the narrator is shown revealed content under a neutral heading, so each entry's content says what it is. A revealed fragment is also a condition leaf ({\"revealed\": id}) for threads, acts and endings.",
       "type": "object",
       "properties": {
         "engine": { "const": "triggered_reveal" },

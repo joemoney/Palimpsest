@@ -38,10 +38,10 @@ story_dict["mechanics"]["revelations"] = revelations(
 )
 ctx["story"] = se.state_store.freeze(story_dict)
 
-# --- a story with zero fragments produces no REVEALED MEMORIES header at all ---
+# --- a story with zero fragments produces no REVEALED SO FAR header at all ---
 prompt = se.build_system_prompt(ctx)
-assert "REVEALED MEMORIES" not in prompt
-print("OK: no revealed fragments -> no REVEALED MEMORIES header")
+assert "REVEALED SO FAR" not in prompt
+print("OK: no revealed fragments -> no REVEALED SO FAR header")
 
 # --- revealing one via the state-update pass records its turn, and its content (but not the
 # still-unrevealed one's) shows up in the narration prompt; the state-update prompt itself
@@ -60,7 +60,7 @@ assert ctx["state"]["plot"]["revelations_revealed"]["frag_1"]["turn"] == 5
 prompt = se.build_system_prompt(ctx)
 assert "content one" in prompt
 assert "content two" not in prompt, "unrevealed fragment content must never reach narration"
-assert "REVEALED MEMORIES" in prompt
+assert "REVEALED SO FAR" in prompt
 print("OK: revealing a fragment records its turn and surfaces its content, not the unrevealed one's")
 
 # --- the state-update prompt continues to see only unrevealed triggers, never revealed content ---

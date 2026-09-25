@@ -42,7 +42,7 @@ def show_status(ctx):
     revelations = bound.engine.entries(bound.cfg) if bound else []
     revealed = len(plot_state["revelations_revealed"])
     if revelations:
-        print(f"Memory fragments revealed: {revealed}/{len(revelations)}")
+        print(f"Fragments revealed: {revealed}/{len(revelations)}")
     tracked_entity = ctx["story"].get("mechanics", {}).get("tracked_entity")
     if tracked_entity:
         print(f"{tracked_entity['name']} encounters: {plot_state['entity_contact_count']}")
@@ -189,8 +189,8 @@ def advance_act(ctx):
     print(f"Advanced to Act {next_act['act_number']}: {next_act['title']}")
 
 
-def reveal_memory_fragment(ctx, fragment_id):
-    """Reveal a memory fragment (mechanics.revelations entry)."""
+def reveal_fragment(ctx, fragment_id):
+    """Reveal a fragment (mechanics.revelations entry)."""
     bound = mechanics.bound_for(ctx["story"], "revelations")
     revelations = bound.engine.entries(bound.cfg) if bound else []
     fragment = next((r for r in revelations if r["id"] == fragment_id), None)
@@ -202,7 +202,7 @@ def reveal_memory_fragment(ctx, fragment_id):
         print(f"Fragment '{fragment_id}' is already revealed")
         return
     revealed[fragment_id] = {"turn": ctx["state"]["pacing"]["turn_count"]}
-    print(f"Revealed memory fragment: {fragment_id}")
+    print(f"Revealed fragment: {fragment_id}")
     print(f"Content: {fragment['content']}")
 
 
@@ -283,7 +283,7 @@ def main():
             print("Usage: python subplot_manager.py reveal <fragment_id>")
             return
         fragment_id = argv[2]
-        reveal_memory_fragment(ctx, fragment_id)
+        reveal_fragment(ctx, fragment_id)
         state_store.save_state(ctx, user_id, story_slug)
 
     else:

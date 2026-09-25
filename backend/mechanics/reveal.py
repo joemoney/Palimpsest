@@ -55,7 +55,7 @@ class TriggeredReveal(MechanicEngine):
     # After inventory (40): a later `requires` predicate over items or standing (phase 6)
     # should read this turn's, and nothing here is read by an earlier engine.
     resolve_order = 50
-    # §5.4. REVEALED MEMORIES is the only section, capped at REVEALED_PROMPT_LIMIT (12)
+    # §5.4. REVEALED SO FAR is the only section, capped at REVEALED_PROMPT_LIMIT (12)
     # entries; 2600 is twelve two-line fragments plus the header. A story that trips this is
     # authoring fragments the narrator is being asked to recite rather than reference, which
     # is worth being told about rather than silently paying for.
@@ -148,9 +148,9 @@ class TriggeredReveal(MechanicEngine):
             # written" is the whole point, and without this sentence the model reads the two
             # as near-synonyms and puts the same id in both.
             instruction += (
-                "A trigger can be satisfied without the narration having delivered the "
-                "memory on the page. Put an id in revealed only if the NARRATION itself "
-                "wrote it into the scene; if the condition is met but the memory has not "
+                "A trigger can be satisfied without the narration having delivered what it "
+                "reveals on the page. Put an id in revealed only if the NARRATION itself "
+                "wrote it into the scene; if the condition is met but the reveal has not "
                 "surfaced, put it in eligible instead, and never in both.\n"
             )
         return [ObservationField("revelations", schema, context, instruction)]
@@ -180,7 +180,7 @@ class TriggeredReveal(MechanicEngine):
         """Reveals first, then queueing, then a sweep of the queue.
 
         The sweep is not housekeeping: it is what stops the pacing directive asking the
-        narrator for a memory the player has already read. §12 words the queue as "the
+        narrator for a reveal the player has already read. §12 words the queue as "the
         directive consumes one entry per firing", but a firing is an instruction to the
         narrator, not a guarantee - popping unconditionally would silently drop a reveal any
         time the model ignored the bullet, and nothing would re-queue it, since its trigger
@@ -230,10 +230,15 @@ class TriggeredReveal(MechanicEngine):
         )
         if not ordered:
             return {}
+        # Neutral on purpose: a fragment is whatever the story gates behind a trigger - a
+        # memory, a piece of lore, a secret, a clue - so the heading must not tell the
+        # narrator which. Calling them all memories (the pre-overhaul wording) framed a
+        # discovered fact about the world as something the protagonist remembered. What
+        # each one *is* belongs in its own content, where the author wrote it.
         lines = "\n".join(f"- {e['content']}" for e in ordered[:REVEALED_PROMPT_LIMIT])
-        return {"memories": (
-            "REVEALED MEMORIES (the protagonist already knows these; reference them "
-            f"naturally, do not re-reveal them as though they were new):\n{lines}")}
+        return {"revealed": (
+            "REVEALED SO FAR (already on the page, so the protagonist knows these; build "
+            f"on them naturally, do not re-reveal them as though they were new):\n{lines}")}
 
     def queued_content(self, cfg, ctx):
         """The `{queued_reveal}` interpolation, or None. FIFO, so the oldest eligible reveal

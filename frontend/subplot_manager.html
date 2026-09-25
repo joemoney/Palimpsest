@@ -16,8 +16,8 @@
   <p style="color:var(--muted); font-size:0.8rem; margin-top:8px;">
     Subplots completed this act: {{ pacing.subplots_completed_this_act }}
     &middot; Turn: {{ pacing.turn_count }}
-    {% if memory_fragments %}
-    &middot; Memory fragments revealed: {{ memory_fragments | selectattr('revealed') | list | length }}/{{ memory_fragments | length }}
+    {% if fragments %}
+    &middot; Fragments revealed: {{ fragments | selectattr('revealed') | list | length }}/{{ fragments | length }}
     {% endif %}
     {% if tracked_entity_name %}
     &middot; {{ tracked_entity_name }} encounters: {{ entity_contact_count }}
@@ -125,10 +125,10 @@
   </form>
 </details>
 
-{% set unrevealed_fragments = memory_fragments | rejectattr('revealed') | list %}
+{% set unrevealed_fragments = fragments | rejectattr('revealed') | list %}
 {% if unrevealed_fragments %}
 <details class="card">
-  <summary>Reveal Memory Fragment</summary>
+  <summary>Reveal Fragment</summary>
   <form method="post">
     <input type="hidden" name="command" value="reveal">
     <label for="reveal-fragment">Fragment</label>

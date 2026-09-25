@@ -1,7 +1,7 @@
 """The `revelations` / `triggered_reveal` engine - engine v2 phase 4, port 3.
 
 test_revealed_memories.py still owns the end-to-end behaviour this module inherited (the
-REVEALED MEMORIES block, the cap, the never-both-halves rule) and test_pacing_loop.py owns
+REVEALED SO FAR block, the cap, the never-both-halves rule) and test_pacing_loop.py owns
 the §12 placement queue. This file covers what the port *added*, which is the part with no
 v2 ancestor to regress against:
 
@@ -159,7 +159,7 @@ prompt = observation_prompt(plain, {**EMPTY_DIFF,
 assert "LIVE TRIGGERS" not in prompt and '"revelations"' not in prompt
 assert plain["state"]["plot"]["revelations_revealed"] == {}, \
     "a story that never declared the mechanic must not start recording reveals"
-assert "REVEALED MEMORIES" not in se.build_system_prompt(plain)
+assert "REVEALED SO FAR" not in se.build_system_prompt(plain)
 print("OK: an absent engine leaks nothing into either prompt and ignores a stray field")
 
 # --- declare-to-bind: entries with no `engine` key bind nothing ---------------------

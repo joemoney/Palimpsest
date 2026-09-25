@@ -156,7 +156,7 @@ python backend/subplot_manager.py progress subplot_001 +25   # increase progress
 python backend/subplot_manager.py activate subplot_002       # start a new subplot
 python backend/subplot_manager.py modify-subplot subplot_002 --description '...'  # edit title/description/priority/ties
 python backend/subplot_manager.py advance-act                # manually force-complete the current act
-python backend/subplot_manager.py reveal frag_0001            # surface a memory fragment
+python backend/subplot_manager.py reveal frag_0001            # reveal a fragment by hand
 ```
 
 ## User Manual
@@ -246,8 +246,8 @@ itself.
 - **Activate Subplot** - start one of the story's not-yet-started subplots.
 - **Advance Act** - force the current act to complete right away; the next
   act generates automatically the next time you take a turn.
-- **Reveal Memory Fragment** - manually surface one of the protagonist's
-  hidden backstory fragments.
+- **Reveal Fragment** - manually reveal one of the story's fragments
+  (backstory, lore, a secret, a clue) as though its trigger had happened.
 
 You rarely need any of this by hand - subplots regenerate automatically as
 old ones complete, and acts are open-ended with no fixed count - but it's
@@ -577,9 +577,22 @@ text match and not a link. Renaming a character updates every thread that
 casts them and every relationship condition that names them. Deleting a
 character removes them from every thread.
 
-#### Step 11 - Write memory fragments (optional)
-Memory fragments are pieces of backstory the story reveals only when something
-specific happens on the page. Open the **Fragments** tab and click
+#### Step 11 - Write fragments (optional)
+A fragment is information the story holds back until something specific
+happens on the page. It doesn't have to be a memory: it can be backstory, a
+piece of lore, a secret, or a clue. Once revealed, it does two jobs:
+- **The narrator can use it.** Its content joins the narrator's prompt for the
+  rest of the story, under a heading that only says it has been revealed. So
+  write the content as what it is: something the protagonist remembers,
+  something they learned about the world, or something someone let slip.
+- **Conditions can test it.** A *Revealed* condition (Step 9) can start a
+  thread, hold an act, or be part of an ending's conditions.
+
+Lore on the World tab (Step 4) is different: it's background the narrator is
+given whenever it's relevant, not a discovery the story records, so conditions
+can't wait on it. Use a fragment when the moment of finding out matters.
+
+Open the **Fragments** tab and click
 **+ Fragment**. For each one, fill in:
 
 | Field | Who sees it | What to write |
@@ -787,7 +800,7 @@ migration.
 - [x] Cloud LLM backend (Gemini via `google-generativeai`, OpenRouter via
       `requests`; three cost/latency tiers with automatic fail-safe to Gemini)
 - [x] Separate state-update pass after each narration call (subplot
-      progress, flags, memory-fragment reveals, entity interactions)
+      progress, flags, fragment reveals, entity interactions)
 - [x] Pacing/director meta-instruction injected every N turns
 - [x] Subplots and acts regenerate automatically instead of stopping at a
       fixed count, with a player-triggered ending sequence

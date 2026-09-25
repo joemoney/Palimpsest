@@ -478,7 +478,7 @@ main.app{max-width:none}
       </div>
     </div>
     <div id="castView" aria-label="Authored cast"></div>
-    <div id="fragView" aria-label="Memory fragments"></div>
+    <div id="fragView" aria-label="Fragments"></div>
     <div id="worldView" aria-label="World building"></div>
     <div id="formsView" aria-label="Template sections"></div>
     <aside class="inspector" id="inspector" aria-live="polite"></aside>
@@ -566,7 +566,7 @@ function incoming(id){return model.edges.filter(e=>e.to===id&&(e.type==='opens'|
 /* ---------- cast (world.characters) ---------- */
 function chr(name){return model.characters.find(c=>c.name===name)}
 function words(s){return (s||'').trim().split(/\s+/).filter(Boolean).length}
-/* ---------- memory fragments (mechanics.revelations) ----------
+/* ---------- fragments (mechanics.revelations): anything the story holds back until a trigger ----------
    model.revelations is author_model._revelations_to_board: {orig,id,title,trigger,content,after}.
    The title is author-only (`title`); a fragment with none is labelled by its trigger - the
    event that reveals it - and never by its content, which the narrator only gets once revealed.
@@ -1670,11 +1670,11 @@ function renderFrags(){
   const fv=$('#fragView');fv.innerHTML='';
   const wrap=el('div','castWrap');
   const head=el('div','castHead');
-  const t=el('div');t.appendChild(eyebrow('Memory fragments · mechanics.revelations'));
+  const t=el('div');t.appendChild(eyebrow('Fragments · mechanics.revelations'));
   const n=model.revelations.length;t.appendChild(el('h2',null,`${n} fragment${n===1?'':'s'}`));head.appendChild(t);
   const add=el('button','btn','+ Fragment');add.type='button';add.onclick=addFrag;head.appendChild(add);
   wrap.appendChild(head);
-  wrap.appendChild(el('p','note','A fragment is a piece of backstory the story reveals when its trigger happens on the page. Until then the narrator never sees it: the state-update pass watches for the trigger. Once revealed, its content joins the narrator’s prompt. Conditions name a fragment by its id; the title is only for you.'));
+  wrap.appendChild(el('p','note','A fragment is information the story holds back until something happens on the page: backstory, a memory, a piece of lore, a secret, a clue. Until its trigger happens the narrator never sees it; the state-update pass watches for the trigger. Once revealed, its content joins the narrator’s prompt, and it becomes a fact conditions can test: a Revealed condition can start a thread, hold an act, or make an ending ready. Conditions name a fragment by its id; the title is only for you. Lore, on the World tab, is different: it is background the narrator is given whenever it is relevant, not a discovery the story records.'));
   if(!n){wrap.appendChild(el('p','note','No fragments yet.'));fv.appendChild(wrap);return}
   const grid=el('div','castGrid');
   const broken=new Set(issues().filter(i=>i.lvl==='error'&&i.frag!=null).map(i=>i.frag));
@@ -1732,7 +1732,7 @@ function renderFragInspector(){
   insp.appendChild(field('Trigger',ta('trigger','the event on the page that reveals this, e.g. "the protagonist loses time mid-task"'),VIS.observed,
     el('div','fieldnote','Checked by the state-update pass every turn until it happens. Write an event the scene can show, not what it means.')));
   insp.appendChild(field('Content',ta('content'),VIS.revealed,
-    el('div','fieldnote','What the narrator is given once this is revealed. Until then it reaches no prompt.')));
+    el('div','fieldnote','What the narrator is given once this is revealed. Until then it reaches no prompt. The narrator is only told these are things already revealed, so write each as what it is: something remembered, something learned about the world, something someone let slip.')));
 
   insp.appendChild(el('h4',null,'Revealed only after'));
   const others=model.revelations.filter(o=>o!==f&&o.id);

@@ -31,7 +31,7 @@ FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 # anywhere, not as an empty header and not as a zeroed field. Split by which prompt it
 # lands in, since the two are built by different code paths.
 # NOTE: revelations is checked via the state-update prompt only. Its narration-side marker
-# (REVEALED MEMORIES) appears only once a fragment has actually been revealed, so at turn 0
+# (REVEALED SO FAR) appears only once a fragment has actually been revealed, so at turn 0
 # it is absent for a story that authors the module too - it is not a presence signal.
 NARRATION_MARKERS = {
     "locations": "HERE:",
