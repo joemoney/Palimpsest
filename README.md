@@ -350,26 +350,34 @@ board rewrites its `## Synopsis` section from `meta.synopsis`.
 #### Step 3 - Open the board and find your way around
 Go to `/author` and click your story. The board has four parts:
 
-- **The toolbar** (top): the **Diagram / Matrix / Cast / Fragments / World** views; toggles for
-  *Waypoint labels*, *Unlock links*, *Focus (hide unrelated)* and *Timeline*;
-  the **+ Thread**, **+ Ending**, **Sample state**, **Raw JSON**,
-  **Validate** and **Save** buttons; and the health badge at far right.
-- **The canvas** (middle): boxes for the Start, each thread and each ending,
-  joined by lines. The legend at bottom left explains the three line styles:
-  solid means *opens at start*, dashed means *unlocks*, and coloured means
-  *delivers toward an ending*.
+- **The toolbar** (top): the **Diagram / Matrix / Cast / Fragments / World**
+  views; the *Free canvas* and *Timeline* toggles; the **+ Thread**,
+  **+ Ending**, **Sample state**, **Raw JSON**, **Validate** and **Save**
+  buttons; and the health badge at far right.
+- **The Diagram tab** (middle) shows the story the way it actually runs:
+  - **The acts strip** across the top holds the main thread, then your
+    authored acts, then the acts generated in play, then the finale. Acts
+    are the only thing in a story that happens in sequence.
+  - **Thread lanes** on the left, grouped *Spine*, *Personal* and
+    *Texture*. Threads run in parallel, so lanes are stacked, not chained.
+    Each lane shows when the thread becomes active (● at start, ◐ when a
+    condition holds, ○ started by hand), any *fails when*, how many
+    waypoints it carries, and its characters.
+  - **Endings** on the right: destination endings with their waypoints,
+    then failure endings.
+  - **A line from a lane to a waypoint** means that thread carries that
+    waypoint. A waypoint with a hollow dot has no thread carrying it yet.
 - **The inspector** (right): shows whatever you've selected. With nothing
   selected, it shows **Story health**: the lint issues, the story's flags,
   and the ending-funnel settings.
-- **The stat sidebar** (top left of the canvas): one row per stat axis.
+- **The stat sidebar** (above the acts): one entry per stat axis.
 
-To move around: drag a box to move it, drag empty space to pan, scroll to
-zoom, and use **Fit** to see everything. Click a box to highlight every path
-into and out of it. **Esc** clears the selection, and **Delete** removes it.
-**Auto-layout** arranges threads in columns by how many unlocks away from the
-Start they are.
+Click a lane or an ending to select it. Everything it doesn't touch is
+dimmed, so you can see what feeds what. **Esc** clears the selection.
 
-Box positions are kept in your browser as you drag, and written to the file
+Tick **Free canvas** for the original drag-and-pan diagram (Start box, drawn
+unlock links, Auto-layout). Both views edit the same story. Box positions on
+the free canvas are kept in your browser and written to the file
 (`_storyboard.positions`) when you save. Nothing else is written until you
 press **Save**.
 
@@ -477,24 +485,36 @@ fix that in Step 8.
    *personal* thread with nobody in it.
 
 #### Step 8 - Wire it up
-Every Start, thread and ending box has a round **port** on its right edge.
-Drag from a port onto another box to connect them:
+Two things connect a thread to the rest of the story, and neither of them is
+another thread.
 
-| Drag from → to | Creates | Meaning |
-|---|---|---|
-| Start → thread | *opens* (solid) | The thread is active from the first turn. |
-| Thread → thread | *unlocks* (dashed) | The second thread activates once a condition holds. Set that condition in the link's **Unlocks when** field. An unlock with no condition is an error. |
-| Thread → destination | *delivers* (coloured) | The thread carries one of the ending's waypoints. The board picks an uncovered waypoint automatically, and you can change it in the link's inspector. Drag again to carry another. |
+**When it becomes active** is set on the thread itself, under **Becomes
+active** in its inspector:
 
-Failure endings don't take connections, because they're reached through
-stats. Click any line, or its label, to edit or **Remove link**.
+- **At the start**: active from the first turn, alongside every other thread
+  that starts active. Most threads should be this.
+- **When a condition holds**: it starts itself the turn the condition becomes
+  true, e.g. *REACH at least 50*. To start a thread after another one, use a
+  *Thread status* condition, e.g. *A Second Pair of Hands progressed*.
+- **Only when started by hand**: it waits for an activation in the Subplot
+  Manager. The health panel warns about these.
+
+**What it carries** is a line from its lane to an ending's waypoint. Drag
+from the dot on the lane's right edge onto a waypoint row. You can also drop
+it on an ending card, which picks the first waypoint nothing carries yet, or
+use **+ Carry a waypoint…** in the thread's inspector. Click a line to select
+it and remove it. Texture threads carry nothing, and failure endings take no
+lines because they're reached through stats.
 
 When there are many threads, the **Matrix** tab is quicker. It shows a grid
 of threads against waypoints: click a dot to add or remove a link. The
 columns with no carrier are the ones still to fill.
 
-A thread with no incoming link shows **Becomes active: Never**, and the health
-panel flags it. Every thread needs a way in.
+**Acts.** Click an act in the strip to edit its title, description and
+*completion signals*, which are what the act judge looks for to decide the
+act has resolved. **+ Act** adds another authored act. Click **Main thread**
+to edit the story's through-line and **Max acts**. The engine doesn't
+enforce *Max acts* yet, so it's marked *not built*.
 
 #### Step 9 - Write conditions, and declare flags first
 Every condition field (*Viable while*, *Ready when*, *Fails when*,

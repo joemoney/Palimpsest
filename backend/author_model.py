@@ -93,7 +93,7 @@ def to_board_model(raw: dict) -> dict:
 
     nodes.append(_start_node(raw))
 
-    names = {"revealed": conditions.revelation_labels(raw)}
+    names = conditions.display_names(raw)
     subplots = raw.get("plot", {}).get("subplots", {}) or {}
     for sid, sp in subplots.items():
         nodes.append(_thread_node(sid, sp))
@@ -155,6 +155,7 @@ def to_board_model(raw: dict) -> dict:
     result["meta"] = _meta_to_board(raw)
     result["world"] = _world_to_board(raw)
     result["lore"] = _lore_to_board(raw)
+    result["main_thread"] = _main_thread_to_board(raw)
     result["refs"] = _condition_refs(raw)
     # stat_axes: the tier ladder's data (S3). P-2: omitted when the story has no
     # mechanics.stats block at all - there is no ladder to draw for stats that don't exist.
@@ -383,6 +384,20 @@ def _world_to_board(raw: dict) -> dict:
     }
 
 
+def _main_thread_to_board(raw: dict) -> dict:
+    """`plot.main_thread` for the Diagram tab's acts strip: the main plot's title/description,
+    `max_acts`, and the authored acts in order. `orig` is each act's index as loaded, so an edited
+    act patches its own entry (keeping `requires` and anything else the strip has no editor for)."""
+    mt = (raw.get("plot") or {}).get("main_thread") or {}
+    return {
+        "title": mt.get("title", ""), "description": mt.get("description", ""),
+        "max_acts": mt.get("max_acts"),
+        "acts": [{"orig": i, "title": a.get("title", ""), "description": a.get("description", ""),
+                  "completion_signals": list(a.get("completion_signals") or [])}
+                 for i, a in enumerate(mt.get("acts") or []) if isinstance(a, dict)],
+    }
+
+
 LORE_FIELDS = ("priority", "keys", "also_when", "unlock", "sticky_turns", "content")
 
 
@@ -436,6 +451,7 @@ def from_board_model(raw: dict, model: dict) -> dict:
     _apply_meta(out, raw, model.get("meta"))
     _apply_world(out, raw, model.get("world"))
     _apply_lore(out, raw, model.get("lore"))
+    _apply_main_thread(out, raw, model.get("main_thread"))
     _apply_positions(out, nodes)
 
     return out
@@ -838,6 +854,31 @@ def _apply_lore(out: dict, raw: dict, lore) -> None:
         block = mechanics["lore"] = {"engine": "keyed_lore"}
     _set_or_drop(block, "max_active", lore.get("max_active"))
     block["entries"] = entries
+
+
+def _apply_main_thread(out: dict, raw: dict, mt) -> None:
+    """The acts strip. Untouched when unchanged. Acts are written in board order and renumbered
+    1..n - `act_number` is how a save refers to an act, and saves are disposable during the
+    overhaul (CLAUDE.md). Each patches a copy of its original (by `orig`), so `requires` survives.
+    `title`, `description` and `acts` are schema-required and always written; `max_acts` is
+    dropped when blank."""
+    if mt is None or mt == _main_thread_to_board(raw):
+        return
+    target = out.setdefault("plot", {}).setdefault("main_thread", {})
+    originals = list(((raw.get("plot") or {}).get("main_thread") or {}).get("acts") or [])
+    target["title"] = mt.get("title", "")
+    target["description"] = mt.get("description", "")
+    _set_or_drop(target, "max_acts", mt.get("max_acts"))
+    acts = []
+    for i, row in enumerate(mt.get("acts") or [], start=1):
+        orig = row.get("orig")
+        entry = copy.deepcopy(originals[orig]) if isinstance(orig, int) and 0 <= orig < len(originals) else {}
+        entry["act_number"] = i
+        entry["title"] = row.get("title", "")
+        entry["description"] = row.get("description", "")
+        _set_or_drop(entry, "completion_signals", [c for c in row.get("completion_signals") or [] if c.strip()])
+        acts.append(entry)
+    target["acts"] = acts
 
 
 def _lore_to_board_entries(raw: dict) -> list:

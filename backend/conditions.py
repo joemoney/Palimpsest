@@ -500,13 +500,22 @@ def revelation_labels(story) -> dict:
     return out
 
 
+def display_names(story) -> dict:
+    """The `names` argument for `describe()`: fragment labels and thread titles, so a condition
+    reads as what it names rather than as ids."""
+    subplots = ((story or {}).get("plot") or {}).get("subplots") or {}
+    return {"revealed": revelation_labels(story),
+            "subplot_status": {sid: sp.get("title") for sid, sp in subplots.items()
+                               if isinstance(sp, dict) and sp.get("title")}}
+
+
 def describe(cond, top=True, names=None) -> str:
     """A short plain-English reading of `cond`, for edge labels and the evaluate panel. Lossy by
     design (never parsed back), total (never raises), and the same text wherever it appears -
     the board's own JS labeller only ever covers an edit the server has not seen yet.
 
-    `names` is optional display data, `{"revealed": revelation_labels(story)}`: with it, a
-    fragment leaf reads by its title rather than its id."""
+    `names` is optional display data (`display_names(story)`): with it, a fragment or thread
+    leaf reads by its title rather than its id."""
     cond = normalize(cond)
     if not cond:
         return "always"
@@ -570,6 +579,10 @@ def _describe_leaf(kind, value, names=None):
     if kind == "tier_reached" and isinstance(value, list) and len(value) == 2:
         return f"{str(value[0]).upper()} reached {value[1]}"
     if kind == "subplot_status" and isinstance(value, dict):
+        titles = (names or {}).get("subplot_status") or {}
+        if titles:
+            return ", ".join(f"\u201c{titles[k]}\u201d {v}" if titles.get(k) else f"thread {k} {v}"
+                             for k, v in value.items())
         return "thread " + ", ".join(f"{k} {v}" for k, v in value.items())
     if kind in ("turn_gte", "act_gte"):
         return f"{kind.split('_')[0]} >= {value}"

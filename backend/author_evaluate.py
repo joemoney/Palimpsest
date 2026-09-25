@@ -115,7 +115,7 @@ def evaluate_all(story: dict, sample: dict) -> tuple:
     projected, left_out = author_model.playable_projection(story, set(mechanics.registered_engines()))
     ctx = build_ctx(projected, sample)
     rows = []
-    names = {"revealed": conditions.revelation_labels(story)}
+    names = conditions.display_names(story)
     for path, cond, polarity, ending in conditions.iter_conditions(story):
         result = conditions.evaluate(cond, ctx, polarity, ending)
         rows.append({

@@ -132,8 +132,15 @@ def structural_issues(model: dict) -> list:
                                        "(e.g. {\"stat\": {\"axis\": \"reach\", \"at_least\": 20}}), "
                                        "or make the thread active at start."})
         if not incoming and not n.get("starts_active") and not n.get("activate_when"):
-            out.append({"id": "structural", "severity": "error", "node_id": n.get("id"),
-                        "message": f"{title} never becomes active: nothing opens or unlocks it."})
+            # An explicit starts_active: false is a choice - the thread waits for a manual
+            # activation in the Subplot Manager - so it is worth a warning, not an error. With
+            # neither field at all, nothing will ever start it.
+            if n.get("starts_active") is False:
+                out.append({"id": "structural", "severity": "warning", "node_id": n.get("id"),
+                            "message": f"{title} only starts when activated by hand in the Subplot Manager."})
+            else:
+                out.append({"id": "structural", "severity": "error", "node_id": n.get("id"),
+                            "message": f"{title} never becomes active: set Becomes active in its panel."})
         carries = any(e.get("type") == "delivers" and e.get("from") == n.get("id") for e in edges)
         if n.get("role") == "spine" and not carries:
             out.append({"id": "structural", "severity": "warning", "node_id": n.get("id"),

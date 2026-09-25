@@ -716,6 +716,20 @@ file back.
 
 ---
 
+**Diagram rework (2026-09-25, after S3).** The Diagram tab's default is now a **lanes** view,
+because the free canvas modelled threads as a chain (Start -> thread -> thread), which is not how
+the engine runs them (`docs/How_Threads_Work.md`: acts are the only sequence; threads run in
+parallel and feed ending waypoints). Lanes: an acts strip (main thread, authored acts - now
+editable, with `max_acts` marked not built - generated acts, finale), thread lanes grouped by
+role with activation/fail/cast badges, endings on the right, and one kind of line: a thread
+carrying a waypoint (`delivers`). Activation moved off drawn links onto the thread's inspector
+("Becomes active": at start / when a condition holds / started by hand), always written as a
+single edge from Start, which is how `author_model` already reads it. The free canvas stays
+behind a toggle. Lint now reports an explicit `starts_active: false` with no condition as a
+warning ("started by hand"), not the "never becomes active" error.
+
+---
+
 ## Phase S4: Lore, visibility and the narrator preview
 
 **Goal.** The author can see exactly what the narrator receives, and nothing leaks.

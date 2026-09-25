@@ -203,6 +203,68 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .fieldnote.err{color:var(--err);font-weight:600}
 
 /* ---- cast view ---- */
+/* ---- lanes view ---- */
+#lanesView{display:none;grid-template-rows:auto minmax(0,1fr);min-height:0;background:var(--ground)}
+#lanesTop{display:grid;gap:8px;padding:10px 16px 0}
+#lanesTop:empty{display:none}
+#lanesTop .overlay.inlane{position:static;box-shadow:none;max-width:none}
+#lanesTop .statbar.inlane{display:flex;flex-wrap:wrap;min-width:0;align-items:center;gap:4px 8px}
+#lanesBody{overflow:auto;padding:12px 16px 24px;min-height:0}
+.acts{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:14px}
+.acts .act{display:grid;gap:1px;text-align:left;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink);padding:5px 10px;cursor:pointer;font:inherit}
+.acts .act{height:auto;min-height:0;width:auto}
+.acts .act small{font:500 10px/1.2 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.acts .act b{font:600 14px/1.2 var(--display)}
+.acts .act.mt{border-left:3px solid var(--focus);max-width:320px}
+.acts .act.sel{box-shadow:0 0 0 2px var(--focus)}
+.acts .act.add{color:var(--muted);font-size:13px}
+.acts .act.gen{border-style:dashed;background:transparent;cursor:default}
+.acts .arrow{color:var(--muted)}
+.lanes{position:relative;display:grid;grid-template-columns:minmax(360px,1fr) minmax(260px,360px);column-gap:120px;align-items:start}
+.lanesvg{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;z-index:0}
+/* Lines run under the lanes and cards: a lane's dot and a waypoint's dot stay grabbable even with a
+   line ending on them, and a line is still clickable across the gap between the two columns. */
+.lanecol,.endcol{position:relative;z-index:1}
+.lanesvg .lhit{pointer-events:stroke;stroke:transparent;stroke-width:12px;fill:none;cursor:pointer}
+.lline{fill:none;stroke-width:2.2;opacity:.9}
+.lline.dim{opacity:.15}
+.lline.sel{stroke-width:3.4}
+.lline.temp{stroke:var(--focus)!important;stroke-dasharray:5 4}
+.lanecol,.endcol{display:grid;gap:10px;align-content:start}
+.lanegroup{display:grid;gap:6px;border-left:3px solid var(--k);padding-left:10px}
+.lgh{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.lgh b{color:var(--ink);font:600 14px var(--display);letter-spacing:.02em}
+.lane{position:relative;display:flex;align-items:center;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--k);border-radius:8px;padding:8px 22px 8px 12px;cursor:pointer;box-shadow:var(--shadow)}
+.lane.sel{box-shadow:0 0 0 2px var(--focus),var(--shadow)}
+.lane.dim,.ecard.dim{opacity:.4}
+.lbody{display:grid;gap:4px;min-width:0}
+.ltitle{display:flex;gap:8px;align-items:center}
+.ltitle b{font:600 15px/1.2 var(--display)}
+.lmeta{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--muted)}
+.abadge{font:500 11.5px var(--mono)}
+.abadge.on{color:var(--ok)}
+.abadge.cond{color:var(--focus)}
+.abadge.off{color:var(--muted)}
+.abadge.warn{color:var(--warn)}
+.abadge.fail{color:var(--err)}
+.lane .castline{display:flex;flex-wrap:wrap;gap:4px}
+.lane .castline .chip{color:var(--r-personal)}
+.lport{position:absolute;right:-8px;top:50%;width:14px;height:14px;margin-top:-7px;border-radius:50%;background:var(--surface);border:2px solid var(--k);cursor:crosshair}
+.lport:hover{background:var(--k)}
+.ecard{background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--k);border-radius:8px;padding:8px 10px 10px;cursor:pointer;box-shadow:var(--shadow);display:grid;gap:4px}
+.ecard.sel{box-shadow:0 0 0 2px var(--focus),var(--shadow)}
+.ecard .ehead{display:flex;justify-content:space-between;gap:8px;font:500 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--k)}
+.ecard .ehead .chip{text-transform:none;letter-spacing:0;max-width:65%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ecard h3{margin:0;font:600 16px/1.2 var(--display)}
+.ecard .eready{font-size:12px;color:var(--muted)}
+.ewps{display:grid;gap:3px;margin-top:2px}
+.ewp{position:relative;display:flex;align-items:center;gap:7px;font-size:12.5px;padding:3px 4px 3px 0;border-radius:5px}
+.ewp:hover{background:var(--raised)}
+.ewp .dot{flex:none;margin-left:-17px;width:12px;height:12px;border-radius:50%;background:var(--k);border:2px solid var(--surface);box-shadow:0 0 0 1px var(--k)}
+.ewp .dot.open{background:var(--surface);box-shadow:0 0 0 2px var(--warn)}
+.ewp .chip{margin-left:auto}
+.ecard.term{border-top-color:var(--terminal)}
+.lanelegend{margin:18px 0 0;font-size:12px;color:var(--muted)}
 #castView,#fragView,#worldView{display:none;overflow:auto;min-height:0;background:var(--ground)}
 .wsec{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px 14px;display:grid;gap:8px}
 .wsec h3{font:600 15px/1.2 var(--display);margin:0}
@@ -328,12 +390,13 @@ main.app{max-width:none}
         <button class="tab" id="tabWorld" type="button" role="tab" aria-selected="false">World</button>
       </div>
       <span class="sep" aria-hidden="true"></span>
-      <label class="toggle"><input type="checkbox" id="tLabels" checked> Waypoint labels</label>
-      <label class="toggle"><input type="checkbox" id="tUnlocks" checked> Unlock links</label>
-      <label class="toggle"><input type="checkbox" id="tFocus"> Focus (hide unrelated)</label>
+      <label class="toggle" title="The original drag-and-pan canvas. Lanes is the default view."><input type="checkbox" id="tCanvas"> Free canvas</label>
+      <label class="toggle canvasonly"><input type="checkbox" id="tLabels" checked> Waypoint labels</label>
+      <label class="toggle canvasonly"><input type="checkbox" id="tUnlocks" checked> Unlock links</label>
+      <label class="toggle canvasonly"><input type="checkbox" id="tFocus"> Focus (hide unrelated)</label>
       <label class="toggle"><input type="checkbox" id="tTimeline"> Timeline</label>
       <span class="sep" aria-hidden="true"></span>
-      <button class="btn" id="autoLayoutBtn" type="button">Auto-layout</button>
+      <button class="btn canvasonly" id="autoLayoutBtn" type="button">Auto-layout</button>
       <button class="btn" id="addThread" type="button">+ Thread</button>
       <button class="btn" id="addEnding" type="button">+ Ending</button>
       <button class="btn" id="sampleBtn" type="button" aria-expanded="false" aria-controls="samplePanel">Sample state</button>
@@ -365,6 +428,7 @@ main.app{max-width:none}
   </header>
 
   <div class="main">
+    <div id="lanesView" aria-label="Threads and endings"><div id="lanesTop"></div><div id="lanesBody"></div></div>
     <div class="canvas" id="canvas" aria-label="Storyboard canvas">
       <div class="world" id="world">
         <svg class="edges" id="edges" aria-hidden="true"></svg>
@@ -412,6 +476,10 @@ let view={x:24,y:60,k:.7};
 let sel=null;              // {type:'node',id} | {type:'edge',key}
 let showHealth=false;
 let viewMode='diagram';
+// Diagram tab: 'lanes' (default) or the free 'canvas'. Declared up here, not with the lanes code,
+// because renderCanvas() routes on it and may run before that code is reached.
+let diagramMode='lanes';
+try{diagramMode=localStorage.getItem('palimpsest-author-diagram')||'lanes'}catch(e){}
 const opts={labels:true,unlocks:true,focus:false};
 
 const $=s=>document.querySelector(s);
@@ -559,7 +627,10 @@ function issues(){
   }
   for(const e of model.edges)if(e.type==='delivers'&&!e.wp)out.push({lvl:'error',text:`${node(e.from).title} → ${node(e.to).title}: choose which waypoint this thread delivers.`,edge:gkey(e)});
   for(const n of model.nodes.filter(n=>n.kind==='subplot')){
-    if(!incoming(n.id).length)out.push({lvl:'error',text:`${n.title} never becomes active: nothing opens or unlocks it.`,id:n.id});
+    {const a=activation(n);
+     if(a.mode==='none')out.push({lvl:'error',text:`${n.title} never becomes active: set Becomes active in its panel.`,id:n.id});
+     else if(a.mode==='manual')out.push({lvl:'warn',text:`${n.title} only starts when activated by hand in the Subplot Manager.`,id:n.id});
+     else if(a.mode==='cond'&&!a.cond)out.push({lvl:'error',text:`${n.title} unlocks on a condition that isn't set yet.`,id:n.id});}
     const carries=model.edges.some(e=>e.type==='delivers'&&e.from===n.id);
     if(n.role==='spine'&&!carries)out.push({lvl:'warn',text:`${n.title} is a spine thread but carries no waypoint.`,id:n.id});
     if(n.role==='texture'&&carries)out.push({lvl:'warn',text:`${n.title} is texture but carries waypoints. Make it spine or personal.`,id:n.id});
@@ -616,7 +687,8 @@ function renderColHeads(){
   const firstTerm=model.nodes.filter(n=>n.ekind==='terminal').sort((a,b)=>a.y-b.y)[0];
   if(firstTerm){const h=el('div','colhead','Failure endings');h.appendChild(el('b',null,'Reached through stats, anytime'));h.style.left=firstTerm.x+'px';h.style.top=(firstTerm.y-54)+'px';world.appendChild(h)}
 }
-function renderCanvas(){
+function renderCanvas(){if(diagramMode==='lanes')return renderLanes();return renderCanvasFree()}
+function renderCanvasFree(){
   world.querySelectorAll('.node,.elabel,.colhead').forEach(n=>n.remove());
   const rel=related();
   renderColHeads();
@@ -760,7 +832,7 @@ function condLabel(c){
       if(k in c.stat)return `${String(c.stat.axis||'').toUpperCase()} ${op} ${c.stat[k]}`;
   }
   if(typeof c.relationship==='string')for(const k of ['tier_gte','tier_lte','peak_gte'])if(k in c)return `${c.relationship} ${k} ${c[k]}`;
-  if(c.subplot_status&&typeof c.subplot_status==='object')return 'thread '+Object.entries(c.subplot_status).map(([k,v])=>`${k} ${v}`).join(', ');
+  if(c.subplot_status&&typeof c.subplot_status==='object')return Object.entries(c.subplot_status).map(([k,v])=>{const t=node(k);return `${t&&t.title?`\u201c${t.title}\u201d`:'thread '+k} ${v}`}).join(', ');
   for(const k of ['revealed','revelation'])if(k in c)return frag(c[k])?`revealed: \u201c${fragLabel(c[k])}\u201d`:`revealed: ${c[k]}`;
   for(const k of ['flag','item_tag'])if(k in c)return `${k}: ${c[k]}`;
   for(const k of ['turn_gte','act_gte'])if(k in c)return `${k.split('_')[0]} >= ${c[k]}`;
@@ -995,6 +1067,8 @@ function renderInspector(){
   if(sel.type==='edge')return renderEdgeInspector();
   if(sel.type==='char')return renderCharInspector();
   if(sel.type==='frag')return renderFragInspector();
+  if(sel.type==='mainthread')return renderMainThreadInspector();
+  if(sel.type==='act')return renderActInspector();
   if(sel.type==='loc')return renderLocInspector();
   if(sel.type==='faction')return renderFactionInspector();
   if(sel.type==='lore')return renderLoreInspector();
@@ -1037,23 +1111,8 @@ function renderInspector(){
   if(n.kind==='subplot'){
     insp.appendChild(field('Role',selectInput(n.role,[['spine','Spine: carries waypoints'],['personal','Personal: a relationship arc'],['texture','Texture: episodic, generated']],v=>n.role=v)));
     insp.appendChild(el('p','note',ROLE_NOTE[n.role]));
-    insp.appendChild(el('h4',null,'Becomes active'));
-    const inc=incoming(n.id);
-    if(!inc.length)insp.appendChild(el('p','note','Never. Connect it from the start or from another thread.'));
-    const ul=el('ul','list');
-    inc.forEach(e=>{const li=el('li','wp');const src=node(e.from);
-      li.appendChild(el('div','id',e.type==='opens'?'at the start':`after ${src.title}`));
-      if(e.type==='unlocks')li.appendChild(jsonConditionField(e.cond_raw,v=>setUnlockCond(e,v),UNLOCK_PLACEHOLDER));
-      ul.appendChild(li)});
-    insp.appendChild(ul);
-    insp.appendChild(el('h4',null,'Carries toward'));
-    const out=model.edges.filter(e=>e.type==='delivers'&&e.from===n.id);
-    if(!out.length)insp.appendChild(el('p','note','Nothing yet. Drag from its port onto an ending.'));
-    const ul2=el('ul','list');
-    out.forEach(e=>{const end=node(e.to);const w=(end.waypoints||[]).find(w=>w.id===e.wp);const li=el('li','wp');
-      const idr=el('div','id');idr.appendChild(el('span',null,end.title));const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{model.edges.splice(model.edges.indexOf(e),1);save();render()};idr.appendChild(rm);li.appendChild(idr);
-      li.appendChild(el('div','carriers'+(w?'':' none'),w?w.plant:'no waypoint chosen'));ul2.appendChild(li)});
-    insp.appendChild(ul2);
+    renderActivationField(n);
+    renderCarriesField(n);
 
     insp.appendChild(el('h4',null,'Fails when'));
     insp.appendChild(el('p','note','A condition (CR-10) - when true, the thread is marked failed. A destination whose uncompleted waypoints are carried only by failed threads is pruned.'));
@@ -1329,7 +1388,7 @@ function renderOverview(){
 
   insp.appendChild(el('h4',null,'Using the board'));
   const tips=el('ul','tips');
-  ['Click a box to trace every path into and out of it; turn on Focus to hide everything else instead of dimming it.','Drag a box to move it; drag empty space to pan; scroll to zoom. Auto-layout re-columns everything by how many unlocks it is from the start.','Drag from a round port onto a thread or ending to connect them. Each waypoint gets its own row and its own line — no more guessing which line feeds which slot.','Click a line or its label to edit or remove the link.','Switch to the Matrix tab for a thread-by-waypoint grid — better than the diagram once a story has a lot of threads.','The Cast tab edits the authored characters (world.characters). Each field is badged with what reaches the narrator and what is only stored.','The Stats panel (top left of the diagram) lists every stat axis. Click one to open its tier ladder: drag a boundary to move where a tier starts. After Evaluate, it shows each axis\'s sample value and tier.','Turn on Timeline to see the ending funnel\'s phases. Drag a boundary to set open_until, narrow_until or commit_by; failure endings appear as ticks at their min_turn.','Validate checks the schema and lint rules and shows a diff against the saved file; Save runs the same check and, if nothing blocks it, writes the file.'].forEach(t=>tips.appendChild(el('li',null,t)));
+  ['Lanes: threads run in parallel, grouped by role; endings sit on the right. Drag a lane\u2019s dot onto a waypoint to have that thread carry it; click a line to remove it. When a thread starts is set in its panel under Becomes active.','Tick Free canvas for the original drag-and-pan view. Both edit the same story.','On the free canvas: click a box to trace every path into and out of it; turn on Focus to hide everything else instead of dimming it.','Drag a box to move it; drag empty space to pan; scroll to zoom. Auto-layout re-columns everything by how many unlocks it is from the start.','Drag from a round port onto a thread or ending to connect them. Each waypoint gets its own row and its own line — no more guessing which line feeds which slot.','Click a line or its label to edit or remove the link.','Switch to the Matrix tab for a thread-by-waypoint grid — better than the diagram once a story has a lot of threads.','The Cast tab edits the authored characters (world.characters). Each field is badged with what reaches the narrator and what is only stored.','The Stats panel (top left of the diagram) lists every stat axis. Click one to open its tier ladder: drag a boundary to move where a tier starts. After Evaluate, it shows each axis\'s sample value and tier.','Turn on Timeline to see the ending funnel\'s phases. Drag a boundary to set open_until, narrow_until or commit_by; failure endings appear as ticks at their min_turn.','Validate checks the schema and lint rules and shows a diff against the saved file; Save runs the same check and, if nothing blocks it, writes the file.'].forEach(t=>tips.appendChild(el('li',null,t)));
   const k=el('li');k.appendChild(el('kbd',null,'Esc'));k.appendChild(document.createTextNode(' clears the selection; '));k.appendChild(el('kbd',null,'Delete'));k.appendChild(document.createTextNode(' removes it.'));tips.appendChild(k);
   insp.appendChild(tips);
 }
@@ -1394,7 +1453,7 @@ document.addEventListener('keydown',ev=>{
     else if(sel.type==='axis')return;
     else if(sel.type==='char'){const c=chr(sel.name);if(!c)return;model.characters.splice(model.characters.indexOf(c),1);dropCharEverywhere(c.name);say('Deleted '+c.name)}
     else if(sel.type==='frag'){deleteFrag(sel.idx);ev.preventDefault();return}
-    else if(['loc','faction','lore'].includes(sel.type))return;
+    else if(['loc','faction','lore','act','mainthread'].includes(sel.type))return;
     else{const n=node(sel.id);if(!n||n.kind==='start')return;model.nodes=model.nodes.filter(x=>x!==n);model.edges=model.edges.filter(e=>e.from!==n.id&&e.to!==n.id)}
     sel=null;save();render();ev.preventDefault();
   }
@@ -1814,11 +1873,291 @@ function renderLoreInspector(){
   const del=el('button','btn danger','Delete lore entry');del.type='button';del.style.marginTop='22px';
   del.onclick=()=>{L.entries.splice(i,1);sel=null;save();render();say('Deleted '+(e.id||'lore entry'))};insp.appendChild(del);
 }
+/* ---------- lanes view (the Diagram tab's default) ----------
+   The story's real shape (docs/How_Threads_Work.md): acts are the only sequence; threads run in
+   parallel lanes, grouped by role, and what they feed is ending waypoints. So there is no
+   chaining here - a lane's only line is "carries this waypoint" (a delivers edge), drawn from the
+   lane to a waypoint row in an ending card. When a thread becomes active is a property of the
+   thread (its inspector's "Becomes active"), shown as a badge, not an arrow. The free canvas is
+   still available behind the "Free canvas" toggle; both edit the same model. */
+const ROLE_ORDER=[['spine','Spine','carries waypoints toward an ending'],['personal','Personal','a relationship arc; may carry waypoints'],['texture','Texture','episodic breathing room; carries nothing, closes within its act']];
+
+// Activation, read the way the writer (author_model._apply_subplots) will write it.
+function activation(n){
+  const inc=incoming(n.id);
+  if(inc.some(e=>e.type==='opens'))return {mode:'start'};
+  const conds=inc.filter(e=>e.type==='unlocks').map(e=>e.cond_raw).filter(Boolean);
+  if(inc.some(e=>e.type==='unlocks'))return {mode:'cond',cond:conds.length>1?{any:conds}:conds[0]};
+  if(n.starts_active)return {mode:'start'};
+  if(n.activate_when)return {mode:'cond',cond:n.activate_when};
+  if(n.starts_active===false)return {mode:'manual'};
+  return {mode:'none'};
+}
+// Rewrites a thread's activation as exactly one edge (or none), always from the Start box - the
+// template has no notion of which thread an unlock is "from"; a thread-to-thread unlock is just a
+// condition naming the other thread (subplot_status).
+// Client-only memory of a thread's last unlock condition, so trying "at start" or "by hand" and
+// switching back doesn't lose what was written. Never saved: it isn't part of the story.
+const lastUnlockCond={};
+function setActivation(n,mode,cond){
+  const prev=activation(n);if(prev.mode==='cond'&&prev.cond)lastUnlockCond[n.id]=prev.cond;
+  if(mode==='cond'&&!cond)cond=lastUnlockCond[n.id];
+  model.edges=model.edges.filter(e=>!(e.to===n.id&&(e.type==='opens'||e.type==='unlocks')));
+  delete n.starts_active;delete n.activate_when;
+  if(mode==='start')model.edges.push({type:'opens',from:'start',to:n.id});
+  else if(mode==='cond'){const e={type:'unlocks',from:'start',to:n.id};if(cond)setUnlockCond(e,cond);else e.cond='';model.edges.push(e)}
+  else if(mode==='manual')n.starts_active=false;
+}
+function unlockEdge(n){return model.edges.find(e=>e.to===n.id&&e.type==='unlocks')}
+function actBadge(n){
+  const a=activation(n);
+  if(a.mode==='start')return ['on','● at start'];
+  if(a.mode==='cond'){const l=a.cond?condLabel(a.cond):'condition not set';return [a.cond?'cond':'warn','◐ '+(l.length>60?l.slice(0,57)+'…':l)]}
+  if(a.mode==='manual')return ['off','○ started by hand only'];
+  return ['warn','never activates'];
+}
+function carryEdges(n){return model.edges.filter(e=>e.type==='delivers'&&e.from===n.id)}
+function addCarry(threadId,endId,wpId){
+  const t=node(threadId),end=node(endId);if(!t||!end)return;
+  if(end.ekind==='terminal'){say('Failure endings are reached through stats, not threads.');return}
+  if(t.role==='texture'){say('Texture threads carry nothing. Make it spine or personal first.');return}
+  if(model.edges.some(e=>e.type==='delivers'&&e.from===threadId&&e.to===endId&&e.wp===wpId)){say('Already carried by this thread.');return}
+  const e={type:'delivers',from:threadId,to:endId,wp:wpId};model.edges.push(e);
+  const w=(end.waypoints||[]).find(w=>w.id===wpId);
+  save();render();say(`${t.title||t.id} now carries “${w?w.plant:wpId}”.`);
+}
+function newThread(role){
+  const ids=new Set(model.nodes.map(n=>n.id));let k=model.nodes.filter(n=>n.kind==='subplot').length+1,id;
+  do{id='subplot_'+String(k++).padStart(3,'0')}while(ids.has(id));
+  const n={id,kind:'subplot',role,title:'New thread',theme:'',x:0,y:0};model.nodes.push(n);
+  setActivation(n,'start');sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();
+  say('Thread added, active from the start. Change that under Becomes active.');
+}
+function newEnding(ekind){
+  const ids=new Set(model.nodes.map(n=>n.id));let k=model.nodes.filter(n=>n.kind==='ending').length+1,id;
+  do{id='ending_'+k++}while(ids.has(id));
+  const cols=['e1','e2','e3','e4'];
+  const n=ekind==='terminal'?{id,kind:'ending',ekind:'terminal',source:'endings',title:'New failure ending',theme:'',x:0,y:0}
+    :{id,kind:'ending',ekind:'destination',color:cols[model.nodes.filter(n=>n.kind==='ending').length%4],title:'New ending',theme:'',waypoints:[],x:0,y:0};
+  model.nodes.push(n);sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();
+}
+
+function renderLanes(){
+  const lv=$('#lanesBody');if(!lv)return;
+  const top=lv.scrollTop;lv.innerHTML='';
+  // acts strip
+  const MT=model.main_thread=model.main_thread||{title:'',description:'',max_acts:null,acts:[]};
+  const strip=el('div','acts');
+  const mt=el('button','act mt'+(sel&&sel.type==='mainthread'?' sel':''));mt.type='button';
+  mt.appendChild(el('small',null,'Main thread'));mt.appendChild(el('b',null,MT.title||'Untitled main thread'));mt.onclick=()=>{sel={type:'mainthread'};render()};strip.appendChild(mt);
+  MT.acts.forEach((a,i)=>{if(i||true)strip.appendChild(el('span','arrow','→'));
+    const b=el('button','act'+(sel&&sel.type==='act'&&sel.idx===i?' sel':''));b.type='button';
+    b.appendChild(el('small',null,`Act ${i+1} · authored`));b.appendChild(el('b',null,a.title||'Untitled act'));b.onclick=()=>{sel={type:'act',idx:i};render()};strip.appendChild(b)});
+  const addA=el('button','act add','+ Act');addA.type='button';addA.onclick=()=>{MT.acts.push({orig:null,title:'New act',description:'',completion_signals:[]});sel={type:'act',idx:MT.acts.length-1};save();render()};strip.appendChild(addA);
+  strip.appendChild(el('span','arrow','→'));
+  const gen=el('span','act gen');gen.appendChild(el('small',null,'generated in play'));
+  gen.appendChild(el('b',null,MT.max_acts?`up to act ${MT.max_acts}`:'no act limit'));strip.appendChild(gen);
+  strip.appendChild(el('span','arrow','→'));
+  const fin=el('span','act gen');fin.appendChild(el('small',null,'when an ending commits'));fin.appendChild(el('b',null,'Finale'));strip.appendChild(fin);
+  lv.appendChild(strip);
+
+  const grid=el('div','lanes');lv.appendChild(grid);
+  const threads=model.nodes.filter(n=>n.kind==='subplot');
+  const lanesCol=el('div','lanecol');grid.appendChild(lanesCol);
+  const rel=laneRelated();
+  for(const [role,label,blurb] of ROLE_ORDER){
+    const g=el('section','lanegroup');g.style.setProperty('--k',`var(--r-${role})`);
+    const h=el('div','lgh');const ht=el('div');ht.appendChild(el('b',null,label));ht.appendChild(el('span',null,' · '+blurb));h.appendChild(ht);
+    const add=el('button','btn small','+ '+label);add.type='button';add.onclick=()=>newThread(role);h.appendChild(add);g.appendChild(h);
+    const mine=threads.filter(n=>(n.role||'spine')===role);
+    if(!mine.length)g.appendChild(el('p','note',role==='texture'?'None authored. Texture threads are also generated freely in play.':`No ${label.toLowerCase()} threads yet.`));
+    for(const n of mine){
+      const d=el('div','lane'+(sel&&sel.type==='node'&&sel.id===n.id?' sel':'')+(rel&&!rel.has(n.id)?' dim':''));d.dataset.id=n.id;d.tabIndex=0;d.setAttribute('role','button');
+      const body=el('div','lbody');
+      const t=el('div','ltitle');t.appendChild(el('b',null,n.title||'Untitled thread'));
+      if(n.span==='multi_act')t.appendChild(el('span','chip','multi-act'));
+      body.appendChild(t);
+      const meta=el('div','lmeta');const [cls,txt]=actBadge(n);meta.appendChild(el('span','abadge '+cls,txt));
+      if(n.fail_when)meta.appendChild(el('span','abadge fail','✕ fails when '+condLabel(n.fail_when)));
+      const cc=carryEdges(n).length;meta.appendChild(el('span','lcount',cc?`carries ${cc}`:(role==='texture'?'carries nothing':'carries nothing yet')));
+      body.appendChild(meta);
+      if((n.cast||[]).length){const cl=el('div','castline');n.cast.forEach(nm=>cl.appendChild(el('span','chip',nm)));body.appendChild(cl)}
+      d.appendChild(body);
+      if(role!=='texture'){const p=el('span','lport');p.title='Drag onto a waypoint to carry it';p.dataset.port=n.id;d.appendChild(p)}
+      d.onclick=ev=>{if(ev.target.closest('.lport'))return;sel={type:'node',id:n.id};render()};
+      d.onkeydown=ev=>{if(ev.key==='Enter'){sel={type:'node',id:n.id};render()}};
+      g.appendChild(d);
+    }
+    lanesCol.appendChild(g);
+  }
+  const endCol=el('div','endcol');grid.appendChild(endCol);
+  const dh=el('div','lgh');const dht=el('div');dht.appendChild(el('b',null,'Destination endings'));dht.appendChild(el('span',null,' · steered toward'));dh.appendChild(dht);
+  const ad=el('button','btn small','+ Ending');ad.type='button';ad.onclick=()=>newEnding('destination');dh.appendChild(ad);endCol.appendChild(dh);
+  const dests=model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='destination');
+  if(!dests.length)endCol.appendChild(el('p','note','No destinations yet. Every story needs at least one catch-all.'));
+  for(const n of dests){
+    const c=carriers(n);
+    const card=el('div','ecard'+(sel&&sel.type==='node'&&sel.id===n.id?' sel':'')+(rel&&!rel.has(n.id)?' dim':''));card.dataset.id=n.id;card.style.setProperty('--k',kcol(n));
+    const eh=el('div','ehead');eh.appendChild(el('span',null,'Ending'));
+    eh.appendChild(el('span','chip',n.catchAll||!n.viable_while?'catch-all':'viable while '+condLabel(n.viable_while)));card.appendChild(eh);
+    card.appendChild(el('h3',null,n.title||'Untitled ending'));
+    if(n.ready_when)card.appendChild(el('div','eready','ready when '+condLabel(n.ready_when)));
+    const rows=el('div','ewps');
+    (n.waypoints||[]).forEach(w=>{const r=el('div','ewp');r.dataset.end=n.id;r.dataset.wp=w.id;const ok=c[w.id].length>0;
+      r.appendChild(el('i','dot'+(ok?'':' open')));r.appendChild(el('span',null,w.plant||w.id));
+      if(!ok)r.appendChild(el('span','chip warn','no thread'));r.title=w.plant+(ok?'':' — no thread carries this yet. Drag a lane’s dot here.');rows.appendChild(r)});
+    if(!(n.waypoints||[]).length)rows.appendChild(el('p','note','No waypoints yet: add them in its panel.'));
+    card.appendChild(rows);card.onclick=()=>{sel={type:'node',id:n.id};render()};endCol.appendChild(card);
+  }
+  const th=el('div','lgh');th.style.marginTop='14px';const tht=el('div');tht.appendChild(el('b',null,'Failure endings'));tht.appendChild(el('span',null,' · reached through stats, any act'));th.appendChild(tht);
+  const at=el('button','btn small','+ Failure');at.type='button';at.onclick=()=>newEnding('terminal');th.appendChild(at);endCol.appendChild(th);
+  const terms=model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='terminal');
+  if(!terms.length)endCol.appendChild(el('p','note','None.'));
+  for(const n of terms){const card=el('div','ecard term'+(sel&&sel.type==='node'&&sel.id===n.id?' sel':''));card.style.setProperty('--k','var(--terminal)');
+    card.appendChild(el('h3',null,n.title||'Untitled failure'));
+    card.appendChild(el('div','eready',n.ready_when?'ready when '+condLabel(n.ready_when):(n.trigger||'set a trigger')));
+    if(n.min_turn)card.appendChild(el('div','eready','from turn '+n.min_turn));
+    card.onclick=()=>{sel={type:'node',id:n.id};render()};endCol.appendChild(card)}
+
+  const svgL=document.createElementNS(NS,'svg');svgL.setAttribute('class','lanesvg');grid.appendChild(svgL);
+  lv.appendChild(el('p','lanelegend','● active at start · ◐ unlocks when its condition holds · ○ started by hand · a line = this thread carries that waypoint · a hollow dot = no thread carries it yet. Drag from a lane’s dot onto a waypoint to connect them; click a line to remove it.'));
+  lv.scrollTop=top;
+  requestAnimationFrame(drawLaneLines);
+}
+// What the current selection touches, for dimming everything else. null = nothing selected.
+function laneRelated(){
+  if(!sel)return null;
+  let ids=null;
+  if(sel.type==='node'){const n=node(sel.id);if(!n)return null;ids=new Set([n.id]);
+    for(const e of model.edges)if(e.type==='delivers'){if(e.from===n.id)ids.add(e.to);if(e.to===n.id)ids.add(e.from)}}
+  else if(sel.type==='edge'){const g=groups().find(g=>g.key===sel.key);if(g)ids=new Set([g.from,g.to])}
+  return ids;
+}
+function drawLaneLines(){
+  const grid=$('#lanesBody .lanes'),s=grid&&grid.querySelector('.lanesvg');if(!s)return;
+  const gr=grid.getBoundingClientRect();s.setAttribute('width',gr.width);s.setAttribute('height',gr.height);s.innerHTML='';
+  const rel=laneRelated();
+  for(const e of model.edges){
+    if(e.type!=='delivers'||!e.wp)continue;
+    const p=grid.querySelector(`.lport[data-port="${CSS.escape(e.from)}"]`),r=grid.querySelector(`.ewp[data-end="${CSS.escape(e.to)}"][data-wp="${CSS.escape(e.wp)}"]`);
+    if(!p||!r)continue;
+    const a=p.getBoundingClientRect(),b=r.querySelector('.dot').getBoundingClientRect();
+    const x1=a.left+a.width/2-gr.left,y1=a.top+a.height/2-gr.top,x2=b.left+b.width/2-gr.left,y2=b.top+b.height/2-gr.top;
+    const dx=Math.max(40,(x2-x1)*.45);
+    const hot=!rel||(rel.has(e.from)&&rel.has(e.to));
+    const key=gkey(e);
+    const path=document.createElementNS(NS,'path');path.setAttribute('d',`M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`);
+    path.setAttribute('class','lline'+(hot?'':' dim')+(sel&&sel.type==='edge'&&sel.key===key?' sel':''));
+    path.style.stroke=kcol(node(e.to)||{});path.dataset.edge=key;
+    const hit=path.cloneNode();hit.setAttribute('class','lhit');hit.style.stroke='transparent';hit.dataset.edge=key;
+    hit.addEventListener('click',ev=>{ev.stopPropagation();sel={type:'edge',key};render()});
+    const t=document.createElementNS(NS,'title');const w=((node(e.to)||{}).waypoints||[]).find(w=>w.id===e.wp);
+    t.textContent=`${(node(e.from)||{}).title} carries “${w?w.plant:e.wp}”`;hit.appendChild(t);
+    s.appendChild(path);s.appendChild(hit);
+  }
+}
+// Drag from a lane's dot onto a waypoint row (or an ending card, which picks its first uncarried
+// waypoint) to add a delivers edge.
+(function(){
+  let drag=null;
+  document.addEventListener('pointerdown',ev=>{
+    const p=ev.target.closest&&ev.target.closest('#lanesBody .lport');if(!p||ev.button!==0)return;
+    ev.preventDefault();const grid=$('#lanesBody .lanes'),s=grid.querySelector('.lanesvg');
+    const gr=grid.getBoundingClientRect(),a=p.getBoundingClientRect();
+    const tmp=document.createElementNS(NS,'path');tmp.setAttribute('class','lline temp');s.appendChild(tmp);
+    drag={from:p.dataset.port,x1:a.left+a.width/2-gr.left,y1:a.top+a.height/2-gr.top,tmp,grid};
+  });
+  document.addEventListener('pointermove',ev=>{if(!drag)return;const gr=drag.grid.getBoundingClientRect();
+    const x2=ev.clientX-gr.left,y2=ev.clientY-gr.top,dx=Math.max(30,(x2-drag.x1)*.45);
+    drag.tmp.setAttribute('d',`M${drag.x1},${drag.y1} C${drag.x1+dx},${drag.y1} ${x2-dx},${y2} ${x2},${y2}`)});
+  document.addEventListener('pointerup',ev=>{if(!drag)return;const d=drag;drag=null;d.tmp.remove();
+    const hitEl=document.elementFromPoint(ev.clientX,ev.clientY);if(!hitEl)return;
+    const row=hitEl.closest('.ewp');if(row){addCarry(d.from,row.dataset.end,row.dataset.wp);return}
+    const card=hitEl.closest('.ecard');if(card&&card.dataset.id){const end=node(card.dataset.id);
+      if(!end||end.ekind==='terminal'){say('Failure endings are reached through stats, not threads.');return}
+      const c=carriers(end),mine=new Set(carryEdges(node(d.from)).filter(e=>e.to===end.id).map(e=>e.wp));
+      const pick=(end.waypoints||[]).find(w=>!c[w.id].length&&!mine.has(w.id))||(end.waypoints||[]).find(w=>!mine.has(w.id));
+      if(!pick){say(end.waypoints&&end.waypoints.length?'This thread already carries every waypoint of that ending.':'Add a waypoint to that ending first.');return}
+      addCarry(d.from,end.id,pick.id)}});
+})();
+window.addEventListener('resize',()=>{if(viewMode==='diagram'&&diagramMode==='lanes')requestAnimationFrame(drawLaneLines)});
+
+// The thread inspector's "Becomes active" and "Carries toward", shared by both diagram modes.
+function renderActivationField(n){
+  insp.appendChild(el('h4',null,'Becomes active'));
+  const a=activation(n);
+  const sel_=cbSelect([['start','At the start'],['cond','When a condition holds'],['manual','Only when started by hand'],...(a.mode==='none'?[['none','(not set)']]:[])],a.mode,v=>{
+    if(v==='none')return;setActivation(n,v,v==='cond'?a.cond:undefined);save();render()});
+  sel_.setAttribute('aria-label','Becomes active');insp.appendChild(sel_);
+  const notes={start:'Active from the first turn, alongside every other thread active at start.',
+    cond:'Starts itself the turn this holds. "After another thread" is a Thread status condition, e.g. A Second Pair of Hands progressed.',
+    manual:'Never starts on its own; only an activation in the Subplot Manager starts it.',none:'Nothing will ever start this thread. Choose one above.'};
+  insp.appendChild(el('p','note',notes[a.mode]));
+  if(a.mode==='cond'){let e=unlockEdge(n);
+    if(model.edges.filter(x=>x.to===n.id&&x.type==='unlocks').length>1){setActivation(n,'cond',a.cond);e=unlockEdge(n)}
+    if(!e){setActivation(n,'cond',a.cond);e=unlockEdge(n)}
+    insp.appendChild(jsonConditionField(e.cond_raw,v=>{setUnlockCond(e,v);save();renderCanvas()}))}
+}
+function renderCarriesField(n){
+  insp.appendChild(el('h4',null,'Carries toward'));
+  const out=carryEdges(n);
+  if(n.role==='texture'){insp.appendChild(el('p','note','Texture threads carry nothing: they give the story something to do without touching the endings.'));if(!out.length)return}
+  if(!out.length)insp.appendChild(el('p','note','Nothing yet. Pick a waypoint below, or drag the lane’s dot onto one.'));
+  const ul=el('ul','list');
+  out.forEach(e=>{const end=node(e.to);const w=((end||{}).waypoints||[]).find(w=>w.id===e.wp);const li=el('li','wp');
+    const idr=el('div','id');idr.appendChild(el('span',null,(end||{}).title||e.to));const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{model.edges.splice(model.edges.indexOf(e),1);save();render()};idr.appendChild(rm);li.appendChild(idr);
+    li.appendChild(el('div','carriers'+(w?'':' none'),w?w.plant:'no waypoint chosen'));ul.appendChild(li)});
+  insp.appendChild(ul);
+  if(n.role==='texture')return;
+  const mine=new Set(out.map(e=>e.to+'|'+e.wp));const opts_=[['','+ Carry a waypoint…']];
+  for(const end of model.nodes.filter(x=>x.kind==='ending'&&x.ekind==='destination')){const c=carriers(end);
+    for(const w of end.waypoints||[])if(!mine.has(end.id+'|'+w.id))opts_.push([end.id+'|'+w.id,`${end.title}: ${w.plant}${c[w.id].length?'':' (uncarried)'}`])}
+  if(opts_.length>1){const s=cbSelect(opts_,'',v=>{if(!v)return;const [eid,wid]=v.split('|');addCarry(n.id,eid,wid)});s.setAttribute('aria-label','Carry a waypoint');insp.appendChild(s)}
+}
+function renderMainThreadInspector(){
+  const MT=model.main_thread;
+  insp.appendChild(eyebrow('Main thread · plot.main_thread'));
+  const h2=el('h2',null,MT.title||'Untitled main thread');insp.appendChild(h2);
+  insp.appendChild(field('Title',textInput(MT.title,v=>{MT.title=v;h2.textContent=v||'Untitled main thread'}),VIS.every));
+  const d=area(MT.description,v=>{MT.description=v});insp.appendChild(field('Description',d,VIS.every,el('div','fieldnote','The story’s through-line: what the whole playthrough is about. Every generated act works toward it.')));
+  const m=el('input');m.type='number';m.min='1';m.value=MT.max_acts??'';m.placeholder='e.g. 6';
+  m.addEventListener('input',()=>{const v=m.value.trim();MT.max_acts=v===''?null:Number(v);save();renderLanes()});
+  insp.appendChild(field('Max acts',m,['notbuilt','not built'],el('div','fieldnote','CR-05: once this many acts exist, no new act is generated and play continues in the last one until an ending commits. The engine doesn’t enforce it yet.')));
+}
+function renderActInspector(){
+  const MT=model.main_thread,i=sel.idx,a=MT.acts[i];if(!a){sel=null;return renderOverview()}
+  insp.appendChild(eyebrow(`Act ${i+1} · plot.main_thread.acts[${i}]`));
+  const h2=el('h2',null,a.title||'Untitled act');insp.appendChild(h2);
+  insp.appendChild(el('p','note','An authored act. Later acts are generated in play, one at a time, as each one resolves.'));
+  insp.appendChild(field('Title',textInput(a.title,v=>{a.title=v;h2.textContent=v||'Untitled act'}),['narrator','narrator · while current']));
+  const d=area(a.description,v=>{a.description=v});insp.appendChild(field('Description',d,['narrator','narrator · while current'],el('div','fieldnote','What happens in this act. Sent as CURRENT ACT while it runs.')));
+  const box=el('div');box.appendChild(listEditor(a.completion_signals,'e.g. the player has been warned away from the lighthouse at least once',()=>{save()}));
+  insp.appendChild(field('Completion signals',box,['stored','act judge'],el('div','fieldnote','What the act-advancement judge looks for to decide this act has resolved. Never sent to the narrator.')));
+  const r=el('div','row');r.style.marginTop='14px';
+  const mv=dlt=>{const j=i+dlt;if(j<0||j>=MT.acts.length)return;MT.acts.splice(i,1);MT.acts.splice(j,0,a);sel.idx=j;save();render()};
+  const up=el('button','btn small','Move earlier');up.type='button';up.disabled=i===0;up.onclick=()=>mv(-1);
+  const dn=el('button','btn small','Move later');dn.type='button';dn.disabled=i===MT.acts.length-1;dn.onclick=()=>mv(1);
+  r.appendChild(up);r.appendChild(dn);insp.appendChild(r);
+  const del=el('button','btn danger','Delete act');del.type='button';del.style.marginTop='22px';del.disabled=MT.acts.length<=1;
+  if(MT.acts.length<=1)del.title='A story needs at least one authored act.';
+  del.onclick=()=>{MT.acts.splice(i,1);sel=null;save();render();say('Act deleted. Acts are renumbered on save.')};insp.appendChild(del);
+}
+function setDiagramMode(m){
+  diagramMode=m;try{localStorage.setItem('palimpsest-author-diagram',m)}catch(e){}
+  $('#tCanvas').checked=m==='canvas';
+  document.querySelectorAll('.canvasonly').forEach(x=>x.style.display=m==='canvas'?'':'none');
+  const tl=$('#timeline'),sb=$('#statBar');
+  if(m==='lanes'){$('#lanesTop').appendChild(tl);$('#lanesTop').appendChild(sb);tl.classList.add('inlane');sb.classList.add('inlane')}
+  else{canvas.appendChild(tl);canvas.appendChild(sb);tl.classList.remove('inlane');sb.classList.remove('inlane')}
+  if(viewMode==='diagram'){canvas.style.display=m==='canvas'?'':'none';$('#lanesView').style.display=m==='lanes'?'grid':'none'}
+  render();if(m==='canvas')requestAnimationFrame(fit);
+}
 function setView(v){
   viewMode=v;
   for(const [id,name] of [['#tabDiagram','diagram'],['#tabMatrix','matrix'],['#tabCast','cast'],['#tabFrags','frags'],['#tabWorld','world']]){$(id).classList.toggle('active',v===name);$(id).setAttribute('aria-selected',v===name)}
   document.querySelector('.main').style.display=v==='matrix'?'none':'grid';
-  canvas.style.display=v==='diagram'?'':'none';
+  canvas.style.display=v==='diagram'&&diagramMode==='canvas'?'':'none';
+  $('#lanesView').style.display=v==='diagram'&&diagramMode==='lanes'?'grid':'none';
   $('#castView').style.display=v==='cast'?'block':'none';
   $('#fragView').style.display=v==='frags'?'block':'none';
   $('#worldView').style.display=v==='world'?'block':'none';
@@ -1840,9 +2179,9 @@ $('#tabFrags').onclick=()=>setView('frags');
 $('#tabWorld').onclick=()=>setView('world');
 $('#healthBtn').onclick=()=>{sel=null;render();insp.scrollTop=0;if(window.matchMedia('(max-width:900px)').matches)insp.scrollIntoView({behavior:'smooth'})};
 function spot(){const r=canvas.getBoundingClientRect();const p=toWorld(r.left+r.width/2,r.top+r.height/2);return {x:Math.round(p.x-118),y:Math.round(p.y-70)}}
-$('#addThread').onclick=()=>{let i=1;while(node('subplot_'+String(i).padStart(3,'0')))i++;const id='subplot_'+String(i).padStart(3,'0');const p=spot();
+$('#addThread').onclick=()=>{if(diagramMode==='lanes'&&viewMode==='diagram')return newThread('spine');let i=1;while(node('subplot_'+String(i).padStart(3,'0')))i++;const id='subplot_'+String(i).padStart(3,'0');const p=spot();
   model.nodes.push({id,kind:'subplot',role:'spine',title:'New thread',theme:'',x:p.x,y:p.y});sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();say('Thread added. Connect it from the start or another thread.')};
-$('#addEnding').onclick=()=>{let i=1;while(node('ending_'+i))i++;const id='ending_'+i;const p=spot();const cols=['e1','e2','e3','e4'];
+$('#addEnding').onclick=()=>{if(diagramMode==='lanes'&&viewMode==='diagram')return newEnding('destination');let i=1;while(node('ending_'+i))i++;const id='ending_'+i;const p=spot();const cols=['e1','e2','e3','e4'];
   model.nodes.push({id,kind:'ending',ekind:'destination',color:cols[model.nodes.filter(n=>n.kind==='ending').length%4],title:'New ending',theme:'',waypoints:[],x:p.x,y:p.y});sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();say('Ending added. Give it waypoints, then connect threads to it.')};
 
 /* ---------- stat sidebar and tier ladder (Phase S3, Authoring_Tool_Spec.md §4.8) ----------
@@ -2075,8 +2414,9 @@ function renderSample(){
 $('#sampleBtn').onclick=()=>{const p=$('#samplePanel');const open=p.style.display==='none';p.style.display=open?'block':'none';p.hidden=!open;$('#sampleBtn').setAttribute('aria-expanded',open);if(open)renderSample()};
 $('#sampleReset').onclick=()=>{sample={};renderSample()};
 
-applyView();render();
-requestAnimationFrame(fit);
+applyView();
+$('#tCanvas').onchange=ev=>setDiagramMode(ev.target.checked?'canvas':'lanes');
+setDiagramMode(diagramMode);
 window.addEventListener('resize',()=>{clearTimeout(fit.t);fit.t=setTimeout(fit,150)});
 })();
 </script>

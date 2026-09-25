@@ -118,6 +118,10 @@ model = {"nodes": [
 issues = author_lint.structural_issues(model)
 never = [i for i in issues if "never becomes active" in i["message"]]
 assert len(never) == 1, issues
+model["nodes"][1]["starts_active"] = False
+issues = author_lint.structural_issues(model)
+assert not [i for i in issues if "never becomes active" in i["message"]], issues
+assert [i["severity"] for i in issues if "activated by hand" in i["message"]] == ["warning"], issues
 
 # --- structural: an unlock link with no condition is an error, not a silent TODO -------------
 model = {"nodes": [
@@ -311,7 +315,9 @@ assert not author_lint.has_errors([])
 
 # --- real stories and fixtures: no crash, pinned counts (catches unnoticed rule drift) --------
 REAL_FILES = {
-    "example": (os.path.join(REPO_ROOT, "stories", "example", "template.json"), 2),
+    # 1 = L08 (no endings yet). Its "The Lighthouse Question" is explicitly starts_active: false,
+    # which is a warning (started by hand), not the "never becomes active" error it used to count as.
+    "example": (os.path.join(REPO_ROOT, "stories", "example", "template.json"), 1),
     "regency": (os.path.join(REPO_ROOT, "test", "fixtures", "regency.json"), 1),
     "courtroom": (os.path.join(REPO_ROOT, "test", "fixtures", "courtroom.json"), 1),
     "survival": (os.path.join(REPO_ROOT, "test", "fixtures", "survival.json"), 1),
