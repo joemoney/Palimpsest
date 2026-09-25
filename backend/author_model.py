@@ -93,10 +93,11 @@ def to_board_model(raw: dict) -> dict:
 
     nodes.append(_start_node(raw))
 
+    names = {"revealed": conditions.revelation_labels(raw)}
     subplots = raw.get("plot", {}).get("subplots", {}) or {}
     for sid, sp in subplots.items():
         nodes.append(_thread_node(sid, sp))
-        edges.extend(_thread_edges(sid, sp))
+        edges.extend(_thread_edges(sid, sp, names))
 
     for cond in (raw.get("mechanics", {}).get("failure_conditions", {}) or {}).get("conditions", []) or []:
         nodes.append(_terminal_node(cond))
@@ -145,6 +146,10 @@ def to_board_model(raw: dict) -> dict:
         {"id": f.get("id", ""), "detect": f.get("detect", "")}
         for f in (declared or []) if isinstance(f, dict)
     ]
+    # revelations: mechanics.revelations entries for the Fragments tab. Always present (an
+    # empty list when none) so the board has something to add to; from_board_model leaves the
+    # block untouched when the list comes back unchanged, and removes it when emptied (P-2).
+    result["revelations"] = _revelations_to_board(raw)
     result["refs"] = _condition_refs(raw)
     # stat_axes: the tier ladder's data (S3). P-2: omitted when the story has no
     # mechanics.stats block at all - there is no ladder to draw for stats that don't exist.
@@ -244,7 +249,7 @@ def _thread_node(sid: str, sp: dict) -> dict:
                        theme=sp.get("description", ""), role=sp.get("role", "spine"))
 
 
-def _thread_edges(sid: str, sp: dict) -> list:
+def _thread_edges(sid: str, sp: dict, names=None) -> list:
     edges = []
     if sp.get("starts_active"):
         edges.append({"type": "opens", "from": "start", "to": sid})
@@ -254,7 +259,7 @@ def _thread_edges(sid: str, sp: dict) -> list:
         # best-effort string goes in `cond` purely for the edge label. Neither is lossy: the
         # writer always regenerates activate_when from `cond_raw` when present.
         edges.append({"type": "unlocks", "from": "start", "to": sid,
-                       "cond": _condition_label(sp["activate_when"]), "cond_raw": sp["activate_when"]})
+                       "cond": _condition_label(sp["activate_when"], names), "cond_raw": sp["activate_when"]})
     for target in sp.get("delivers", []) or []:
         if "." not in target:
             continue
@@ -263,7 +268,7 @@ def _thread_edges(sid: str, sp: dict) -> list:
     return edges
 
 
-def _condition_label(cond) -> str:
+def _condition_label(cond, names=None) -> str:
     """Edge label for a condition loaded from disk: `conditions.describe`, shortened to fit on
     a canvas edge, never round-tripped from. The board's client-side labeller (`condLabel` in
     author_board.html) covers an edit the server hasn't seen yet."""
@@ -271,7 +276,7 @@ def _condition_label(cond) -> str:
         return "condition"
     if len(cond) == 1 and "condition" in cond:  # legacy free-text shape, not CR-02 grammar
         return str(cond["condition"])
-    text = conditions.describe(cond)
+    text = conditions.describe(cond, names=names)
     return text if len(text) <= 56 else text[:53] + "..."
 
 
@@ -322,6 +327,26 @@ def _ending_node(entry: dict, index: int) -> dict:
     )
 
 
+def _revelation_entries(raw: dict) -> list:
+    """The authored fragment entries, from either the v3 `{engine, entries}` shape or the v2
+    bare list (still readable here, though the schema rejects it on save)."""
+    block = (raw.get("mechanics") or {}).get("revelations")
+    entries = block.get("entries") if isinstance(block, dict) else block
+    return [e for e in entries or [] if isinstance(e, dict)]
+
+
+def _revelations_to_board(raw: dict) -> list:
+    """One row per fragment: `id`, `title` (the author-only `_title`), `trigger` (what the
+    state-update pass watches for), `content` (what the narrator is given once revealed),
+    `after` (fragments that must be revealed first). `orig` is the id as loaded, so a renamed
+    fragment still patches its own entry on save rather than being rebuilt."""
+    return [{
+        "orig": e.get("id", ""), "id": e.get("id", ""), "title": e.get("_title", ""),
+        "trigger": e.get("trigger", ""), "content": e.get("content", ""),
+        "after": list(e.get("after") or []),
+    } for e in _revelation_entries(raw)]
+
+
 def _characters_to_board(characters: dict) -> list:
     out = []
     for name, c in characters.items():
@@ -356,6 +381,7 @@ def from_board_model(raw: dict, model: dict) -> dict:
     _apply_flags(out, model.get("flags_declared"))
     _apply_stat_tiers(out, model.get("stat_axes"))
     _apply_characters(out, model.get("characters"))
+    _apply_revelations(out, raw, model.get("revelations"))
     _apply_positions(out, nodes)
 
     return out
@@ -599,6 +625,50 @@ def _apply_characters(out: dict, characters) -> None:
         world["characters"] = chars
     else:
         world.pop("characters", None)
+
+
+def _apply_revelations(out: dict, raw: dict, rows) -> None:
+    """Patch `mechanics.revelations` from the Fragments tab. Untouched when the rows are what
+    the template already holds (the byte-identical round trip). Otherwise each row patches a
+    deep copy of its original entry (matched by `orig`), so an authored field the tab has no
+    editor for survives; a new row starts empty. A blank title or `after` removes the key
+    rather than writing an empty value, and a row with no id is dropped, as a nameless
+    character is.
+
+    A new block is declared with `triggered_reveal` (declare-to-bind: fragments with no engine
+    would sit inert). An existing block keeps whatever engine it has. Emptying the list removes
+    the block: an engine declared with no entries raises at load, and an absent module is
+    simply absent (P-2)."""
+    if rows is None or rows == _revelations_to_board(raw):
+        return
+    originals = {e.get("id"): e for e in _revelation_entries(raw)}
+    entries = []
+    for row in rows:
+        fid = (row.get("id") or "").strip()
+        if not fid:
+            continue
+        entry = copy.deepcopy(originals.get(row.get("orig"), {}))
+        entry["id"] = fid
+        entry["trigger"] = row.get("trigger", "")
+        entry["content"] = row.get("content", "")
+        after = [a for a in row.get("after") or [] if a]
+        if after:
+            entry["after"] = after
+        else:
+            entry.pop("after", None)
+        if (row.get("title") or "").strip():
+            entry["_title"] = row["title"].strip()
+        else:
+            entry.pop("_title", None)
+        entries.append(entry)
+    mechanics = out.setdefault("mechanics", {})
+    if not entries:
+        mechanics.pop("revelations", None)
+        return
+    block = mechanics.get("revelations")
+    if not isinstance(block, dict):
+        block = mechanics["revelations"] = {"engine": "triggered_reveal"}
+    block["entries"] = entries
 
 
 def _apply_positions(out: dict, nodes: list) -> None:

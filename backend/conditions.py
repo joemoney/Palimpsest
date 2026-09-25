@@ -478,10 +478,35 @@ def _waypoints_done(value, ctx, polarity, ending):
 
 # --- plain-English rendering ---------------------------------------------------------------
 
-def describe(cond, top=True) -> str:
+FRAGMENT_LABEL_MAX = 48
+
+
+def revelation_labels(story) -> dict:
+    """`{fragment id: short human label}` for every `mechanics.revelations` entry, so a
+    `revealed` leaf reads as what the fragment *is* rather than a bare `frag_0006`. The label is
+    the author-only `_title` when there is one, else the start of the trigger (the event that
+    reveals it). Never the `content`: that is what the narrator is given once the fragment is
+    revealed, and an edge label is not the place to read it early."""
+    block = ((story or {}).get("mechanics") or {}).get("revelations")
+    entries = block.get("entries") if isinstance(block, dict) else block
+    out = {}
+    for e in entries or []:
+        if not isinstance(e, dict) or not e.get("id"):
+            continue
+        text = (e.get("_title") or "").strip() or (e.get("trigger") or "").strip()
+        if len(text) > FRAGMENT_LABEL_MAX:
+            text = text[:FRAGMENT_LABEL_MAX - 1].rstrip() + "\u2026"
+        out[e["id"]] = text or e["id"]
+    return out
+
+
+def describe(cond, top=True, names=None) -> str:
     """A short plain-English reading of `cond`, for edge labels and the evaluate panel. Lossy by
     design (never parsed back), total (never raises), and the same text wherever it appears -
-    the board's own JS labeller only ever covers an edit the server has not seen yet."""
+    the board's own JS labeller only ever covers an edit the server has not seen yet.
+
+    `names` is optional display data, `{"revealed": revelation_labels(story)}`: with it, a
+    fragment leaf reads by its title rather than its id."""
     cond = normalize(cond)
     if not cond:
         return "always"
@@ -493,17 +518,17 @@ def describe(cond, top=True) -> str:
         if tag == "group":
             _, kind, value = part
             if kind == "not":
-                bits.append("not " + describe(value, top=False))
+                bits.append("not " + describe(value, top=False, names=names))
             else:
                 joined = (" and " if kind == "all" else " or ").join(
-                    describe(c, top=False) for c in value if c) if isinstance(value, list) else ""
+                    describe(c, top=False, names=names) for c in value if c) if isinstance(value, list) else ""
                 bits.append(joined if top and len(cond) == 1 else f"({joined})")
         elif tag == "stat":
             bits.append(_describe_numeric(str(part[1]["axis"]).upper(), part[1]))
         elif tag == "relationship":
             bits.append(_describe_relationship(part[1]))
         elif tag == "leaf":
-            bits.append(_describe_leaf(part[1], part[2]))
+            bits.append(_describe_leaf(part[1], part[2], names))
         else:
             bits.append("condition")
     return " and ".join(b for b in bits if b) or "condition"
@@ -535,7 +560,9 @@ def _describe_relationship(spec):
     return ", ".join(out) or str(name)
 
 
-def _describe_leaf(kind, value):
+def _describe_leaf(kind, value, names=None):
+    if kind == "revealed" and ((names or {}).get("revealed") or {}).get(value):
+        return f"revealed: \u201c{names['revealed'][value]}\u201d"
     if kind in ("flag", "revealed", "item_tag"):
         return f"{kind}: {value}"
     if kind == "tier" and isinstance(value, list) and len(value) == 2:

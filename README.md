@@ -346,12 +346,12 @@ board rewrites its `## Synopsis` section from `meta.synopsis`.
 > its inspector has editable *Title*, *Main theme* and *Starting choices*
 > fields. Edits made there are **not saved** yet. Change `meta.title`,
 > `meta.synopsis`, `plot.opening_scene` and `character_creation` through
-> **Raw JSON** (Step 14) or in the file itself.
+> **Raw JSON** (Step 15) or in the file itself.
 
 #### Step 3 - Open the board and find your way around
 Go to `/author` and click your story. The board has four parts:
 
-- **The toolbar** (top): the **Diagram / Matrix / Cast** views; toggles for
+- **The toolbar** (top): the **Diagram / Matrix / Cast / Fragments** views; toggles for
   *Waypoint labels*, *Unlock links*, *Focus (hide unrelated)* and *Timeline*;
   the **+ Thread**, **+ Ending**, **Sample state**, **Raw JSON**,
   **Validate** and **Save** buttons; and the health badge at far right.
@@ -436,7 +436,7 @@ fix that in Step 7.
      destination is removed.
    - **On complete: stat events**: comma-separated cost keys applied when
      the thread completes, e.g. `lattice.rejoined`. These only mean something
-     in a story that prices its stats (see Step 10).
+     in a story that prices its stats (see Step 11).
 
 #### Step 7 - Wire it up
 Every Start, thread and ending box has a round **port** on its right edge.
@@ -499,7 +499,27 @@ The **leak check** marks any canon that has crept into the description or
 hook in red, because those two fields reach the narrator. **Named on the
 board** lists the threads and endings whose text mentions the character.
 
-#### Step 10 - Set stat tiers
+#### Step 10 - Write memory fragments (optional)
+Memory fragments are pieces of backstory the story reveals only when something
+specific happens on the page. Open the **Fragments** tab and click
+**+ Fragment**. For each one, fill in:
+
+| Field | Who sees it | What to write |
+|---|---|---|
+| **Id** | Conditions | What a *Revelation revealed* condition names, e.g. `frag_0006`. Renaming it updates every condition on the board that uses it. |
+| **Title** | You only | A short name, e.g. *the bloodline record*. It's shown wherever a condition names this fragment, so conditions read as what they mean rather than as an id. It's never sent to the narrator. |
+| **Trigger** | The state-update pass, until revealed | The event on the page that reveals the fragment. Write something a scene can show, not what it means. |
+| **Content** | The narrator, once revealed | What the narrator is given after the fragment is revealed. Until then it reaches no prompt. |
+| **Revealed only after** | The engine | Other fragments that must be revealed first, to build a chain. |
+
+**Used by** lists every condition that names the fragment, and clicking one opens it. In
+the condition builder, a *Revelation revealed* leaf lists fragments as
+`id — title`, with a chip that opens the fragment. A fragment with no title is
+labelled by the start of its trigger, never by its content. The health panel
+flags a duplicate id, an *after* naming a fragment that doesn't exist or
+forming a loop, and a missing trigger or content.
+
+#### Step 11 - Set stat tiers
 If the template has a `mechanics.stats` block (Step 2), the stat sidebar lists
 each axis. Click an axis to open its **tier ladder**, a strip from floor to
 ceiling:
@@ -520,7 +540,7 @@ an error (L07). **Sort tiers by where they start** fixes the ordering. New
 axes, costs and drift (`per_turn`) aren't edited on the board yet; set them in
 Raw JSON. Adding `costs` to any axis switches the whole story to priced stats.
 
-#### Step 11 - Add failure endings (optional)
+#### Step 12 - Add failure endings (optional)
 A failure ending is a loss the story can hit at any time, such as running out
 of NERVE. Click **+ Ending** and set **Kind** to *Failure: reached through
 stats*. Then fill in:
@@ -533,7 +553,7 @@ stats*. Then fill in:
 
 Failure endings carry no waypoints, and threads can't connect to them.
 
-#### Step 12 - Set the ending timeline (optional)
+#### Step 13 - Set the ending timeline (optional)
 Tick **Timeline** in the toolbar. It shows the story's ending-funnel timing
 as four phases:
 
@@ -552,7 +572,7 @@ example, the story is never forced to an ending, so it ends only when an
 ending becomes ready. The failure-ending row shows a tick at each failure
 ending's min turn.
 
-#### Step 13 - Test your conditions with Sample state
+#### Step 14 - Test your conditions with Sample state
 Click **Sample state** to describe a moment of play. You can set stat values,
 relationship scores and peaks, set flags, revealed fragments, thread status,
 planted waypoints, and the turn and act. Then click **Evaluate conditions**.
@@ -566,7 +586,7 @@ play would do. Nothing is saved.
 A good check for each ending that can be lost: set up the state that should
 rule it out, and confirm its *Viable while* no longer holds.
 
-#### Step 14 - Validate and save
+#### Step 15 - Validate and save
 - **The health badge** (top right) counts open issues and reads
   **Story holds** when there are none. Click an issue to jump to the box,
   link or character it's about. *Fix* marks an error and *Check* marks a

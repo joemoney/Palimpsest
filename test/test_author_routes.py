@@ -216,15 +216,21 @@ try:
 
     # --- /api/evaluate: the real conditions.evaluate against an author-typed sample state ----
     ev_raw = ss.load_template_raw("author_test_story")
+    # An engine this build doesn't register (CR-11's side_threads), so the "left out" line has
+    # something to name. ending_funnel was the stand-in until S5 registered it.
+    ev_raw.setdefault("mechanics", {})["side_threads"] = {"engine": "side_threads"}
+    ss.write_template("author_test_story", ev_raw, bump_version=False)
     ev_model = author_model.to_board_model(ev_raw)
     resp = client.post("/author/author_test_story/api/evaluate",
                        data={"model": json.dumps(ev_model), "sample": json.dumps({"stats": {"x": 1}})})
     assert resp.status_code == 200, resp.status_code
     assert b"Conditions against the sample state" in resp.data
-    assert b"ending_funnel" in resp.data, "an unbuilt engine must be named, not swallowed"
+    assert b"side_threads" in resp.data, "an unbuilt engine must be named, not swallowed"
     # D4: the stat sidebar's data rides an HX-Trigger payload, not the fragment. This story
     # has no stats block, so the payload is present but empty.
     assert json.loads(resp.headers["HX-Trigger"]) == {"author-stat-tiers": {}}, resp.headers.get("HX-Trigger")
+    del ev_raw["mechanics"]["side_threads"]
+    ss.write_template("author_test_story", ev_raw, bump_version=False)
     print("OK: /api/evaluate renders the condition table and names engines this build lacks")
 
     resp = client.post("/author/author_test_story/api/evaluate", data={"model": "not json", "sample": "{}"})

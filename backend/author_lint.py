@@ -238,6 +238,47 @@ def flag_issues(raw: dict) -> list:
     return out
 
 
+def revelation_issues(raw: dict) -> list:
+    """Fragment hygiene (`mechanics.revelations`), reported under L16 (dangling ids) where an id
+    is involved: a duplicate id is an error (a condition naming it can only ever mean the first),
+    as is an `after` naming a fragment that doesn't exist - the engine skips an unknown blocker
+    rather than waiting on it forever, so the ordering the author wrote would silently not hold.
+    An `after` that names the fragment itself, or a cycle, can never be satisfied: error. A
+    missing trigger or content is a warning - the fragment can never be revealed, or reveals
+    nothing."""
+    entries = author_model._revelation_entries(raw)
+    out, seen = [], set()
+    ids = {e.get("id") for e in entries}
+    after = {e.get("id"): [a for a in e.get("after") or [] if a in ids] for e in entries}
+    for e in entries:
+        fid = e.get("id") or "(no id)"
+        if fid in seen:
+            out.append({"id": "L16", "severity": "error", "message": f"Fragment {fid} is authored twice."})
+        seen.add(fid)
+        for a in e.get("after") or []:
+            if a not in ids:
+                out.append({"id": "L16", "severity": "error",
+                            "message": f"Fragment {fid} waits on {a}, which is not a fragment in this story."})
+        if not (e.get("trigger") or "").strip():
+            out.append({"id": "fragments", "severity": "warning",
+                        "message": f"Fragment {fid} has no trigger, so it can never be revealed."})
+        if not (e.get("content") or "").strip():
+            out.append({"id": "fragments", "severity": "warning",
+                        "message": f"Fragment {fid} has no content, so revealing it tells the narrator nothing."})
+    for start in after:
+        stack, visited = list(after[start]), set()
+        while stack:
+            nxt = stack.pop()
+            if nxt == start:
+                out.append({"id": "fragments", "severity": "error",
+                            "message": f"Fragment {start} waits on itself through its 'after' chain, so it can never be revealed."})
+                break
+            if nxt not in visited:
+                visited.add(nxt)
+                stack.extend(after.get(nxt, []))
+    return out
+
+
 def _number(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
@@ -293,7 +334,7 @@ def lint(raw: dict, model: dict) -> list:
     template: a condition that isn't an object at all is L01's finding, and reporting it twice
     in two vocabularies is noise."""
     schema = schema_errors(raw)
-    return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw)
+    return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw) + revelation_issues(raw)
             + stat_tier_issues(raw) + structural_issues(model) + cast_issues(model))
 
 
