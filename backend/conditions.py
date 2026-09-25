@@ -712,6 +712,16 @@ def iter_conditions(story):
     for i, gate in enumerate((mech.get("gate") or {}).get("gates") or []):
         if gate.get("requires"):
             yield f"mechanics.gate.gates[{i}].requires", gate["requires"], OPEN, None
+    # CR-06 lore. Both CLOSED: a lore entry is narrator knowledge, and `unlock` exists to keep
+    # *staged* knowledge dormant until earned - an unknown referent reading true would inject it
+    # early, which is a leak. Failing closed costs one missing line of lore, never a stuck save.
+    lore = mech.get("lore") if isinstance(mech.get("lore"), dict) else {}
+    for entry in lore.get("entries") or []:
+        if not isinstance(entry, dict):
+            continue
+        for field in ("also_when", "unlock"):
+            if entry.get(field):
+                yield f"mechanics.lore.entries[{entry.get('id', '?')}].{field}", entry[field], CLOSED, None
     endings = mech.get("endings") if isinstance(mech.get("endings"), dict) else {}
     for entry in endings.get("entries") or []:
         eid = entry.get("id", "?")

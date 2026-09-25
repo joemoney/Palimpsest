@@ -292,6 +292,7 @@
         "failure_conditions": { "$ref": "#/$defs/engine_failure_conditions" },
         "gate": { "$ref": "#/$defs/engine_gate" },
         "endings": { "$ref": "#/$defs/engine_endings" },
+        "lore": { "$ref": "#/$defs/engine_lore" },
         "tracked_entity": { "$ref": "#/$defs/tracked_entity" },
         "flags": { "$ref": "#/$defs/flags" }
       },
@@ -580,6 +581,36 @@
       "additionalProperties": false
     },
 
+    "engine_lore": {
+      "$comment": "CR-06 keyed lore. Written by the board at its final path (D1); the keyed_lore engine is not built yet, so a story authoring this block fails load_template() loudly until it is.",
+      "type": "object",
+      "properties": {
+        "engine": { "const": "keyed_lore" },
+        "max_active": { "type": "integer", "minimum": 1 },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "priority": { "type": "number" },
+              "keys": { "type": "array", "items": { "type": "string" } },
+              "also_when": { "$ref": "#/$defs/condition" },
+              "unlock": { "$ref": "#/$defs/condition" },
+              "sticky_turns": { "type": "integer", "minimum": 0 },
+              "content": { "type": "string" }
+            },
+            "required": ["id", "content"],
+            "patternProperties": { "^_": true },
+            "additionalProperties": false
+          }
+        }
+      },
+      "if": { "required": ["engine"] },
+      "then": { "required": ["entries"] },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
     "engine_endings": {
       "type": "object",
       "properties": {

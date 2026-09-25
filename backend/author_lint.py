@@ -279,6 +279,59 @@ def revelation_issues(raw: dict) -> list:
     return out
 
 
+# L13's stopwords: words so common in narration that a lore key made of one fires every turn.
+_STOPWORDS = {"the", "and", "you", "your", "for", "with", "that", "this", "what", "who", "her",
+              "his", "him", "she", "they", "them", "there", "then", "when", "have", "has", "was",
+              "are", "not", "but", "all", "one", "out", "into", "from"}
+
+
+def world_issues(raw: dict) -> list:
+    """World-tab hygiene, under L16 (dangling ids) where an id is involved: a `connected_to`, an
+    opening location or a gate `target` naming a location the story doesn't author. Only
+    checked when the story authors locations at all - a story with none uses free-text scenes.
+    A lore entry id authored twice is an error; lore with no keys and no `also_when` can never
+    trigger (warning)."""
+    out = []
+    locations = (raw.get("world") or {}).get("locations") or {}
+    if locations:
+        for lid, loc in locations.items():
+            for c in (loc or {}).get("connected_to") or []:
+                if c not in locations:
+                    out.append({"id": "L16", "severity": "error",
+                                "message": f"Location {lid} connects to {c}, which is not a location in this story."})
+        start = ((raw.get("plot") or {}).get("initial_scene") or {}).get("location")
+        if start and start not in locations:
+            out.append({"id": "L16", "severity": "error",
+                        "message": f"The opening scene is at {start}, which is not a location in this story."})
+        gate = (raw.get("mechanics") or {}).get("gate")
+        for g in (gate.get("gates") or []) if isinstance(gate, dict) else []:
+            if isinstance(g, dict) and g.get("target") and g["target"] not in locations:
+                out.append({"id": "L16", "severity": "error",
+                            "message": f"Gate {g.get('id', g['target'])} guards {g['target']}, which is not a location in this story."})
+    seen, key_owners = set(), {}
+    for e in author_model._lore_to_board_entries(raw):
+        for k in e.get("keys") or []:
+            key_owners.setdefault(str(k).strip().lower(), []).append(e.get("id") or "(no id)")
+    for key, owners in key_owners.items():
+        if len(key) < 3 or key in _STOPWORDS:
+            out.append({"id": "L13", "severity": "warning",
+                        "message": f"Lore key \"{key}\" ({', '.join(owners)}) is too generic: it will match almost every scene."})
+        elif len(set(owners)) > 1:
+            out.append({"id": "L13", "severity": "warning",
+                        "message": f"Lore key \"{key}\" is shared by {', '.join(sorted(set(owners)))}: one mention injects all of them."})
+    for e in author_model._lore_to_board_entries(raw):
+        lid = e.get("id") or "(no id)"
+        if lid in seen:
+            out.append({"id": "L16", "severity": "error", "message": f"Lore entry {lid} is authored twice."})
+        seen.add(lid)
+        if not (e.get("keys") or e.get("also_when")):
+            out.append({"id": "lore", "severity": "warning",
+                        "message": f"Lore entry {lid} has no keys and no also_when, so it can never be injected."})
+        if not (e.get("content") or "").strip():
+            out.append({"id": "lore", "severity": "warning", "message": f"Lore entry {lid} has no content."})
+    return out
+
+
 def _number(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
@@ -334,7 +387,7 @@ def lint(raw: dict, model: dict) -> list:
     template: a condition that isn't an object at all is L01's finding, and reporting it twice
     in two vocabularies is noise."""
     schema = schema_errors(raw)
-    return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw) + revelation_issues(raw)
+    return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw) + revelation_issues(raw) + world_issues(raw)
             + stat_tier_issues(raw) + structural_issues(model) + cast_issues(model))
 
 

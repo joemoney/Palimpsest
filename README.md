@@ -341,17 +341,16 @@ your story:
 Optionally, add a `README.md` next to the template. After every save, the
 board rewrites its `## Synopsis` section from `meta.synopsis`.
 
-> **The story's title, synopsis and opening are edited in Raw JSON, not on the
-> board.** The **Start** box on the canvas shows the title and synopsis, and
-> its inspector has editable *Title*, *Main theme* and *Starting choices*
-> fields. Edits made there are **not saved** yet. Change `meta.title`,
-> `meta.synopsis`, `plot.opening_scene` and `character_creation` through
-> **Raw JSON** (Step 15) or in the file itself.
+> **The opening narration and character creation are edited in Raw JSON.** The
+> title, synopsis, genre, tone, setting, rules, locations and factions all have
+> editors on the board (the **World** tab, Step 4), so the starter file only
+> needs enough to load. Change `plot.opening_scene` and `character_creation`
+> through **Raw JSON** (Step 16) or in the file itself.
 
 #### Step 3 - Open the board and find your way around
 Go to `/author` and click your story. The board has four parts:
 
-- **The toolbar** (top): the **Diagram / Matrix / Cast / Fragments** views; toggles for
+- **The toolbar** (top): the **Diagram / Matrix / Cast / Fragments / World** views; toggles for
   *Waypoint labels*, *Unlock links*, *Focus (hide unrelated)* and *Timeline*;
   the **+ Thread**, **+ Ending**, **Sample state**, **Raw JSON**,
   **Validate** and **Save** buttons; and the health badge at far right.
@@ -374,7 +373,40 @@ Box positions are kept in your browser as you drag, and written to the file
 (`_storyboard.positions`) when you save. Nothing else is written until you
 press **Save**.
 
-#### Step 4 - Add your endings, starting with the catch-all
+#### Step 4 - Build the world
+Open the **World** tab. It's one page with six sections, and each field is
+labelled with who sees it:
+
+- **Story**: title, synopsis (for you and the README; never prompted), and
+  the genre, tone and content rules sent with every narration. The Start
+  box's *Title* and *Synopsis* edit the same two fields.
+- **Setting**: the world in a paragraph, sent every turn.
+- **World rules**: strict facts the story must never break. Every rule
+  reaches every narration and every generated act, so the section shows
+  their total word count. A rule that only matters when a particular
+  character or place is on the page belongs in lore instead.
+- **Locations**: where scenes can happen. The narrator sees only the current
+  location's description and the names of the places connected to it. Pick
+  the **Opening location** here. Connections are one-way, and a location's
+  inspector marks which ones connect back. Renaming a location's id updates
+  every connection, the opening location, and any gate that guards it.
+- **Factions**: name, goals and stance toward the player, all sent every
+  turn.
+- **Lore** (*not built*): facts injected only when they matter. An entry has
+  **keys** (words matched in the player's action or the last scene), an
+  optional **Also when** condition (injects the entry with no key on the
+  page), an optional **Unlocks when** condition (keeps it dormant until
+  earned), a **priority**, **sticky turns**, and its **content**. At most
+  **Max active** entries are injected at once, highest priority first. Both
+  conditions are checked strictly: one naming something unknown never
+  injects. The engine that runs lore doesn't exist yet, so a story with lore
+  saves and checks fine but won't load for play until it does.
+
+Validate flags a connection, opening location or gate naming a location that
+doesn't exist, a lore id used twice, lore keys too short or common to be
+useful (L13), and lore that has neither keys nor a condition.
+
+#### Step 5 - Add your endings, starting with the catch-all
 Work backwards: decide where the story can end before deciding how it gets
 there.
 
@@ -404,7 +436,7 @@ You can come back later to each ending's other fields:
 - **Epilogue**: text shown to the player after THE END. It never reaches the
   narrator.
 
-#### Step 5 - Give each destination its waypoints
+#### Step 6 - Give each destination its waypoints
 Waypoints are the events that must happen on the page before a destination
 can be reached. In a destination's inspector, under **Waypoints**:
 
@@ -420,9 +452,9 @@ can be reached. In a destination's inspector, under **Waypoints**:
    written until you save. This button needs a working LLM key on the server.
 
 A waypoint that no thread carries shows *No thread carries this yet*. You
-fix that in Step 7.
+fix that in Step 8.
 
-#### Step 6 - Add threads
+#### Step 7 - Add threads
 1. Click **+ Thread** and give it a **Title**. Write its **Main theme**, which
    becomes the subplot's description.
 2. Choose its **Role**:
@@ -436,9 +468,9 @@ fix that in Step 7.
      destination is removed.
    - **On complete: stat events**: comma-separated cost keys applied when
      the thread completes, e.g. `lattice.rejoined`. These only mean something
-     in a story that prices its stats (see Step 11).
+     in a story that prices its stats (see Step 12).
 
-#### Step 7 - Wire it up
+#### Step 8 - Wire it up
 Every Start, thread and ending box has a round **port** on its right edge.
 Drag from a port onto another box to connect them:
 
@@ -458,7 +490,7 @@ columns with no carrier are the ones still to fill.
 A thread with no incoming link shows **Becomes active: Never**, and the health
 panel flags it. Every thread needs a way in.
 
-#### Step 8 - Write conditions, and declare flags first
+#### Step 9 - Write conditions, and declare flags first
 Every condition field (*Viable while*, *Ready when*, *Fails when*,
 *done_when*, *Unlocks when*) uses the same builder:
 
@@ -483,7 +515,7 @@ A condition that names an undeclared flag, or an unknown stat, fragment or
 character, is a save-blocking error (L10). Typos are caught here rather than
 in play.
 
-#### Step 9 - Build the cast
+#### Step 10 - Build the cast
 Switch to the **Cast** tab and click **+ Character**. For each character:
 
 | Field | Who sees it | What to write |
@@ -499,7 +531,7 @@ The **leak check** marks any canon that has crept into the description or
 hook in red, because those two fields reach the narrator. **Named on the
 board** lists the threads and endings whose text mentions the character.
 
-#### Step 10 - Write memory fragments (optional)
+#### Step 11 - Write memory fragments (optional)
 Memory fragments are pieces of backstory the story reveals only when something
 specific happens on the page. Open the **Fragments** tab and click
 **+ Fragment**. For each one, fill in:
@@ -519,7 +551,7 @@ labelled by the start of its trigger, never by its content. The health panel
 flags a duplicate id, an *after* naming a fragment that doesn't exist or
 forming a loop, and a missing trigger or content.
 
-#### Step 11 - Set stat tiers
+#### Step 12 - Set stat tiers
 If the template has a `mechanics.stats` block (Step 2), the stat sidebar lists
 each axis. Click an axis to open its **tier ladder**, a strip from floor to
 ceiling:
@@ -540,7 +572,7 @@ an error (L07). **Sort tiers by where they start** fixes the ordering. New
 axes, costs and drift (`per_turn`) aren't edited on the board yet; set them in
 Raw JSON. Adding `costs` to any axis switches the whole story to priced stats.
 
-#### Step 12 - Add failure endings (optional)
+#### Step 13 - Add failure endings (optional)
 A failure ending is a loss the story can hit at any time, such as running out
 of NERVE. Click **+ Ending** and set **Kind** to *Failure: reached through
 stats*. Then fill in:
@@ -553,7 +585,7 @@ stats*. Then fill in:
 
 Failure endings carry no waypoints, and threads can't connect to them.
 
-#### Step 13 - Set the ending timeline (optional)
+#### Step 14 - Set the ending timeline (optional)
 Tick **Timeline** in the toolbar. It shows the story's ending-funnel timing
 as four phases:
 
@@ -572,7 +604,7 @@ example, the story is never forced to an ending, so it ends only when an
 ending becomes ready. The failure-ending row shows a tick at each failure
 ending's min turn.
 
-#### Step 14 - Test your conditions with Sample state
+#### Step 15 - Test your conditions with Sample state
 Click **Sample state** to describe a moment of play. You can set stat values,
 relationship scores and peaks, set flags, revealed fragments, thread status,
 planted waypoints, and the turn and act. Then click **Evaluate conditions**.
@@ -586,7 +618,7 @@ play would do. Nothing is saved.
 A good check for each ending that can be lost: set up the state that should
 rule it out, and confirm its *Viable while* no longer holds.
 
-#### Step 15 - Validate and save
+#### Step 16 - Validate and save
 - **The health badge** (top right) counts open issues and reads
   **Story holds** when there are none. Click an issue to jump to the box,
   link or character it's about. *Fix* marks an error and *Check* marks a
@@ -599,8 +631,8 @@ rule it out, and confirm its *Viable while* no longer holds.
   story's `story_version` and refreshes the README synopsis. **A story with
   lint errors is hidden from players** until they're fixed.
 - **Raw JSON** is the escape hatch. It opens the whole template as text, for
-  anything the board can't edit yet (title, synopsis, opening, world, stat
-  costs, and so on). **Validate & save** there runs the same lint and refuses
+  anything the board can't edit yet (the opening narration, character
+  creation, stat costs, and so on). **Validate & save** there runs the same lint and refuses
   to save if there are errors.
 
 Nothing about a story's structure is locked in. Reopen the board at any time

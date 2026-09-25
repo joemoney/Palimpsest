@@ -733,7 +733,14 @@ file back.
     `test_genre_conformance.py` does, applies the sample state, and renders the **real**
     prompt builders with token counts.
   - Lists the modules the projection left out.
-- **Lore view** on `mechanics.lore` (CR-06).
+- **Lore view** on `mechanics.lore` (CR-06). **Built early (2026-09-25), inside the board's World
+  tab** alongside editors for `meta`, `world.setting_summary`/`rules`/`locations`/`factions`
+  and the opening location. `mechanics.lore` is in the schema (`engine_lore`) and written at its
+  final path with `engine: keyed_lore` (D1) - not registered yet, so a story authoring lore fails
+  `load_template()` until S5 builds it. Lore `also_when`/`unlock` are read CLOSED (an unknown
+  referent must never inject staged knowledge early). L13 (generic or shared keys) is in, plus
+  L16 for dangling location ids (connections, opening scene, gate targets). Still S4: the
+  sample-state highlighting of which entries would inject.
 - **Full linter** L01–L16, with a CLI twin at `scripts/lint_template.py`. The repository has
   `scripts/`, not the `tools/` package that §6 names.
 

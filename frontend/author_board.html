@@ -186,7 +186,12 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .fieldnote.err{color:var(--err);font-weight:600}
 
 /* ---- cast view ---- */
-#castView,#fragView{display:none;overflow:auto;min-height:0;background:var(--ground)}
+#castView,#fragView,#worldView{display:none;overflow:auto;min-height:0;background:var(--ground)}
+.wsec{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px 14px;display:grid;gap:8px}
+.wsec h3{font:600 15px/1.2 var(--display);margin:0}
+.wsec textarea{width:100%}
+.wlist{display:grid;gap:6px}
+.wrow{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:start}
 .ccard .trig{margin:0 12px 6px;font-size:12px;color:var(--muted)}
 .afterlist{display:grid;gap:4px}
 .afterlist label{display:flex;gap:6px;align-items:flex-start;font-size:12.5px}
@@ -303,6 +308,7 @@ main.app{max-width:none}
         <button class="tab" id="tabMatrix" type="button" role="tab" aria-selected="false">Matrix</button>
         <button class="tab" id="tabCast" type="button" role="tab" aria-selected="false">Cast</button>
         <button class="tab" id="tabFrags" type="button" role="tab" aria-selected="false">Fragments</button>
+        <button class="tab" id="tabWorld" type="button" role="tab" aria-selected="false">World</button>
       </div>
       <span class="sep" aria-hidden="true"></span>
       <label class="toggle"><input type="checkbox" id="tLabels" checked> Waypoint labels</label>
@@ -363,6 +369,7 @@ main.app{max-width:none}
     </div>
     <div id="castView" aria-label="Authored cast"></div>
     <div id="fragView" aria-label="Memory fragments"></div>
+    <div id="worldView" aria-label="World building"></div>
     <aside class="inspector" id="inspector" aria-live="polite"></aside>
   </div>
   <div id="matrixView" aria-label="Thread by waypoint matrix"></div>
@@ -449,6 +456,9 @@ function words(s){return (s||'').trim().split(/\s+/).filter(Boolean).length}
    event that reveals it - and never by its content, which the narrator only gets once revealed.
    Mirrors conditions.revelation_labels, which labels the same way server-side. */
 model.revelations=model.revelations||[];
+model.meta=model.meta||{title:model.story||'',synopsis:'',genre:'',tone:'',content_rules:[]};
+model.world=model.world||{setting_summary:'',rules:[],locations:[],factions:[],start_location:''};
+model.lore=model.lore||{max_active:null,entries:[]};
 const FRAG_LABEL_MAX=48;
 function frag(id){return model.revelations.find(f=>f.id===id)}
 function fragIds(){return model.revelations.map(f=>f.id).filter(Boolean)}
@@ -551,7 +561,7 @@ function issues(){
 
 /* ---------- render ---------- */
 // The canvas measures nodes as it draws, so it only renders while visible; setView redraws it on return.
-function render(){if(viewMode==='diagram'){renderCanvas();renderTimeline();renderStatBar()}renderInspector();renderHealth();if(viewMode==='matrix')renderMatrix();if(viewMode==='cast')renderCast();if(viewMode==='frags')renderFrags()}
+function render(){if(viewMode==='diagram'){renderCanvas();renderTimeline();renderStatBar()}renderInspector();renderHealth();if(viewMode==='matrix')renderMatrix();if(viewMode==='cast')renderCast();if(viewMode==='frags')renderFrags();if(viewMode==='world')renderWorld()}
 function renderHealth(){
   const n=issues().length,b=$('#healthBtn');
   b.textContent=n?`${n} issue${n>1?'s':''}`:'Story holds';
@@ -954,12 +964,16 @@ function renderInspector(){
   if(sel.type==='edge')return renderEdgeInspector();
   if(sel.type==='char')return renderCharInspector();
   if(sel.type==='frag')return renderFragInspector();
+  if(sel.type==='loc')return renderLocInspector();
+  if(sel.type==='faction')return renderFactionInspector();
+  if(sel.type==='lore')return renderLoreInspector();
   if(sel.type==='axis')return renderAxisInspector();
   const n=node(sel.id);if(!n){sel=null;return renderOverview()}
   insp.appendChild(eyebrow(n.kind==='start'?'Start':n.kind==='subplot'?`Thread · ${n.id}`:n.ekind==='terminal'?`Failure ending · ${n.id}`:`Ending · ${n.id}`));
   insp.appendChild(el('h2',null,n.title||'Untitled'));
-  insp.appendChild(field('Title',textInput(n.title,v=>{n.title=v;insp.querySelector('h2').textContent=v||'Untitled'})));
-  insp.appendChild(field('Main theme',area(n.theme,v=>n.theme=v)));
+  // On the Start box these are meta.title / meta.synopsis (the World tab edits the same fields).
+  insp.appendChild(field('Title',textInput(n.title,v=>{n.title=v;if(n.kind==='start'){model.meta.title=v;model.story=v;$('#storyTitle').textContent=v||'Untitled story'}insp.querySelector('h2').textContent=v||'Untitled'})));
+  insp.appendChild(field(n.kind==='start'?'Synopsis':'Main theme',area(n.theme,v=>{n.theme=v;if(n.kind==='start')model.meta.synopsis=v})));
   const cast=n.kind==='start'?[]:namedIn(n);
   if(cast.length){
     insp.appendChild(el('h4',null,'Characters named here'));
@@ -968,7 +982,8 @@ function renderInspector(){
     insp.appendChild(w);
   }
   if(n.kind==='start'){
-    insp.appendChild(field('Starting choices',textInput((n.variants||[]).join(', '),v=>n.variants=v.split(',').map(s=>s.trim()).filter(Boolean),'comma-separated')));
+    const sc=textInput((n.variants||[]).join(', '),()=>{},'none');sc.readOnly=true;
+    insp.appendChild(field('Starting choices',sc,null,el('div','fieldnote','The first character-creation step’s options. Read-only here: edit character_creation in Raw JSON.')));
     insp.appendChild(el('p','note','Drag from the round port on the right edge to a thread: it becomes active at the start. Connect with a condition to unlock it later instead.'));
   }
   if(n.kind==='subplot'){
@@ -1319,6 +1334,7 @@ document.addEventListener('keydown',ev=>{
     else if(sel.type==='axis')return;
     else if(sel.type==='char'){const c=chr(sel.name);if(!c)return;model.characters.splice(model.characters.indexOf(c),1);say('Deleted '+c.name)}
     else if(sel.type==='frag'){deleteFrag(sel.idx);ev.preventDefault();return}
+    else if(['loc','faction','lore'].includes(sel.type))return;
     else{const n=node(sel.id);if(!n||n.kind==='start')return;model.nodes=model.nodes.filter(x=>x!==n);model.edges=model.edges.filter(e=>e.from!==n.id&&e.to!==n.id)}
     sel=null;save();render();ev.preventDefault();
   }
@@ -1578,26 +1594,189 @@ function renderFragInspector(){
   r.appendChild(up);r.appendChild(dn);insp.appendChild(r);
   const del=el('button','btn danger','Delete fragment');del.type='button';del.style.marginTop='22px';del.onclick=()=>deleteFrag(i);insp.appendChild(del);
 }
+/* ---------- world view (meta, world.*, plot.initial_scene.location, mechanics.lore) ----------
+   model.meta / model.world / model.lore are author_model._meta_to_board / _world_to_board /
+   _lore_to_board. Locations, factions and lore entries carry `orig` (the id as loaded) so a
+   rename patches its own entry on save, and a location rename follows through server-side to
+   every connected_to, the opening location and any gate that targets it. */
+function openWorld(type,i){sel={type,idx:i};if(viewMode!=='world')setView('world');render()}
+function listEditor(arr,ph,onchange){
+  const box=el('div','wlist');
+  const draw=()=>{box.innerHTML='';
+    arr.forEach((v,i)=>{const r=el('div','wrow');const t=el('textarea');t.value=v;t.placeholder=ph;t.rows=2;
+      t.addEventListener('input',()=>{arr[i]=t.value;onchange()});
+      const up=el('button','btn small','↑');up.type='button';up.title='Move up';up.disabled=i===0;up.onclick=()=>{arr.splice(i-1,0,arr.splice(i,1)[0]);onchange();draw()};
+      const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{arr.splice(i,1);onchange();draw()};
+      r.appendChild(t);r.appendChild(up);r.appendChild(rm);box.appendChild(r)});
+    const add=el('button','btn small','+ Add');add.type='button';add.onclick=()=>{arr.push('');onchange();draw();const ts=box.querySelectorAll('textarea');ts.length&&ts[ts.length-1].focus()};box.appendChild(add)};
+  draw();return box;
+}
+function wsection(title,vis,note){const s=el('section','wsec');const h=el('h3',null,title);if(vis)h.appendChild(el('span','vis '+vis[0],vis[1]));s.appendChild(h);if(note)s.appendChild(el('p','note',note));return s}
+function locName(id){const l=(model.world.locations||[]).find(x=>x.id===id);return l?(l.name||l.id):id}
+function renderWorld(){
+  const wv=$('#worldView');const top=wv.scrollTop;wv.innerHTML='';
+  const W=model.world,M=model.meta,L=model.lore;
+  const wrap=el('div','castWrap');
+  const head=el('div','castHead');const t=el('div');t.appendChild(eyebrow('World building · meta, world, mechanics.lore'));t.appendChild(el('h2',null,M.title||'Untitled story'));head.appendChild(t);wrap.appendChild(head);
+  const changed=()=>{save();renderHealth()};
+
+  // Story
+  const st=wsection('Story');
+  const ti=textInput(M.title,v=>{M.title=v;model.story=v;const s=node('start');if(s)s.title=v;$('#storyTitle').textContent=v||'Untitled story';t.querySelector('h2').textContent=v||'Untitled story'},'the story’s title');
+  st.appendChild(field('Title',ti,null,el('div','fieldnote','Shown in the story list and on this board.')));
+  const syn=area(M.synopsis,v=>{M.synopsis=v;const s=node('start');if(s)s.theme=v});syn.placeholder='the pitch, a paragraph or two';
+  st.appendChild(field('Synopsis',syn,VIS.author,el('div','fieldnote','The story’s pitch. Saved into the README’s Synopsis section; never prompted.')));
+  const g=textInput(M.genre,v=>{M.genre=v},'e.g. salvage science fiction');st.appendChild(field('Genre',g,VIS.every));
+  const tn=textInput(M.tone,v=>{M.tone=v},'e.g. quiet, wry, uneasy');st.appendChild(field('Tone',tn,VIS.every));
+  st.appendChild(field('Content rules',listEditor(M.content_rules,'e.g. no graphic violence against children',changed),VIS.every,el('div','fieldnote','Hard content boundaries, sent with every narration.')));
+  wrap.appendChild(st);
+
+  // Setting + rules
+  const se=wsection('Setting',VIS.every,'The world in a paragraph. Sent with every narration, ahead of the story so far.');
+  const ss=area(W.setting_summary,v=>{W.setting_summary=v;wc.textContent=`${words(v)} words, every turn.`});ss.rows=6;se.appendChild(ss);
+  const wc=el('div','fieldnote',`${words(W.setting_summary)} words, every turn.`);se.appendChild(wc);wrap.appendChild(se);
+  const ru=wsection('World rules',VIS.every,'Strict, non-negotiable facts about how this world works. Every rule reaches every narration and every generated act or subplot, so keep each one short; a rule that only matters when a particular character or place is on the page belongs in lore instead.');
+  const rw=el('div','fieldnote');const rwc=()=>{rw.textContent=`${W.rules.length} rule${W.rules.length===1?'':'s'}, ${W.rules.reduce((a,r)=>a+words(r),0)} words every turn.`};rwc();
+  ru.appendChild(listEditor(W.rules,'a rule the story must never break',()=>{rwc();changed()}));ru.appendChild(rw);wrap.appendChild(ru);
+
+  // Locations
+  const lo=wsection('Locations',null,'Where scenes can happen. The narrator sees only the current location’s name and description, plus the names of the places connected to it; the state-update pass moves the scene between these ids.');
+  const sl=cbSelect([['','(none)'],...W.locations.filter(l=>l.id).map(l=>[l.id,l.name||l.id])],W.start_location||'',v=>{W.start_location=v;changed()});
+  lo.appendChild(field('Opening location',sl,null,el('div','fieldnote','Where the first scene takes place (plot.initial_scene.location).')));
+  const lg=el('div','castGrid');
+  W.locations.forEach((l,i)=>{const b=el('button','ccard'+(sel&&sel.type==='loc'&&sel.idx===i?' sel':''));b.type='button';b.style.setProperty('--k','var(--e2)');
+    const h=el('div','head');h.appendChild(el('span',null,`Location · ${l.id||'no id'}`));if(l.id&&l.id===W.start_location)h.appendChild(el('span','chip','opening'));b.appendChild(h);
+    b.appendChild(el('h3',null,l.name||'Unnamed place'));b.appendChild(el('p',null,l.description||'Add a description: it is what the narrator sees while the scene is here.'));
+    const ft=el('div','foot');ft.appendChild(el('span',null,(l.connected_to||[]).length?'→ '+l.connected_to.map(locName).join(', '):'no connections'));b.appendChild(ft);
+    b.onclick=()=>openWorld('loc',i);lg.appendChild(b)});
+  lo.appendChild(lg);
+  const al=el('button','btn','+ Location');al.type='button';al.onclick=()=>{let k=W.locations.length+1,id;do{id='loc_'+k++}while(W.locations.some(x=>x.id===id));W.locations.push({orig:'',id,name:'',description:'',connected_to:[]});save();openWorld('loc',W.locations.length-1)};lo.appendChild(al);
+  wrap.appendChild(lo);
+
+  // Factions
+  const fa=wsection('Factions',VIS.every,'Powers with their own agenda. Every faction’s name, goals and stance toward the player reach every narration.');
+  const fg=el('div','castGrid');
+  W.factions.forEach((f,i)=>{const b=el('button','ccard'+(sel&&sel.type==='faction'&&sel.idx===i?' sel':''));b.type='button';b.style.setProperty('--k','var(--e1)');
+    const h=el('div','head');h.appendChild(el('span',null,`Faction · ${f.id||'no id'}`));b.appendChild(h);
+    b.appendChild(el('h3',null,f.name||'Unnamed faction'));if(f.relationship_to_player)b.appendChild(el('div','role',f.relationship_to_player));
+    b.appendChild(el('p',null,f.goals||'Add goals: what this faction wants.'));b.onclick=()=>openWorld('faction',i);fg.appendChild(b)});
+  fa.appendChild(fg);
+  const af=el('button','btn','+ Faction');af.type='button';af.onclick=()=>{let k=W.factions.length+1,id;do{id='faction_'+k++}while(W.factions.some(x=>x.id===id));W.factions.push({orig:'',id,name:'',goals:'',relationship_to_player:''});save();openWorld('faction',W.factions.length-1)};fa.appendChild(af);
+  wrap.appendChild(fa);
+
+  // Lore
+  const lr=wsection('Lore',['notbuilt','not built'],'Facts the narrator needs only when they matter: an entry is injected when one of its keys appears in the player’s action or the last scene, or when its also-when condition holds, and stays for its sticky turns. The highest-priority entries win, up to the maximum active. The keyed_lore engine is not built yet: a story with lore saves, but won’t load for play until it is.');
+  const ma=el('input');ma.type='number';ma.min='1';ma.value=L.max_active??'';ma.placeholder='e.g. 3';ma.addEventListener('input',()=>{const v=ma.value.trim();L.max_active=v===''?null:Number(v);changed()});
+  lr.appendChild(field('Max active at once',ma));
+  const lgr=el('div','castGrid');
+  const order=L.entries.map((e,i)=>[e,i]).sort((a,b)=>(b[0].priority??0)-(a[0].priority??0));
+  order.forEach(([e,i],rank)=>{const b=el('button','ccard'+(sel&&sel.type==='lore'&&sel.idx===i?' sel':''));b.type='button';b.style.setProperty('--k','var(--e4, var(--focus))');
+    const h=el('div','head');h.appendChild(el('span',null,`Lore · ${e.id||'no id'}`));h.appendChild(el('span','chip',`priority ${e.priority??0}`));b.appendChild(h);
+    b.appendChild(el('div','trig',(e.keys||[]).length?'Keys: '+e.keys.join(', '):'No keys'+(e.also_when?'':' and no condition: never injected')));
+    if(e.also_when)b.appendChild(el('div','trig','Also when: '+condLabel(e.also_when)));
+    if(e.unlock)b.appendChild(el('div','trig','Unlocks when: '+condLabel(e.unlock)));
+    b.appendChild(el('p',null,e.content||'Add the content the narrator is given when this is active.'));
+    const ft=el('div','foot');ft.appendChild(el('span',null,`${words(e.content)} words`));if(e.sticky_turns)ft.appendChild(el('span',null,`· sticky ${e.sticky_turns}`));b.appendChild(ft);
+    b.onclick=()=>openWorld('lore',i);lgr.appendChild(b)});
+  lr.appendChild(lgr);
+  const alr=el('button','btn','+ Lore entry');alr.type='button';alr.onclick=()=>{let k=L.entries.length+1,id;do{id='lore_'+k++}while(L.entries.some(x=>x.id===id));L.entries.push({orig:'',id,priority:50,keys:[],content:''});save();openWorld('lore',L.entries.length-1)};lr.appendChild(alr);
+  wrap.appendChild(lr);
+  wv.appendChild(wrap);wv.scrollTop=top;
+}
+// Shared by the three entity inspectors: an id field that commits on change and refuses a blank
+// or a duplicate within its own list.
+function idField(row,list,noun,onRename){
+  const i=el('input');i.type='text';i.value=row.id;
+  i.addEventListener('change',()=>{const v=i.value.trim().replace(/\s+/g,'_');
+    if(!v||(v!==row.id&&list.some(x=>x!==row&&x.id===v))){say(v?`${v} is already taken.`:`A ${noun} needs an id.`);i.value=row.id;return}
+    const old=row.id;if(v===old)return;row.id=v;onRename&&onRename(old,v);save();render();say(`Renamed ${old} to ${v}.`)});
+  return i;
+}
+function renderLocInspector(){
+  const W=model.world,i=sel.idx,l=W.locations[i];if(!l){sel=null;return renderOverview()}
+  insp.appendChild(eyebrow(`Location · world.locations.${l.id}`));
+  const h2=el('h2',null,l.name||'Unnamed place');insp.appendChild(h2);
+  insp.appendChild(field('Id',idField(l,W.locations,'location',(o,v)=>{
+      for(const x of W.locations)x.connected_to=(x.connected_to||[]).map(c=>c===o?v:c);
+      if(W.start_location===o)W.start_location=v}),null,
+    el('div','fieldnote','The id the scene moves between. Renaming updates connections, the opening location and any gate that guards it.')));
+  const after=()=>{save();renderWorld();renderHealth()};
+  insp.appendChild(field('Name',textInput(l.name,v=>{l.name=v;h2.textContent=v||'Unnamed place';renderWorld()}),VIS.every.slice(0,1).concat(['narrator · here and adjacent'])));
+  const d=area(l.description,v=>{l.description=v;renderWorld()});d.rows=5;
+  insp.appendChild(field('Description',d,['narrator','narrator · while here']));
+  insp.appendChild(el('h4',null,'Connected to'));
+  insp.appendChild(el('p','note','Places reachable from here. The narrator is told their names as ADJACENT while the scene is here. Connections are one-way: tick this place on the other side too for a two-way path.'));
+  const others=W.locations.filter(x=>x!==l&&x.id);
+  if(!others.length)insp.appendChild(el('p','note','No other locations yet.'));
+  const list=el('div','afterlist');
+  others.forEach(o=>{const lab=el('label');const c=el('input');c.type='checkbox';c.checked=(l.connected_to||[]).includes(o.id);
+    c.onchange=()=>{l.connected_to=(l.connected_to||[]).filter(x=>x!==o.id);if(c.checked)l.connected_to.push(o.id);after()};
+    const back=(o.connected_to||[]).includes(l.id);
+    lab.appendChild(c);lab.appendChild(el('span',null,`${o.name||o.id}${back?' (connects back)':''}`));list.appendChild(lab)});
+  insp.appendChild(list);
+  if(W.start_location!==l.id){const b=el('button','btn small','Make this the opening location');b.type='button';b.style.marginTop='10px';b.onclick=()=>{W.start_location=l.id;after();renderInspector()};insp.appendChild(b)}
+  const del=el('button','btn danger','Delete location');del.type='button';del.style.marginTop='22px';
+  del.onclick=()=>{W.locations.splice(i,1);for(const x of W.locations)x.connected_to=(x.connected_to||[]).filter(c=>c!==l.id);if(W.start_location===l.id)W.start_location='';sel=null;save();render();say('Deleted '+(l.name||l.id))};
+  insp.appendChild(del);
+}
+function renderFactionInspector(){
+  const W=model.world,i=sel.idx,f=W.factions[i];if(!f){sel=null;return renderOverview()}
+  insp.appendChild(eyebrow(`Faction · world.factions.${f.id}`));
+  const h2=el('h2',null,f.name||'Unnamed faction');insp.appendChild(h2);
+  insp.appendChild(field('Id',idField(f,W.factions,'faction'),null,el('div','fieldnote','A key for you; nothing else names factions by id.')));
+  insp.appendChild(field('Name',textInput(f.name,v=>{f.name=v;h2.textContent=v||'Unnamed faction';renderWorld()}),VIS.every));
+  const g=area(f.goals,v=>{f.goals=v;renderWorld()});g.rows=3;insp.appendChild(field('Goals',g,VIS.every,el('div','fieldnote','What this faction wants, in a sentence or two.')));
+  insp.appendChild(field('Stance toward the player',textInput(f.relationship_to_player,v=>{f.relationship_to_player=v;renderWorld()},'e.g. your creditor - tolerable while you are unremarkable'),VIS.every,
+    el('div','fieldnote','Sent every turn as "toward the player: …". Unlike a character’s first contact, it never gives way to a score.')));
+  const del=el('button','btn danger','Delete faction');del.type='button';del.style.marginTop='22px';
+  del.onclick=()=>{W.factions.splice(i,1);sel=null;save();render();say('Deleted '+(f.name||f.id))};insp.appendChild(del);
+}
+function renderLoreInspector(){
+  const L=model.lore,i=sel.idx,e=L.entries[i];if(!e){sel=null;return renderOverview()}
+  insp.appendChild(eyebrow(`Lore · mechanics.lore.entries[${i+1}]`));
+  insp.appendChild(el('h2',null,e.id||'Lore entry'));
+  insp.appendChild(el('p','note','Not built yet: the keyed_lore engine doesn’t exist, so this entry is saved and checked but not yet injected in play.'));
+  insp.appendChild(field('Id',idField(e,L.entries,'lore entry'),null));
+  const num=(key,ph)=>{const n=el('input');n.type='number';n.value=e[key]??'';n.placeholder=ph;n.addEventListener('input',()=>{const v=n.value.trim();if(v==='')delete e[key];else e[key]=Number(v);save();renderWorld();renderHealth()});return n};
+  insp.appendChild(field('Priority',num('priority','e.g. 90'),null,el('div','fieldnote','Higher wins when more entries trigger than can be active at once.')));
+  const k=textInput((e.keys||[]).join(', '),v=>{const ks=v.split(',').map(s=>s.trim()).filter(Boolean);if(ks.length)e.keys=ks;else delete e.keys;renderWorld()},'comma-separated, e.g. Lark, Ferris, the diver');
+  insp.appendChild(field('Keys',k,null,el('div','fieldnote','Case-insensitive matches in the player’s action or the last scene. Avoid short or common words.')));
+  insp.appendChild(field('Sticky turns',num('sticky_turns','e.g. 3'),null,el('div','fieldnote','Stays active this many turns after it last triggered, so it doesn’t flicker mid-scene.')));
+  insp.appendChild(el('h4',null,'Also when'));
+  insp.appendChild(el('p','note','Injects the entry even with no key on the page, e.g. whenever a thread is active. Checked strictly: a condition naming something unknown never injects.'));
+  insp.appendChild(jsonConditionField(e.also_when,v=>{if(v===undefined)delete e.also_when;else e.also_when=v;renderWorld()}));
+  insp.appendChild(el('h4',null,'Unlocks when'));
+  insp.appendChild(el('p','note','Keeps the entry dormant until this holds, for knowledge the narrator should only gain later. Checked strictly, so it can never unlock early.'));
+  insp.appendChild(jsonConditionField(e.unlock,v=>{if(v===undefined)delete e.unlock;else e.unlock=v;renderWorld()}));
+  const c=el('textarea');c.value=e.content||'';c.rows=5;c.addEventListener('input',()=>{e.content=c.value;save();renderWorld();renderHealth()});
+  insp.appendChild(field('Content',c,['narrator','narrator · while active']));
+  const del=el('button','btn danger','Delete lore entry');del.type='button';del.style.marginTop='22px';
+  del.onclick=()=>{L.entries.splice(i,1);sel=null;save();render();say('Deleted '+(e.id||'lore entry'))};insp.appendChild(del);
+}
 function setView(v){
   viewMode=v;
-  for(const [id,name] of [['#tabDiagram','diagram'],['#tabMatrix','matrix'],['#tabCast','cast'],['#tabFrags','frags']]){$(id).classList.toggle('active',v===name);$(id).setAttribute('aria-selected',v===name)}
+  for(const [id,name] of [['#tabDiagram','diagram'],['#tabMatrix','matrix'],['#tabCast','cast'],['#tabFrags','frags'],['#tabWorld','world']]){$(id).classList.toggle('active',v===name);$(id).setAttribute('aria-selected',v===name)}
   document.querySelector('.main').style.display=v==='matrix'?'none':'grid';
   canvas.style.display=v==='diagram'?'':'none';
   $('#castView').style.display=v==='cast'?'block':'none';
   $('#fragView').style.display=v==='frags'?'block':'none';
+  $('#worldView').style.display=v==='world'?'block':'none';
   $('#matrixView').style.display=v==='matrix'?'block':'none';
   // Leaving the cast drops a character selection; entering it drops a node or edge one.
   if(sel&&(sel.type==='char')!==(v==='cast')){sel=null;renderInspector()}
   if(sel&&(sel.type==='frag')!==(v==='frags')){sel=null;renderInspector()}
+  if(sel&&['loc','faction','lore'].includes(sel.type)!==(v==='world')){sel=null;renderInspector()}
   if(v==='diagram')renderCanvas();
   if(v==='matrix')renderMatrix();
   if(v==='cast')renderCast();
   if(v==='frags')renderFrags();
+  if(v==='world')renderWorld();
 }
 $('#tabDiagram').onclick=()=>setView('diagram');
 $('#tabMatrix').onclick=()=>setView('matrix');
 $('#tabCast').onclick=()=>setView('cast');
 $('#tabFrags').onclick=()=>setView('frags');
+$('#tabWorld').onclick=()=>setView('world');
 $('#healthBtn').onclick=()=>{sel=null;render();insp.scrollTop=0;if(window.matchMedia('(max-width:900px)').matches)insp.scrollIntoView({behavior:'smooth'})};
 function spot(){const r=canvas.getBoundingClientRect();const p=toWorld(r.left+r.width/2,r.top+r.height/2);return {x:Math.round(p.x-118),y:Math.round(p.y-70)}}
 $('#addThread').onclick=()=>{let i=1;while(node('subplot_'+String(i).padStart(3,'0')))i++;const id='subplot_'+String(i).padStart(3,'0');const p=spot();

@@ -150,6 +150,11 @@ def to_board_model(raw: dict) -> dict:
     # empty list when none) so the board has something to add to; from_board_model leaves the
     # block untouched when the list comes back unchanged, and removes it when emptied (P-2).
     result["revelations"] = _revelations_to_board(raw)
+    # meta / world / lore: the World tab. Always present, so the board has somewhere to type;
+    # each is written back only when it differs from what the template holds.
+    result["meta"] = _meta_to_board(raw)
+    result["world"] = _world_to_board(raw)
+    result["lore"] = _lore_to_board(raw)
     result["refs"] = _condition_refs(raw)
     # stat_axes: the tier ladder's data (S3). P-2: omitted when the story has no
     # mechanics.stats block at all - there is no ladder to draw for stats that don't exist.
@@ -347,6 +352,52 @@ def _revelations_to_board(raw: dict) -> list:
     } for e in _revelation_entries(raw)]
 
 
+META_FIELDS = ("title", "synopsis", "genre", "tone")
+
+
+def _meta_to_board(raw: dict) -> dict:
+    meta = raw.get("meta") or {}
+    out = {k: meta.get(k, "") for k in META_FIELDS}
+    out["content_rules"] = list(meta.get("content_rules") or [])
+    return out
+
+
+def _world_to_board(raw: dict) -> dict:
+    """`world` minus characters (the Cast tab owns those), with locations and factions as
+    ordered rows carrying `orig` - the key as loaded - so a renamed one patches its own entry
+    and a location rename can follow through to what names it. `start_location` is
+    `plot.initial_scene.location`, edited here because it must be one of these locations."""
+    world = raw.get("world") or {}
+    locations = world.get("locations") or {}
+    factions = world.get("factions") or {}
+    return {
+        "setting_summary": world.get("setting_summary", ""),
+        "rules": list(world.get("rules") or []),
+        "locations": [{"orig": lid, "id": lid, "name": l.get("name", ""), "description": l.get("description", ""),
+                       "connected_to": list(l.get("connected_to") or [])}
+                      for lid, l in locations.items() if isinstance(l, dict)],
+        "factions": [{"orig": fid, "id": fid, "name": f.get("name", ""), "goals": f.get("goals", ""),
+                      "relationship_to_player": f.get("relationship_to_player", "")}
+                     for fid, f in factions.items() if isinstance(f, dict)],
+        "start_location": ((raw.get("plot") or {}).get("initial_scene") or {}).get("location", ""),
+    }
+
+
+LORE_FIELDS = ("priority", "keys", "also_when", "unlock", "sticky_turns", "content")
+
+
+def _lore_to_board(raw: dict) -> dict:
+    block = (raw.get("mechanics") or {}).get("lore")
+    block = block if isinstance(block, dict) else {}
+    entries = [e for e in block.get("entries") or [] if isinstance(e, dict)]
+    return {
+        "max_active": block.get("max_active"),
+        "entries": [{"orig": e.get("id", ""), "id": e.get("id", ""),
+                     **{k: copy.deepcopy(e.get(k)) for k in LORE_FIELDS if k in e}}
+                    for e in entries],
+    }
+
+
 def _characters_to_board(characters: dict) -> list:
     out = []
     for name, c in characters.items():
@@ -382,6 +433,9 @@ def from_board_model(raw: dict, model: dict) -> dict:
     _apply_stat_tiers(out, model.get("stat_axes"))
     _apply_characters(out, model.get("characters"))
     _apply_revelations(out, raw, model.get("revelations"))
+    _apply_meta(out, raw, model.get("meta"))
+    _apply_world(out, raw, model.get("world"))
+    _apply_lore(out, raw, model.get("lore"))
     _apply_positions(out, nodes)
 
     return out
@@ -669,6 +723,118 @@ def _apply_revelations(out: dict, raw: dict, rows) -> None:
     if not isinstance(block, dict):
         block = mechanics["revelations"] = {"engine": "triggered_reveal"}
     block["entries"] = entries
+
+
+def _set_or_drop(target: dict, key: str, value) -> None:
+    """Write `value` under `key`, or remove the key when the value is blank - an optional field
+    left empty is absent, not an empty string (P-2)."""
+    if value in ("", None, []) or (isinstance(value, str) and not value.strip()):
+        target.pop(key, None)
+    else:
+        target[key] = value
+
+
+def _apply_meta(out: dict, raw: dict, meta) -> None:
+    """`meta` from the World tab. `title` is required by the schema, so it is always written;
+    the rest are dropped when blank. Untouched when unchanged."""
+    if meta is None or meta == _meta_to_board(raw):
+        return
+    target = out.setdefault("meta", {})
+    target["title"] = meta.get("title", "")
+    for k in ("synopsis", "genre", "tone"):
+        _set_or_drop(target, k, meta.get(k, ""))
+    _set_or_drop(target, "content_rules", [r for r in meta.get("content_rules") or [] if r.strip()])
+
+
+def _apply_world(out: dict, raw: dict, world) -> None:
+    """`world` (bar characters) from the World tab, plus `plot.initial_scene.location`.
+
+    Locations and factions patch deep copies of their original entries (matched by `orig`), so
+    an authored field the tab has no editor for survives. A renamed location follows through
+    everywhere a location id is written: every `connected_to`, the opening location, and
+    `mechanics.gate.gates[].target` - a gate left naming the old id would stop gating anything
+    (a gate on an unknown location fails open). A row with a blank id is dropped. An emptied
+    list removes its key (P-2); `setting_summary` and `rules` are schema-required and always
+    written."""
+    if world is None or world == _world_to_board(raw):
+        return
+    target = out.setdefault("world", {})
+    target["setting_summary"] = world.get("setting_summary", "")
+    target["rules"] = [r for r in world.get("rules") or [] if r.strip()]
+
+    orig_locations = (raw.get("world") or {}).get("locations") or {}
+    renamed = {r["orig"]: r["id"].strip() for r in world.get("locations") or []
+               if r.get("orig") and (r.get("id") or "").strip() and r["orig"] != r["id"].strip()}
+    locations = {}
+    for row in world.get("locations") or []:
+        lid = (row.get("id") or "").strip()
+        if not lid:
+            continue
+        entry = copy.deepcopy(orig_locations.get(row.get("orig"), {}))
+        entry["name"] = row.get("name", "")
+        entry["description"] = row.get("description", "")
+        _set_or_drop(entry, "connected_to", [renamed.get(c, c) for c in row.get("connected_to") or [] if c])
+        locations[lid] = entry
+    _set_or_drop(target, "locations", locations or None)
+
+    orig_factions = (raw.get("world") or {}).get("factions") or {}
+    factions = {}
+    for row in world.get("factions") or []:
+        fid = (row.get("id") or "").strip()
+        if not fid:
+            continue
+        entry = copy.deepcopy(orig_factions.get(row.get("orig"), {}))
+        entry["name"] = row.get("name", "")
+        for k in ("goals", "relationship_to_player"):
+            _set_or_drop(entry, k, row.get(k, ""))
+        factions[fid] = entry
+    _set_or_drop(target, "factions", factions or None)
+
+    start = (world.get("start_location") or "").strip()
+    start = renamed.get(start, start)
+    scene = (out.get("plot") or {}).get("initial_scene")
+    if isinstance(scene, dict) and start:
+        scene["location"] = start
+    gate = (out.get("mechanics") or {}).get("gate")
+    for g in (gate.get("gates") or []) if isinstance(gate, dict) else []:
+        if isinstance(g, dict) and g.get("target") in renamed:
+            g["target"] = renamed[g["target"]]
+
+
+def _apply_lore(out: dict, raw: dict, lore) -> None:
+    """`mechanics.lore` (CR-06) from the World tab, at its final path (D1): a new block declares
+    `keyed_lore`, which this build does not register yet, so the story then fails
+    `load_template()` loudly until the engine exists - correct, not a bug to route around.
+    Entries patch their originals by `orig`; emptying the tab removes the block (an engine with
+    no entries raises at load)."""
+    if lore is None or lore == _lore_to_board(raw):
+        return
+    originals = {e.get("id"): e for e in _lore_to_board_entries(raw)}
+    entries = []
+    for row in lore.get("entries") or []:
+        lid = (row.get("id") or "").strip()
+        if not lid:
+            continue
+        entry = copy.deepcopy(originals.get(row.get("orig"), {}))
+        entry["id"] = lid
+        for k in LORE_FIELDS:
+            _set_or_drop(entry, k, row.get(k))
+        entry.setdefault("content", "")
+        entries.append(entry)
+    mechanics = out.setdefault("mechanics", {})
+    if not entries:
+        mechanics.pop("lore", None)
+        return
+    block = mechanics.get("lore")
+    if not isinstance(block, dict):
+        block = mechanics["lore"] = {"engine": "keyed_lore"}
+    _set_or_drop(block, "max_active", lore.get("max_active"))
+    block["entries"] = entries
+
+
+def _lore_to_board_entries(raw: dict) -> list:
+    block = (raw.get("mechanics") or {}).get("lore")
+    return [e for e in (block.get("entries") or [] if isinstance(block, dict) else []) if isinstance(e, dict)]
 
 
 def _apply_positions(out: dict, nodes: list) -> None:
