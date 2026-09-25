@@ -220,7 +220,17 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .acts .act.add{color:var(--muted);font-size:13px}
 .acts .act.gen{border-style:dashed;background:transparent;cursor:default}
 .acts .arrow{color:var(--muted)}
-.lanes{position:relative;display:grid;grid-template-columns:minmax(360px,1fr) minmax(260px,360px);column-gap:120px;align-items:start}
+.lanes{position:relative;display:grid;grid-template-columns:minmax(180px,230px) minmax(260px,1fr) minmax(220px,340px);column-gap:16px;align-items:start;min-width:760px}
+.lanes .lanecol{margin-right:104px}
+.startcol{display:grid;gap:10px;align-content:start;position:relative;z-index:1}
+/* Grid items default to min-width:auto, so one unwrappable chip ("viable while ...") made an ending
+   card wider than its column and pushed it under the inspector. */
+.lanes>div{min-width:0}
+.ecard{min-width:0;grid-template-columns:minmax(0,1fr)}
+.ecard .ehead>span:first-child{flex:none}
+.ecard .ehead .chip{min-width:0}
+.scard .osum{margin:0;font-size:12.5px;color:var(--muted)}
+.main.wide{grid-template-columns:minmax(0,1fr) 520px}
 .lanesvg{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;z-index:0}
 /* Lines run under the lanes and cards: a lane's dot and a waypoint's dot stay grabbable even with a
    line ending on them, and a line is still clickable across the gap between the two columns. */
@@ -1091,12 +1101,15 @@ function conditionBuilder(current,on){
 function jsonConditionField(current,on){return conditionBuilder(current,on)}
 function renderInspector(){
   insp.innerHTML='';
+  document.querySelector('.main').classList.toggle('wide',!!sel&&(sel.type==='protagonist'||sel.type==='opening'));
   if(!sel){return renderOverview()}
   if(sel.type==='edge')return renderEdgeInspector();
   if(sel.type==='char')return renderCharInspector();
   if(sel.type==='frag')return renderFragInspector();
   if(sel.type==='mainthread')return renderMainThreadInspector();
   if(sel.type==='act')return renderActInspector();
+  if(sel.type==='protagonist')return renderProtagonistInspector();
+  if(sel.type==='opening')return renderOpeningInspector();
   if(sel.type==='loc')return renderLocInspector();
   if(sel.type==='faction')return renderFactionInspector();
   if(sel.type==='lore')return renderLoreInspector();
@@ -1482,7 +1495,7 @@ document.addEventListener('keydown',ev=>{
     else if(sel.type==='axis')return;
     else if(sel.type==='char'){const c=chr(sel.name);if(!c)return;model.characters.splice(model.characters.indexOf(c),1);dropCharEverywhere(c.name);say('Deleted '+c.name)}
     else if(sel.type==='frag'){deleteFrag(sel.idx);ev.preventDefault();return}
-    else if(['loc','faction','lore','act','mainthread'].includes(sel.type))return;
+    else if(['loc','faction','lore','act','mainthread','protagonist','opening'].includes(sel.type))return;
     else{const n=node(sel.id);if(!n||n.kind==='start')return;model.nodes=model.nodes.filter(x=>x!==n);model.edges=model.edges.filter(e=>e.from!==n.id&&e.to!==n.id)}
     sel=null;save();render();ev.preventDefault();
   }
@@ -1992,6 +2005,7 @@ function renderLanes(){
 
   const grid=el('div','lanes');lv.appendChild(grid);
   const threads=model.nodes.filter(n=>n.kind==='subplot');
+  grid.appendChild(renderStartColumn());
   const lanesCol=el('div','lanecol');grid.appendChild(lanesCol);
   const rel=laneRelated();
   for(const [role,label,blurb] of ROLE_ORDER){
@@ -2327,7 +2341,8 @@ function rawJsonBox(val,on){
 function renderObjectBody(obj,sch,into,ctx){
   sch=resolveSchema(sch)||{};
   const props=sch.properties||{};
-  for(const [k,p] of Object.entries(props))into.appendChild(renderFormField(obj,k,p,{...ctx,rel:(ctx.rel?ctx.rel+'.':'')+k,label:null,required:(sch.required||[]).includes(k),inList:false}));
+  for(const [k,p] of Object.entries(props)){const rel=(ctx.rel?ctx.rel+'.':'')+k;if(ctx.skip&&ctx.skip.includes(rel))continue;
+    into.appendChild(renderFormField(obj,k,p,{...ctx,rel,label:null,required:(sch.required||[]).includes(k),inList:false,skip:null}))}
   // author notes: `_`-prefixed strings (e.g. _authored) are the author's own record of intent
   for(const k of Object.keys(obj).filter(k=>k.startsWith('_')&&typeof obj[k]==='string')){
     const f=el('div','ffield');const h=el('div','fhead');h.appendChild(el('label',null,'Author note ('+k+')'));h.appendChild(el('span','vis author','author only'));f.appendChild(h);
@@ -2362,7 +2377,7 @@ function renderObjectBody(obj,sch,into,ctx){
 }
 function renderForms(){
   const fv=$('#formsView');const top=fv.scrollTop;fv.innerHTML='';
-  const sections=model.form_sections||[];
+  const sections=(model.form_sections||[]).filter(([p])=>!START_SECTIONS.includes(p));
   if(!formSel&&sections.length)formSel=sections[0][0];
   const wrap=el('div','formsWrap');
   const nav=el('nav','fnav');
@@ -2407,6 +2422,84 @@ function renderThreadDetails(n){
   insp.appendChild(field('Completion threshold',ct,null,el('div','fieldnote','Progress needed to complete. Beats are priced absolutely (a decisive beat is worth the same everywhere), so a higher threshold takes more beats.')));
   const tm=area(n.ties_to_main_plot,v=>{if(v.trim())n.ties_to_main_plot=v;else delete n.ties_to_main_plot});
   insp.appendChild(field('Ties to the main plot',tm,null,el('div','fieldnote','How this thread connects to the main thread.')));
+}
+/* ---------- the Start column (lanes view) ----------
+   Protagonist (with character creation, merged here for the author; the template keeps them as
+   two sections because the engine seeds stats from both) and the Opening (location, scene
+   summary, opening narration). They edit the same model.forms sections the Forms tab used to,
+   which no longer lists them - one editor per field.
+
+   Name creation is the opening narration's shape (story_engine.opening_needs_name_capture): a
+   before/after pair asks the player for a name, with default_name as the fallback for a blank
+   answer; a single `narration` asks nothing, and default_name is simply the protagonist's name. */
+const START_SECTIONS=['protagonist','character_creation','plot.opening_scene','plot.initial_scene'];
+function playerNames(){const o=model.forms['plot.opening_scene'];return !(o&&typeof o==='object'&&'narration' in o)}
+function setPlayerNames(on){
+  const o=model.forms['plot.opening_scene']||{};const keep={};for(const [k,v] of Object.entries(o))if(k.startsWith('_'))keep[k]=v;
+  if(on&&!playerNames())model.forms['plot.opening_scene']={...keep,narration_before_name:o.narration||'',narration_after_name:''};
+  else if(!on&&playerNames()){const parts=[o.narration_before_name,o.narration_after_name].filter(x=>(x||'').trim());model.forms['plot.opening_scene']={...keep,narration:parts.join('\n\n')}}
+  formsChanged();
+}
+function renderStartColumn(){
+  const col=el('div','startcol');
+  const h=el('div','lgh');const ht=el('div');ht.appendChild(el('b',null,'Start'));ht.appendChild(el('span',null,' · who, where, how it opens'));h.appendChild(ht);col.appendChild(h);
+  const P=model.forms.protagonist||{},CC=model.forms.character_creation||[];
+  const pc=el('div','ecard scard'+(sel&&sel.type==='protagonist'?' sel':''));pc.style.setProperty('--k','var(--focus)');
+  const ph=el('div','ehead');ph.appendChild(el('span',null,'Protagonist'));pc.appendChild(ph);
+  pc.appendChild(el('h3',null,P.default_name||'Unnamed'));
+  pc.appendChild(el('div','eready',playerNames()?`the player names them (blank = ${P.default_name||'no fallback'})`:'fixed name, never asked'));
+  const stats=Object.entries(P.stats||{});
+  if(stats.length){const cl=el('div','castline');stats.forEach(([k,v])=>cl.appendChild(el('span','chip',`${k.toUpperCase()} ${v}`)));pc.appendChild(cl)}
+  const bits=[];if((P.traits||[]).length)bits.push(`${P.traits.length} trait${P.traits.length===1?'':'s'}`);
+  if((P.starting_inventory||[]).length)bits.push(`${P.starting_inventory.length} starting item${P.starting_inventory.length===1?'':'s'}`);
+  if(CC.length)bits.push(`creation: ${CC.map(s=>s.prompt?(s.key||'step'):(s.key||'step')).join(', ')}`);
+  if(bits.length)pc.appendChild(el('div','eready',bits.join(' · ')));
+  pc.onclick=()=>{sel={type:'protagonist'};render()};col.appendChild(pc);
+  const oc=el('div','ecard scard'+(sel&&sel.type==='opening'?' sel':''));oc.style.setProperty('--k','var(--focus)');
+  const oh=el('div','ehead');oh.appendChild(el('span',null,'Opening'));oc.appendChild(oh);
+  const W=model.world||{};oc.appendChild(el('h3',null,W.start_location?locName(W.start_location):'No opening location'));
+  const IS=model.forms['plot.initial_scene']||{};if(IS.summary)oc.appendChild(el('p','osum',IS.summary.length>140?IS.summary.slice(0,137)+'…':IS.summary));
+  const steps=['opening narration'];if(playerNames())steps.push('name');if(CC.length)steps.push(`${CC.length} creation step${CC.length===1?'':'s'}`);steps.push('play');
+  oc.appendChild(el('div','eready',steps.join(' → ')));
+  oc.onclick=()=>{sel={type:'opening'};render()};col.appendChild(oc);
+  return col;
+}
+function sectionHolder(path,fallback){if(model.forms[path]==null)model.forms[path]=fallback;return model.forms[path]}
+function renderProtagonistInspector(){
+  insp.appendChild(eyebrow('Protagonist · protagonist, character_creation'));
+  const P=sectionHolder('protagonist',{default_name:''});
+  const h2=el('h2',null,P.default_name||'Unnamed');insp.appendChild(h2);
+  insp.appendChild(el('h4',null,'Name'));
+  const tg=el('label','toggle');const cb=el('input');cb.type='checkbox';cb.checked=playerNames();
+  cb.onchange=()=>{setPlayerNames(cb.checked);renderInspector();renderLanes()};tg.appendChild(cb);tg.appendChild(document.createTextNode(' The player names the protagonist'));insp.appendChild(tg);
+  insp.appendChild(el('p','note',playerNames()?'The opening narration stops to ask for a name, then continues. The name below is used if the player leaves it blank.':'The story never asks. The protagonist is always the name below.'));
+  const nm=textInput(P.default_name,v=>{P.default_name=v;h2.textContent=v||'Unnamed';formsChanged();renderLanes()},playerNames()?'fallback name':'the protagonist’s name');
+  insp.appendChild(field(playerNames()?'Fallback name':'Name',nm,VIS.every,el('div','fieldnote','Available as {player_name} in the opening narration.')));
+  const body=el('div','fbody');
+  renderObjectBody(P,schemaAt('protagonist'),body,{section:'protagonist',rel:'',skip:['default_name'],onStructure:()=>{renderInspector();renderLanes()}});
+  insp.appendChild(body);
+  insp.appendChild(el('h4',null,'Character creation'));
+  insp.appendChild(el('p','note','Choices the player makes before play starts, after the name. Each option can add starting_stats to the stats above; later steps add on top of earlier ones.'));
+  const holder={v:model.forms.character_creation==null?undefined:model.forms.character_creation};
+  const sync=()=>{model.forms.character_creation=holder.v===undefined||(Array.isArray(holder.v)&&!holder.v.length)?null:holder.v};
+  if(holder.v===undefined){const add=el('button','btn small','+ Add character creation');add.type='button';add.onclick=()=>{model.forms.character_creation=[];formsChanged();renderInspector()};insp.appendChild(add)}
+  else{const cc=el('div','fbody');cc.appendChild(renderFormField(holder,'v',schemaAt('character_creation'),{section:'character_creation',rel:'',label:'Steps',required:true,onStructure:()=>{sync();renderInspector();renderLanes()}}));insp.appendChild(cc);sync()}
+}
+function renderOpeningInspector(){
+  insp.appendChild(eyebrow('Opening · plot.initial_scene, plot.opening_scene'));
+  insp.appendChild(el('h2',null,'Opening'));
+  const W=model.world;
+  const loc=cbSelect([['','(none)'],...(W.locations||[]).filter(l=>l.id).map(l=>[l.id,l.name||l.id])],W.start_location||'',v=>{W.start_location=v;save();renderLanes();renderHealth()});
+  insp.appendChild(field('Opening location',loc,null,el('div','fieldnote','Where the first scene takes place. The same setting as the World tab’s Opening location.')));
+  const IS=sectionHolder('plot.initial_scene',{location:W.start_location||'',summary:''});
+  const sm=area(IS.summary,v=>{IS.summary=v;formsChanged();renderLanes()});sm.rows=3;
+  insp.appendChild(field('Scene summary',sm,['narrator','narrator · until the scene moves'],el('div','fieldnote','The starting CURRENT SCENE: where things stand as play begins.')));
+  const O=sectionHolder('plot.opening_scene',{narration_before_name:'',narration_after_name:''});
+  insp.appendChild(el('h4',null,'Opening narration'));
+  insp.appendChild(el('p','note',playerNames()?'Shown before play. It stops after the first part to ask the player for a name (set on the Protagonist card). {player_name} is replaced with it.':'Shown before play. The name isn’t asked (set on the Protagonist card); {player_name} is replaced with the fixed name.'));
+  const ta=(k,label,note)=>{const t=el('textarea');t.value=O[k]||'';t.rows=8;t.addEventListener('input',()=>{O[k]=t.value;formsChanged()});insp.appendChild(field(label,t,['narrator','shown to the player'],note?el('div','fieldnote',note):null))};
+  if(playerNames()){ta('narration_before_name','Before the name','Ends with someone asking the protagonist’s name.');ta('narration_after_name','After the name','Carries on with the name the player gave.')}
+  else ta('narration','Narration');
 }
 function setView(v){
   viewMode=v;

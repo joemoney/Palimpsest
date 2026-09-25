@@ -343,9 +343,10 @@ board rewrites its `## Synopsis` section from `meta.synopsis`.
 
 > **Everything in the template can be edited on the board.** The title,
 > synopsis, setting, rules, locations and factions are in the **World** tab
-> (Step 4). Narration, the protagonist, character creation, the opening, pacing
-> and every mechanic's settings are in the **Forms** tab (Step 16). So the
-> starter file only needs enough to load.
+> (Step 4). The protagonist, character creation and the opening are the
+> **Start** cards on the Diagram tab (Step 3). Narration, pacing and every
+> mechanic's settings are in the **Forms** tab (Step 16). So the starter file
+> only needs enough to load.
 
 #### Step 3 - Open the board and find your way around
 Go to `/author` and click your story. The board has four parts:
@@ -355,6 +356,20 @@ Go to `/author` and click your story. The board has four parts:
   **+ Ending**, **Sample state**, **Raw JSON**, **Validate** and **Save**
   buttons; and the health badge at far right.
 - **The Diagram tab** (middle) shows the story the way it actually runs:
+  - **The Start column** on the far left has two cards:
+    - **Protagonist**: their name, traits, background, starting stats and
+      inventory, and the character-creation steps. Creation lives here
+      because it's how the protagonist is made, though the template keeps it
+      as its own section (`character_creation`). **The player names the
+      protagonist** is a checkbox. When it's ticked, the opening stops to ask
+      for a name, and the name you give here is the fallback for a blank
+      answer. When it isn't, the story never asks, and this is simply the
+      protagonist's name.
+    - **Opening**: the opening location (the same setting as the World
+      tab's), the starting scene summary, and the opening narration. That's
+      two parts, before and after the name, when the player names the
+      protagonist, and one otherwise. `{player_name}` is replaced with the
+      name either way.
   - **The acts strip** across the top holds the main thread, then your
     authored acts, then the acts generated in play, then the finale. Acts
     are the only thing in a story that happens in sequence.
@@ -651,10 +666,10 @@ rule it out, and confirm its *Viable while* no longer holds.
 
 #### Step 16 - Fill in everything else in the Forms tab
 The **Forms** tab covers every part of the template that has no dedicated
-editor: narration, the protagonist, character creation, the opening narration
-and scene, pacing, and the settings of every mechanic (stats, relationships,
-inventory, thread progress, the pacing loop, progression, gates, the tracked
-entity). Pick a section on the left.
+editor: narration, pacing, and the settings of every mechanic (stats,
+relationships, inventory, thread progress, the pacing loop, progression,
+gates, the tracked entity). Pick a section on the left. The protagonist,
+character creation and the opening are on the Diagram tab's Start cards.
 
 - **The forms are built from the template schema itself**, so they offer
   exactly the fields the story format allows. Each field's help text comes
