@@ -15,6 +15,7 @@ load_dotenv()
 import google.generativeai as genai
 import requests
 
+import conditions
 import mechanics
 import state_store
 from state_store import DEFAULT_STORY_SLUG, DEFAULT_USER_ID
@@ -819,6 +820,11 @@ def insert_subplot(ctx: dict, title: str, description: str, priority: str = "med
     return new_id
 
 
+# A thread in either status is over: it no longer counts toward the live pool, and nothing
+# re-opens it. `failed` is CR-10's, set only by an authored `fail_when`.
+_CLOSED_THREAD_STATUSES = ("completed", "failed")
+
+
 def check_subplot_status(ctx: dict) -> dict:
     """Check and update subplot completion status."""
     subplots = ctx["state"]["plot"]["subplots"]
@@ -837,6 +843,67 @@ def check_subplot_status(ctx: dict) -> dict:
                 ctx["state"]["pacing"]["subplots_completed_this_act"] += 1
 
     return {"completed": completed_this_check, "total_completed": len(ctx["state"]["plot"]["completed_subplots"])}
+
+
+def apply_thread_conditions(ctx: dict) -> dict:
+    """CR-10's authored thread lifecycle: `fail_when` fails a thread, `activate_when` starts one.
+    AUTHORING_TOOL_PHASES.md S5, built demand-first - the board writes both fields, and until
+    this existed neither did anything in play.
+
+    Only template-seeded subplots are considered: both fields are authored, and a generated
+    subplot has no template entry to carry them. Both transitions latch - a failed thread never
+    comes back, and a started one is never re-gated - because each reads only threads in a
+    state the transition can leave.
+
+    Polarity per D2, through `conditions` (the one evaluator; see `iter_conditions` for the
+    same list lint and the board use): `fail_when` is CLOSED, since a typo there would fail a
+    thread for good; `activate_when` is OPEN, since a typo there should cost at worst an early
+    start, never a thread that can never begin.
+
+    Failure runs first, so a thread whose `fail_when` already holds is never started only to
+    fail on the same turn. Activation ignores `max_parallel_subplots`, the same as
+    `starts_active` at save creation and a manual activation from the Subplot Manager: the cap
+    governs how many threads the engine *invents*, not whether an authored one can begin.
+    Nothing new activates once the story is in its ending sequence, the same no-op
+    `generate_new_subplot` makes.
+
+    CR-10's ending-side consequences (a failed carrier pruning a destination, early
+    activation of a carrier from the Narrow phase) belong to the ending funnel and are not
+    here. Returns {"failed": [...], "activated": [...]}."""
+    seeds = ctx["story"]["plot"].get("subplots", {}) or {}
+    subplots = ctx["state"]["plot"]["subplots"]
+    failed, activated = [], []
+
+    for sid, seed in seeds.items():
+        record = subplots.get(sid)
+        if record is None or not seed.get("fail_when"):
+            continue
+        if record.get("status") in ("completed", "failed"):
+            continue
+        if conditions.satisfied(seed["fail_when"], ctx, conditions.CLOSED):
+            record["status"] = "failed"
+            record["active"] = False
+            failed.append(sid)
+
+    if not ctx["state"]["plot"]["endgame"]["requested"]:
+        for sid, seed in seeds.items():
+            record = subplots.get(sid)
+            if record is None or not seed.get("activate_when"):
+                continue
+            if record.get("status", "not_started") != "not_started" or record.get("active"):
+                continue
+            if conditions.satisfied(seed["activate_when"], ctx, conditions.OPEN):
+                record["status"] = "active"
+                record["active"] = True
+                activated.append(sid)
+
+    return {"failed": failed, "activated": activated}
+
+
+def _waits_on_condition(ctx: dict, sid: str) -> bool:
+    """A not-yet-started thread the template gates with `activate_when`: the engine starts it
+    when the condition holds, so nothing else should start it or invite it on stage first."""
+    return bool((ctx["story"]["plot"].get("subplots", {}) or {}).get(sid, {}).get("activate_when"))
 
 
 def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -> dict:
@@ -1078,14 +1145,14 @@ def generate_new_subplot(ctx: dict):
 
     subplots_view = _all_subplots(ctx)
     max_parallel = ctx["story"]["plot"].get("pacing", {}).get("max_parallel_subplots", DEFAULT_MAX_PARALLEL_SUBPLOTS)
-    live_count = sum(1 for sp in subplots_view.values() if sp["status"] != "completed")
+    live_count = sum(1 for sp in subplots_view.values() if sp["status"] not in _CLOSED_THREAD_STATUSES)
     if live_count >= max_parallel:
         return None
 
     # Live subplots are naturally bounded (max_parallel_subplots); completed ones
     # accumulate for the whole game, so only keep the most recent ones for dedup
     # context instead of sending every title ever generated.
-    live_titles = [sp["title"] for sp in subplots_view.values() if sp["status"] != "completed"]
+    live_titles = [sp["title"] for sp in subplots_view.values() if sp["status"] not in _CLOSED_THREAD_STATUSES]
     recent_completed_ids = ctx["state"]["plot"]["completed_subplots"][-SUBPLOT_TITLE_HISTORY_LIMIT:]
     recent_completed_titles = [subplots_view[sid]["title"] for sid in recent_completed_ids if sid in subplots_view]
     existing_titles = live_titles + recent_completed_titles
@@ -1155,7 +1222,7 @@ def generate_steering_seed(ctx: dict, note: str):
     main_thread = _main_thread_view(ctx)
     current_act = _current_act(ctx)
     subplots_view = _all_subplots(ctx)
-    live_titles = [sp["title"] for sp in subplots_view.values() if sp["status"] != "completed"]
+    live_titles = [sp["title"] for sp in subplots_view.values() if sp["status"] not in _CLOSED_THREAD_STATUSES]
     existing_characters = _existing_character_names(ctx)
     summary = ctx["state"]["history"]["compressed_summary"] or "The story has just begun."
 
@@ -1409,7 +1476,7 @@ def check_and_advance_act(ctx: dict):
     revealed_fragments = len(ctx["state"]["plot"]["revelations_revealed"])
     ongoing_multi_act = [
         sp["title"] for sp in subplots_view.values()
-        if sp.get("span") == "multi_act" and sp["status"] != "completed"
+        if sp.get("span") == "multi_act" and sp["status"] not in _CLOSED_THREAD_STATUSES
     ]
     existing_characters = _existing_character_names(ctx)
     # CR-07: "the Architect" used to be hardcoded here regardless of story - see the matching
@@ -1522,7 +1589,10 @@ def generate_pacing_nudge(ctx: dict) -> str:
 
     max_parallel = ctx["story"]["plot"].get("pacing", {}).get("max_parallel_subplots", DEFAULT_MAX_PARALLEL_SUBPLOTS)
     if len(active_subplots) < max_parallel:
-        inactive_subplots = [(sid, sp) for sid, sp in subplots_view.items() if sp["status"] == "not_started"]
+        # A thread gated by activate_when (CR-10) starts itself when its condition holds -
+        # inviting its hooks early would put it on stage before the story has earned it.
+        inactive_subplots = [(sid, sp) for sid, sp in subplots_view.items()
+                             if sp["status"] == "not_started" and not _waits_on_condition(ctx, sid)]
         if inactive_subplots:
             nudge_parts.append(f"SUBPLOT OPPORTUNITY: Consider introducing hooks for '{inactive_subplots[0][1]['title']}' when appropriate.")
 
@@ -2187,8 +2257,11 @@ def update_state_after_turn(
     # Retire non-pinned flags that have aged out of the recent-turns window
     archive_stale_flags(ctx)
 
-    # Check subplot completion status, then keep the pool topped up
+    # Check subplot completion status, apply the template's authored fail_when/activate_when
+    # (CR-10) - after completion, so a thread finishing this turn can unlock its successor on
+    # the same turn - then keep the pool topped up with whatever room is left
     status = check_subplot_status(ctx)
+    apply_thread_conditions(ctx)
     for _ in status["completed"]:
         generate_new_subplot(ctx)
 

@@ -170,10 +170,17 @@ This matters and is easy to get wrong: **the board can author all of the above r
 it round-trips correctly, but not all of it does anything in actual play yet.**
 
 - `starts_active` **works** — it's a pre-overhaul field the engine has always read.
-- `activate_when` **does nothing in play today.** The engine only ever checks `starts_active`
-  when a save is created; nothing currently evaluates `activate_when` to flip a thread active
-  later. A thread wired up with only an `unlocks` edge will sit `not_started` forever in a real
-  playthrough until the engine work for it lands.
+- `activate_when` **works** (S5, 2026-09-25). At the end of every turn,
+  `story_engine.apply_thread_conditions` starts any authored thread still `not_started` whose
+  `activate_when` holds (read OPEN: an unknown referent starts it). Activation latches, ignores
+  `max_parallel_subplots` the way `starts_active` does, and stops once the story is in its
+  ending sequence. A gated thread is never offered as a pacing-nudge "subplot opportunity" -
+  it starts itself when it has been earned.
+- `fail_when` **works, for the thread itself.** The same pass marks a live or pending thread
+  `failed` when its `fail_when` holds (read CLOSED: an unknown referent never fails it). Failure
+  runs before activation and latches; a failed thread leaves the live pool, so its slot can be
+  refilled. What failure does *to endings* - pruning a destination carried only by failed
+  threads - is the ending funnel's job and isn't live yet (below).
 - `delivers`, waypoints, and the whole ending funnel (`mechanics.endings`) **do nothing in play
   today either** — `ending_funnel` isn't a registered engine yet. A story authoring
   `mechanics.endings` fails to load loudly (`UnknownEngineError`) rather than silently doing

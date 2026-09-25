@@ -57,7 +57,7 @@ def show_status(ctx):
     print("=" * 60)
 
     for sid, subplot in story_engine._all_subplots(ctx).items():
-        status_icon = "✓" if subplot["status"] == "completed" else "●" if subplot["active"] else "○"
+        status_icon = "✓" if subplot["status"] == "completed" else "✗" if subplot["status"] == "failed" else "●" if subplot["active"] else "○"
         priority = subplot["priority"].upper()
         # Scaled against this subplot's own completion_threshold, not a hardcoded /10 assuming
         # 100 - a "multi_act" subplot (see story_engine.insert_subplot) has a higher threshold

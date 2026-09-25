@@ -761,6 +761,28 @@ reference for what the complete picture looks like and why CR-05/CR-10 are coupl
 longer a gate that has to be fully satisfied before any of it is touched. Expect this phase
 to land out of order and partially, tracked here after the fact rather than planned ahead of it.
 
+**Landed so far** (newest last, tracked after the fact as the note above says):
+- **CR-10, the thread lifecycle half: `activate_when` and `fail_when` read in play**
+  (2026-09-25). The need that prompted the demand-driven decision, closed first.
+  `story_engine.apply_thread_conditions`, run in the post-turn pass after
+  `check_subplot_status` (so a thread completing this turn can unlock its successor on the same
+  turn) and before subplot generation (so an authored thread fills the pool before an invented
+  one). Through `conditions.satisfied` at the polarity `iter_conditions` declares: `fail_when`
+  CLOSED, `activate_when` OPEN. `failed` is a new runtime status: it leaves the live pool
+  (`_CLOSED_THREAD_STATUSES`), and the Subplot Manager shows it as ✗. The pacing nudge's
+  "SUBPLOT OPPORTUNITY" no longer offers a thread gated by `activate_when`. Covered by
+  `test/test_thread_conditions.py`.
+  **Decisions made in passing - flag if wrong:**
+  - Activation ignores `max_parallel_subplots`, like `starts_active` and a manual Subplot
+    Manager activation. The cap governs how many threads the engine invents; an authored
+    unlock the story has earned should not wait on a generated thread finishing.
+  - Nothing activates once `endgame.requested` is set, matching `generate_new_subplot`.
+    `fail_when` still applies then.
+  - Failure runs before activation, so a thread whose `fail_when` already holds fails rather
+    than starting for one turn.
+  **Not in this piece** (ending funnel, still unbuilt): a failed carrier pruning a destination,
+  early carrier activation from the Narrow phase, and generation limited to texture.
+
 **Goal.** Every "not built" chip disappears, eventually.
 
 Order, as `Story_Mechanics_Update.md` §5 justifies (reference, not a build queue - see above):
