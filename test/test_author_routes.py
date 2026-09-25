@@ -214,6 +214,29 @@ try:
     assert after["schema_version"] == author_model.TEMPLATE_SCHEMA_VERSION
     print("OK: /api/save writes the file and bumps story_version")
 
+    # --- /api/evaluate: the real conditions.evaluate against an author-typed sample state ----
+    ev_raw = ss.load_template_raw("author_test_story")
+    ev_model = author_model.to_board_model(ev_raw)
+    resp = client.post("/author/author_test_story/api/evaluate",
+                       data={"model": json.dumps(ev_model), "sample": json.dumps({"stats": {"x": 1}})})
+    assert resp.status_code == 200, resp.status_code
+    assert b"Conditions against the sample state" in resp.data
+    assert b"ending_funnel" in resp.data, "an unbuilt engine must be named, not swallowed"
+    print("OK: /api/evaluate renders the condition table and names engines this build lacks")
+
+    resp = client.post("/author/author_test_story/api/evaluate", data={"model": "not json", "sample": "{}"})
+    assert resp.status_code == 200 and b"Could not read the board state" in resp.data
+    resp = client.post("/author/author_test_story/api/evaluate",
+                       data={"model": json.dumps(ev_model), "sample": "[[["})
+    assert resp.status_code == 200 and b"Could not read the board state" in resp.data
+    print("OK: /api/evaluate reports an unreadable model or sample instead of erroring")
+
+    os.environ["AUTHOR_USER_IDS"] = "someone-else"
+    resp = client.post("/author/author_test_story/api/evaluate", data={"model": "{}", "sample": "{}"})
+    assert resp.status_code == 404, resp.status_code
+    os.environ["AUTHOR_USER_IDS"] = alice_id
+    print("OK: /api/evaluate 404s for a non-author account")
+
     # --- a successful save also resyncs the story's README, if it has one --------------------
     with open(os.path.join(clean_dir, "README.md"), encoding="utf-8") as f:
         readme_after = f.read()

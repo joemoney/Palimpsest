@@ -257,6 +257,7 @@ main.app{max-width:none}
       <button class="btn" id="autoLayoutBtn" type="button">Auto-layout</button>
       <button class="btn" id="addThread" type="button">+ Thread</button>
       <button class="btn" id="addEnding" type="button">+ Ending</button>
+      <button class="btn" id="sampleBtn" type="button" aria-expanded="false" aria-controls="samplePanel">Sample state</button>
       <a class="btn" href="{{ url_for('author_raw', story_slug=story_slug) }}">Raw JSON</a>
       <button class="btn" type="button"
               hx-post="{{ url_for('author_validate', story_slug=story_slug) }}"
@@ -269,6 +270,18 @@ main.app{max-width:none}
       <button class="health" id="healthBtn" type="button" aria-label="Show story health"></button>
     </div>
     <div id="status" role="status" aria-live="polite" style="flex-basis:100%"></div>
+    <div id="samplePanel" hidden style="flex-basis:100%;border:1px solid var(--line);border-radius:8px;background:var(--raised);padding:10px 12px;display:none">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <strong style="font-size:13px">Sample state</strong>
+        <span style="color:var(--muted);font-size:12px">Set what the player has done, then evaluate every condition in this story against it. Nothing is saved.</span>
+        <button class="btn small primary" type="button" style="margin-left:auto"
+                hx-post="{{ url_for('author_evaluate_route', story_slug=story_slug) }}"
+                hx-vals="js:{model: JSON.stringify(getBoardModel()), sample: JSON.stringify(getSample())}"
+                hx-target="#author-results" hx-swap="innerHTML">Evaluate conditions</button>
+        <button class="btn small" id="sampleReset" type="button">Reset</button>
+      </div>
+      <div id="sampleFields" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px 18px"></div>
+    </div>
     <div id="author-results" style="flex-basis:100%"></div>
   </header>
 
@@ -607,10 +620,11 @@ function condLabel(c){
   if(c.subplot_status&&typeof c.subplot_status==='object')return 'thread '+Object.entries(c.subplot_status).map(([k,v])=>`${k} ${v}`).join(', ');
   for(const k of ['flag','revealed','revelation','item_tag'])if(k in c)return `${k}: ${c[k]}`;
   for(const k of ['turn_gte','act_gte'])if(k in c)return `${k.split('_')[0]} >= ${c[k]}`;
-  for(const k of ['all','any','not'])if(k in c)return k+'(...)';
+  for(const k of ['all','any'])if(Array.isArray(c[k]))return c[k].map(x=>{const l=condLabel(x);return x&&(x.all||x.any)?'('+l+')':l}).join(k==='all'?' and ':' or ');
+  if(c.not)return 'not '+condLabel(c.not);
   return 'condition';
 }
-function setUnlockCond(e,v){if(v===undefined){delete e.cond_raw;e.cond=''}else{e.cond_raw=v;e.cond=condLabel(v)}}
+function setUnlockCond(e,v){if(v===undefined){delete e.cond_raw;e.cond=''}else{e.cond_raw=v;const l=condLabel(v);e.cond=l.length>56?l.slice(0,53)+'...':l}}
 const UNLOCK_PLACEHOLDER='unlock condition (JSON), e.g. {"stat": "reach", "gte": 20}';
 function rawConditionField(current,on,placeholder){
   const wrap=el('div');wrap.style.cssText='display:grid;gap:3px';
@@ -1362,6 +1376,41 @@ $('#addThread').onclick=()=>{let i=1;while(node('subplot_'+String(i).padStart(3,
   model.nodes.push({id,kind:'subplot',role:'spine',title:'New thread',theme:'',x:p.x,y:p.y});sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();say('Thread added. Connect it from the start or another thread.')};
 $('#addEnding').onclick=()=>{let i=1;while(node('ending_'+i))i++;const id='ending_'+i;const p=spot();const cols=['e1','e2','e3','e4'];
   model.nodes.push({id,kind:'ending',ekind:'destination',color:cols[model.nodes.filter(n=>n.kind==='ending').length%4],title:'New ending',theme:'',waypoints:[],x:p.x,y:p.y});sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();say('Ending added. Give it waypoints, then connect threads to it.')};
+
+/* ---------- sample state (Phase S2, D3) ----------
+   The inputs only *describe* a state; every answer comes from the server, which runs the real
+   conditions.evaluate. Nothing here evaluates a condition. */
+let sample={};
+window.getSample=()=>sample;
+function sampleGroup(title){const g=el('div');g.style.cssText='display:grid;gap:4px;align-content:start';const h=el('div',null,title);h.style.cssText='font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)';g.appendChild(h);return g}
+function sampleInput(type,val,on,width){const i=el('input');i.type=type;if(val!=null)i.value=val;i.style.cssText='background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:3px 6px;font-size:12px;'+(width?`width:${width}`:'');i.addEventListener('input',()=>on(i));return i}
+function sampleRow(label,control){const r=el('label');r.style.cssText='display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink)';r.appendChild(control);r.appendChild(el('span',null,label));return r}
+function sampleSetMap(key,name,value){if(value===''||value==null||Number.isNaN(value)){if(sample[key]){delete sample[key][name];if(!Object.keys(sample[key]).length)delete sample[key]}return}(sample[key]=sample[key]||{})[name]=value}
+function sampleToggle(key,name,on){const l=sample[key]||[];const i=l.indexOf(name);if(on&&i<0)l.push(name);if(!on&&i>=0)l.splice(i,1);if(l.length)sample[key]=l;else delete sample[key]}
+function renderSample(){
+  const box=$('#sampleFields');box.innerHTML='';const refs=model.refs||{};
+  const numberGroup=(title,names,key,hint)=>{if(!names.length)return;const g=sampleGroup(title);
+    names.forEach(n=>{const cur=sample[key]&&sample[key][n];g.appendChild(sampleRow(n,sampleInput('number',cur,i=>sampleSetMap(key,n,i.value===''?'':Number(i.value)),'72px')))});box.appendChild(g)};
+  numberGroup('Stats',refs.stats||[],'stats');
+  numberGroup('Relationship scores',model.characters.map(c=>c.name).filter(Boolean),'relationships');
+  numberGroup('Relationship peaks',model.characters.map(c=>c.name).filter(Boolean),'peaks');
+  const checkGroup=(title,names,key)=>{if(!names.length)return;const g=sampleGroup(title);
+    names.forEach(n=>{const c=el('input');c.type='checkbox';c.checked=(sample[key]||[]).includes(n);c.addEventListener('change',()=>sampleToggle(key,n,c.checked));g.appendChild(sampleRow(n,c))});box.appendChild(g)};
+  checkGroup('Flags set',refs.flags||[],'flags');
+  checkGroup('Revealed',refs.revelations||[],'revealed');
+  const threads=model.nodes.filter(n=>n.kind==='subplot');
+  if(threads.length){const g=sampleGroup('Thread status');
+    threads.forEach(t=>{const sel_=el('select');['','not_started','active','progressed','completed','failed'].forEach(v=>{const o=el('option',null,v||'(seeded)');o.value=v;sel_.appendChild(o)});
+      sel_.value=(sample.subplots&&sample.subplots[t.id])||'';sel_.style.cssText='background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:2px 4px;font-size:12px';
+      sel_.addEventListener('change',()=>sampleSetMap('subplots',t.id,sel_.value));g.appendChild(sampleRow(t.title||t.id,sel_))});box.appendChild(g)}
+  const wps=[];model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='destination').forEach(e=>(e.waypoints||[]).forEach(w=>{if(w.id)wps.push(w.id)}));
+  checkGroup('Waypoints planted',wps,'waypoints_done');
+  const g=sampleGroup('Progress');
+  [['turn','Turn'],['act','Act']].forEach(([k,label])=>g.appendChild(sampleRow(label,sampleInput('number',sample[k],i=>{if(i.value==='')delete sample[k];else sample[k]=Number(i.value)},'72px'))));
+  box.appendChild(g);
+}
+$('#sampleBtn').onclick=()=>{const p=$('#samplePanel');const open=p.style.display==='none';p.style.display=open?'block':'none';p.hidden=!open;$('#sampleBtn').setAttribute('aria-expanded',open);if(open)renderSample()};
+$('#sampleReset').onclick=()=>{sample={};renderSample()};
 
 applyView();render();
 requestAnimationFrame(fit);

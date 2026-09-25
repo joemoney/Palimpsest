@@ -1,0 +1,54 @@
+<button type="button" onclick="document.getElementById('author-results').innerHTML=''"
+        style="justify-self:end; border:none; background:none; cursor:pointer; color:var(--muted); font-size:0.8rem; padding:2px 4px;">
+  &times; Close, back to board
+</button>
+
+{% if error %}
+<div class="card" style="border-color:#b0322c;">
+  <div style="font-weight:700; color:#b0322c;">{{ error }}</div>
+</div>
+{% else %}
+<div class="card">
+  <div style="font-weight:700;">Conditions against the sample state</div>
+  <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">
+    {{ rows|selectattr('satisfied')|list|length }} of {{ rows|length }} hold.
+    An <em>unknown</em> referent reads true where a mistake would lock something (gates, activation, viability)
+    and false where it would commit something permanent (ready, done, fail).
+  </div>
+  {% if left_out %}
+  <div style="color:#a86a10; font-size:0.85rem; margin-top:6px;">
+    Not built in this engine yet, so anything reading them is unknown:
+    {% for slot, engine in left_out %}<code>mechanics.{{ slot }}.engine = {{ engine }}</code>{{ ', ' if not loop.last }}{% endfor %}.
+  </div>
+  {% endif %}
+  {% if rows %}
+  <table style="width:100%; border-collapse:collapse; margin-top:10px; font-size:0.85rem;">
+    <thead>
+      <tr style="text-align:left; color:var(--muted); font-size:0.75rem;">
+        <th style="padding:4px 6px;">Field</th><th style="padding:4px 6px;">Condition</th>
+        <th style="padding:4px 6px;">Unknown reads</th><th style="padding:4px 6px;">Result</th>
+        <th style="padding:4px 6px;">Proximity</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr style="border-top:1px solid var(--line);">
+        <td style="padding:4px 6px;"><code style="font-size:0.75rem;">{{ r.path }}</code></td>
+        <td style="padding:4px 6px;">{{ r.label }}</td>
+        <td style="padding:4px 6px; color:var(--muted);">{{ 'true (open)' if r.polarity == 'open' else 'false (closed)' }}</td>
+        <td style="padding:4px 6px; font-weight:700; color:{{ '#2e7d4f' if r.satisfied else '#b0322c' }};">
+          {{ 'holds' if r.satisfied else 'does not hold' }}
+          {% if r.unknown %}
+          <div style="font-weight:400; color:#a86a10; font-size:0.75rem;">unknown: {{ r.unknown|join('; ') }}</div>
+          {% endif %}
+        </td>
+        <td style="padding:4px 6px;">{{ (r.proximity * 100)|round|int }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="color:var(--muted); font-size:0.85rem; margin-top:8px;">This story has no conditions to evaluate yet.</div>
+  {% endif %}
+</div>
+{% endif %}

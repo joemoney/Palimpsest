@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from flask import Flask, Response, redirect, render_template, request, session, url_for
 
 import author_assist
+import author_evaluate
 import author_lint
 import author_model
 import label_sheet
@@ -864,6 +865,26 @@ def author_assist_waypoints(story_slug):
     except author_assist.AssistError as e:
         return render_template("_author_assist_waypoints.html", error=str(e))
     return render_template("_author_assist_waypoints.html", waypoints=waypoints, ending_id=ending_id)
+
+
+@app.route("/author/<story_slug>/api/evaluate", methods=["POST"])
+@login_required
+def author_evaluate_route(story_slug):
+    """D3: run every condition in the board's current model against an author-typed sample
+    state, through the real `conditions.evaluate`. Never touches disk. The template evaluated is
+    the on-disk one patched with the posted model - what Save would write - and an unbuilt
+    engine's leaves read *unknown* here as they would in play, rather than being swallowed."""
+    if _author_enabled_or_404():
+        return ("Not found.", 404)
+    try:
+        model = json.loads(request.form.get("model", ""))
+        sample = json.loads(request.form.get("sample", "") or "{}")
+        raw = state_store.load_template_raw(story_slug)
+        written = author_model.from_board_model(raw, model)
+    except (ValueError, FileNotFoundError, json.JSONDecodeError, TypeError) as e:
+        return render_template("_author_evaluate_result.html", error=f"Could not read the board state: {e}")
+    rows, left_out = author_evaluate.evaluate_all(written, sample)
+    return render_template("_author_evaluate_result.html", rows=rows, left_out=left_out, error=None)
 
 
 @app.route("/author/<story_slug>/raw", methods=["GET", "POST"])

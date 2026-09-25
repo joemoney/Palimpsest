@@ -539,6 +539,61 @@ remaining risk in S1 is schedule/scope, not data loss.
 **Goal.** Conditions on the board are real CR-02 grammar, evaluated by engine code against a
 sample state.
 
+**Status: in progress. The evaluator, L10 and the sample-state bar are built; the CR-11
+authoring surfaces are not started.**
+
+**Done:**
+- **`backend/conditions.py` (D2).** Every CR-02 leaf, `all`/`any`/`not` to depth 3, proximity,
+  legacy-form `normalize()`, a plain-English `describe()`, `check()` (the static, template-side
+  half of the unknown-referent rule) and `iter_conditions()` - the one list of every condition
+  field in a template and the polarity each is read at. Polarity is a required argument with no
+  default. `test/test_conditions.py`: one test per leaf, unknown referents under both
+  polarities, purity, proximity.
+- **`gate.satisfied()` is a thin caller** (`OPEN`); the old evaluator is deleted, not kept
+  alongside. `test_gate_precondition.py` passes unchanged, including the latching test.
+- **`mechanics.flags.declared`** is in the schema, and **L10** (`author_lint.condition_issues`)
+  is save-blocking for every condition field. `test/fixtures/courtroom.json` had to start
+  declaring its two flags - a real template that was quietly relying on free-form flag names.
+- **Sample-state bar and `POST /author/<slug>/api/evaluate` (D3).** The board's "Sample state"
+  button opens inputs for stats, relationship scores and peaks, flags, revealed fragments,
+  thread status, planted waypoints, turn and act; Evaluate posts the board's model plus the
+  sample and gets back a table of every condition with its polarity, result and proximity.
+  `backend/author_evaluate.py` builds the same `{story, state}` the engine would; an unbuilt
+  engine is named in the result and its leaves read *unknown* - never silently dropped. Edge
+  labels on the canvas use `describe()` (server) and a matching `condLabel` (client, for edits
+  the server hasn't seen).
+- The board's condition builder (dropdowns for every condition field) predates S2 and is
+  unchanged.
+
+**Decisions made in passing - flag if wrong:**
+- **`viable_while` is `OPEN` (unknown reads true).** D2 names `ready_when`, `done_when` and
+  `fail_when` as fail-closed and says nothing of `viable_while`. Reading a typo there as false
+  would prune an ending, which is permanent - the same test D2 applies to the other three, with
+  the opposite answer. If you want it closed, it is one word in `conditions.iter_conditions`.
+- **A flag is only "unknown" when the story authors a `mechanics.flags` block.** With no block,
+  flags are the pre-CR-02 free-form names and a flag nobody set simply reads false, which is
+  what gates already did. L10 still rejects an undeclared flag either way, so a story authored on
+  the board always declares.
+- **State the engine does not write yet, with a sound lower bound so a condition still means
+  something meanwhile:** `tier_reached` reads `mechanics.stats.tier_log`, falling back to
+  "the current value is at or above that tier"; `peak_gte` reads a relationship's `peak`,
+  falling back to the current score; `waypoints_done` reads `endings_state.waypoints_done` and
+  is empty until CR-05's ledger exists. `bond` (CR-11) reads *unknown* everywhere.
+
+**Not done:**
+- The loader does not yet pass declared flags' `detect` text to the state-update pass, so a
+  declared flag cannot be *set* in play - engine work (S5), demand-driven.
+- Rewriting stored gate `requires` from the legacy spellings into the canonical grammar. The
+  evaluator accepts both, so nothing breaks; the rewrite is cosmetic and waits until a template
+  is next edited on the board.
+- **All the CR-11 surfaces:** the `bond` leaf, the directed bond grid and `protected` toggles,
+  `mechanics.side_threads` recipe cards, location/item cast slots, the vignette seed list, and
+  `player_threads` settings. Still "not built" until S5 step 4, as written below.
+- The gate's last item, run against the real Missing Core board: "SYNC 85 and `lark_departed`
+  set" pruning The Handover's `viable_while`. Covered on a synthetic story by
+  `test_author_evaluate.py`; The Missing Core's saved storyboard does not author that
+  `viable_while` yet, so there is nothing real to run it against.
+
 **Work.**
 - **`backend/conditions.py` (D2).**
   - Implements CR-02's leaves: stat, tier, tier_reached, revealed, flag, relationship,
