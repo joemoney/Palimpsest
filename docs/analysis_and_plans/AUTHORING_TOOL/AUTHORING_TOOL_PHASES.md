@@ -539,9 +539,11 @@ remaining risk in S1 is schedule/scope, not data loss.
 **Goal.** Conditions on the board are real CR-02 grammar, evaluated by engine code against a
 sample state.
 
-**Status: in progress. The evaluator, L10, the sample-state bar and the flag/viable_while
-authoring are built; the CR-11 authoring surfaces are not started, and the gate's real-board
-run is waiting on the author.**
+**Status: CLOSED (2026-09-25), with the CR-11 authoring surfaces explicitly deferred.**
+Every gate item is met, including the run on the real Missing Core board - see "Gate result,"
+below. The CR-11 surfaces are not part of this gate: they are "not built" until S5 step 4 as
+this phase always said, and under the build-order decision (the engine follows the storyboard,
+demand-driven) they land when a real story needs them.
 
 **Done:**
 - **`backend/conditions.py` (D2).** Every CR-02 leaf, `all`/`any`/`not` to depth 3, proximity,
@@ -590,20 +592,24 @@ run is waiting on the author.**
   falling back to the current score; `waypoints_done` reads `endings_state.waypoints_done` and
   is empty until CR-05's ledger exists. `bond` (CR-11) reads *unknown* everywhere.
 
-**Not done:**
+**Gate result: met on the real Missing Core board.** The saved storyboard declares
+`lark_departed` (`mechanics.flags.declared`) and The Handover (`ending_2`) authors
+`viable_while: not flag lark_departed`, all built on the board and saved by the author with no
+JSON hand-edit; lint returns 0 issues. Evaluating the saved file through the Sample state path:
+with nothing set, `viable_while` holds; with `lark_departed` set (and SYNC 85), it does not
+hold - that is the prune. The gate's wording adds a SYNC 85 clause; the authored
+`viable_while` prunes on the flag alone, which is the spec's own form for The Handover (CR-05),
+and the sample run set both. Same mechanism, no SYNC clause to test.
+
+**Deferred, and not blocking:**
+- **All the CR-11 surfaces:** the `bond` leaf, the directed bond grid and `protected` toggles,
+  `mechanics.side_threads` recipe cards, location/item cast slots, the vignette seed list, and
+  `player_threads` settings.
 - The loader does not yet pass declared flags' `detect` text to the state-update pass, so a
   declared flag cannot be *set* in play - engine work (S5), demand-driven.
 - Rewriting stored gate `requires` from the legacy spellings into the canonical grammar. The
-  evaluator accepts both, so nothing breaks; the rewrite is cosmetic and waits until a template
-  is next edited on the board.
-- **All the CR-11 surfaces:** the `bond` leaf, the directed bond grid and `protected` toggles,
-  `mechanics.side_threads` recipe cards, location/item cast slots, the vignette seed list, and
-  `player_threads` settings. Still "not built" until S5 step 4, as written below.
-- **The gate's last item, on the real Missing Core board:** "SYNC 85 and `lark_departed` set"
-  pruning The Handover's `viable_while`. The tooling is all there (see above) and was driven
-  end to end on a copy of the saved board - declare the flag, build `not flag lark_departed`,
-  Evaluate with `lark_departed` set: "does not hold", and 0 lint issues - but the saved
-  storyboard itself still authors neither. That is the author's step, on the board.
+  evaluator accepts both, so nothing breaks; the rewrite waits until a template is next edited
+  on the board.
 
 **Work.**
 - **`backend/conditions.py` (D2).**
