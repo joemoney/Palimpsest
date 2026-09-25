@@ -14,7 +14,7 @@
   --focus:#2F5D8A;
   --r-spine:#2F5D8A; --r-personal:#A2476B; --r-texture:#7D6E52;
   --e1:#6A4FA3; --e2:#B24C6C; --e3:#1D7A6C; --e4:#4E6A86;
-  --terminal:#B0482C; --warn:#A86A10; --warn-bg:#FBF1DE; --err:#B0322C; --err-bg:#FBE6E4;
+  --terminal:#B0482C; --warn:#875408; --warn-bg:#FBF1DE; --err:#B0322C; --err-bg:#FBE6E4; --ok:#2A7148;
   --start-bg:#16202B; --start-ink:#F2F5F8; --start-muted:#AEB9C5;
   --shadow:0 1px 2px rgba(22,32,43,.08),0 4px 14px rgba(22,32,43,.06);
   --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -28,7 +28,7 @@
     --focus:#7FB0DE;
     --r-spine:#7FB0DE; --r-personal:#E08AA8; --r-texture:#C4B08A;
     --e1:#A68FE0; --e2:#E88AA5; --e3:#5CC3B2; --e4:#9BB4CC;
-    --terminal:#E57F60; --warn:#E3AC4F; --warn-bg:#35291A; --err:#F08A80; --err-bg:#3A2020;
+    --terminal:#E57F60; --warn:#E3AC4F; --warn-bg:#35291A; --err:#F08A80; --err-bg:#3A2020; --ok:#7BCF9C;
     --start-bg:#E3E9EF; --start-ink:#101820; --start-muted:#4C5966;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.25);
   }
@@ -39,7 +39,7 @@
   --focus:#7FB0DE;
   --r-spine:#7FB0DE; --r-personal:#E08AA8; --r-texture:#C4B08A;
   --e1:#A68FE0; --e2:#E88AA5; --e3:#5CC3B2; --e4:#9BB4CC;
-  --terminal:#E57F60; --warn:#E3AC4F; --warn-bg:#35291A; --err:#F08A80; --err-bg:#3A2020;
+  --terminal:#E57F60; --warn:#E3AC4F; --warn-bg:#35291A; --err:#F08A80; --err-bg:#3A2020; --ok:#7BCF9C;
   --start-bg:#E3E9EF; --start-ink:#101820; --start-muted:#4C5966;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.25);
 }
@@ -47,6 +47,21 @@ html,body{height:100%}
 body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45}
 *{box-sizing:border-box}
 button,input,select,textarea{font:inherit;color:inherit}
+/* base.html styles every text input, textarea and select for the dark play pages (a slate
+   background, light text) and its .card/.button-link the same way. The board has its own light
+   and dark palettes, so every control and result panel here is reset onto the board's tokens -
+   otherwise a control outside a .field wrapper got base.html's dark box with the board's dark
+   ink: unreadable. Specificity (0,2,1) beats base.html's (0,1,1); the .field/.cb/.canonrow rules
+   below re-apply their own sizing on top. */
+.board-app input:is([type=text],[type=number],[type=password],[type=search],:not([type])),.board-app textarea,.board-app select{
+  width:auto;max-width:100%;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:13.5px;line-height:1.4}
+.board-app textarea{width:100%}
+.board-app ::placeholder{color:var(--muted);opacity:1}
+.board-app a{color:var(--focus)}
+.board-app a.btn{color:var(--ink);text-decoration:none}
+.board-app .card{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:6px 0}
+.board-app .button-link{appearance:none;display:inline-flex;align-items:center;height:32px;padding:0 14px;border:1px solid var(--ink);border-radius:7px;background:var(--ink);color:var(--surface);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none}
+.board-app .button-link:hover{opacity:.9;filter:none}
 /* board-app, not .app: base.html's own <main> already uses .app (max-width:560px, meant for
    narrow prose pages like login/stories) - colliding with it was squeezing this whole tool
    into a phone-width column regardless of any width set here. */
@@ -155,7 +170,7 @@ td.cell.empty{color:var(--muted)}
 .inspector h4{font:500 11px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px}
 .field{display:grid;gap:5px;margin-bottom:12px}
 .field label{font-size:12px;font-weight:600;color:var(--muted)}
-.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:6px;background:var(--raised);color:var(--ink);padding:7px 9px;font-size:13.5px}
+.board-app .field input,.board-app .field select,.board-app .field textarea{width:100%;border:1px solid var(--line);border-radius:6px;background:var(--raised);color:var(--ink);padding:7px 9px;font-size:13.5px}
 .field textarea{min-height:84px;resize:vertical;line-height:1.45}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .note{font-size:12.5px;color:var(--muted);margin:0 0 10px}
@@ -213,7 +228,7 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .chip.warn{color:var(--warn)}
 .chip.err{color:var(--err);background:var(--err-bg)}
 .canonrow{border:1px dashed var(--line);border-radius:7px;padding:8px 9px;display:grid;gap:6px;background:var(--raised)}
-.canonrow input,.canonrow textarea{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);padding:5px 7px;font-size:13px}
+.board-app .canonrow input,.board-app .canonrow textarea{width:100%;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);padding:5px 7px;font-size:13px}
 .canonrow textarea{min-height:64px;resize:vertical;line-height:1.45}
 .linkchips{display:flex;flex-wrap:wrap;gap:6px}
 .linkchip{height:24px;padding:0 9px;border:1px solid var(--k,var(--line));color:var(--k,var(--ink));border-radius:999px;background:var(--surface);cursor:pointer;font:500 11.5px var(--body)}
@@ -222,7 +237,7 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .cb{display:grid;gap:5px}
 .cb-group{border:1px solid var(--line);border-radius:7px;padding:6px 8px;display:grid;gap:5px;background:var(--raised)}
 .cb-leaf{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
-.cb select,.cb input[type=text],.cb input[type=number]{height:26px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);padding:0 6px;font-size:12.5px;max-width:100%}
+.board-app .cb select,.board-app .cb input[type=text],.board-app .cb input[type=number]{height:26px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);padding:0 6px;font-size:12.5px;max-width:100%}
 /* ---- S3: "not built" chip, timeline bar, stat sidebar, tier ladder ---- */
 .vis.notbuilt{color:var(--warn);background:var(--warn-bg);border-style:dashed}
 .timeline{top:12px;left:12px;right:12px;display:grid;gap:6px;padding:8px 12px 10px;align-items:stretch}
@@ -2031,7 +2046,7 @@ $('#tTimeline').onchange=e=>{showTimeline=e.target.checked;renderTimeline()};
 let sample={};
 window.getSample=()=>sample;
 function sampleGroup(title){const g=el('div');g.style.cssText='display:grid;gap:4px;align-content:start';const h=el('div',null,title);h.style.cssText='font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)';g.appendChild(h);return g}
-function sampleInput(type,val,on,width){const i=el('input');i.type=type;if(val!=null)i.value=val;i.style.cssText='background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:3px 6px;font-size:12px;'+(width?`width:${width}`:'');i.addEventListener('input',()=>on(i));return i}
+function sampleInput(type,val,on,width){const i=el('input');i.type=type;if(val!=null)i.value=val;i.style.cssText='background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:3px 6px;font-size:12px;'+(width?`width:${width}`:'');i.addEventListener('input',()=>on(i));return i}
 function sampleRow(label,control){const r=el('label');r.style.cssText='display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink)';r.appendChild(control);r.appendChild(el('span',null,label));return r}
 function sampleSetMap(key,name,value){if(value===''||value==null||Number.isNaN(value)){if(sample[key]){delete sample[key][name];if(!Object.keys(sample[key]).length)delete sample[key]}return}(sample[key]=sample[key]||{})[name]=value}
 function sampleToggle(key,name,on){const l=sample[key]||[];const i=l.indexOf(name);if(on&&i<0)l.push(name);if(!on&&i>=0)l.splice(i,1);if(l.length)sample[key]=l;else delete sample[key]}
@@ -2049,7 +2064,7 @@ function renderSample(){
   const threads=model.nodes.filter(n=>n.kind==='subplot');
   if(threads.length){const g=sampleGroup('Thread status');
     threads.forEach(t=>{const sel_=el('select');['','not_started','active','progressed','completed','failed'].forEach(v=>{const o=el('option',null,v||'(seeded)');o.value=v;sel_.appendChild(o)});
-      sel_.value=(sample.subplots&&sample.subplots[t.id])||'';sel_.style.cssText='background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:2px 4px;font-size:12px';
+      sel_.value=(sample.subplots&&sample.subplots[t.id])||'';sel_.style.cssText='background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:2px 4px;font-size:12px';
       sel_.addEventListener('change',()=>sampleSetMap('subplots',t.id,sel_.value));g.appendChild(sampleRow(t.title||t.id,sel_))});box.appendChild(g)}
   const wps=[];model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='destination').forEach(e=>(e.waypoints||[]).forEach(w=>{if(w.id)wps.push(w.id)}));
   checkGroup('Waypoints planted',wps,'waypoints_done');

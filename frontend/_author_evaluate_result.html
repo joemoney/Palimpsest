@@ -4,8 +4,8 @@
 </button>
 
 {% if error %}
-<div class="card" style="border-color:#b0322c;">
-  <div style="font-weight:700; color:#b0322c;">{{ error }}</div>
+<div class="card" style="border-color:var(--err);">
+  <div style="font-weight:700; color:var(--err);">{{ error }}</div>
 </div>
 {% else %}
 <div class="card">
@@ -16,7 +16,7 @@
     and false where it would commit something permanent (ready, done, fail).
   </div>
   {% if left_out %}
-  <div style="color:#a86a10; font-size:0.85rem; margin-top:6px;">
+  <div style="color:var(--warn); font-size:0.85rem; margin-top:6px;">
     Not built in this engine yet, so anything reading them is unknown:
     {% for slot, engine in left_out %}<code>mechanics.{{ slot }}.engine = {{ engine }}</code>{{ ', ' if not loop.last }}{% endfor %}.
   </div>
@@ -36,10 +36,10 @@
         <td style="padding:4px 6px;"><code style="font-size:0.75rem;">{{ r.path }}</code></td>
         <td style="padding:4px 6px;">{{ r.label }}</td>
         <td style="padding:4px 6px; color:var(--muted);">{{ 'true (open)' if r.polarity == 'open' else 'false (closed)' }}</td>
-        <td style="padding:4px 6px; font-weight:700; color:{{ '#2e7d4f' if r.satisfied else '#b0322c' }};">
+        <td style="padding:4px 6px; font-weight:700; color:{{ 'var(--ok)' if r.satisfied else 'var(--err)' }};">
           {{ 'holds' if r.satisfied else 'does not hold' }}
           {% if r.unknown %}
-          <div style="font-weight:400; color:#a86a10; font-size:0.75rem;">unknown: {{ r.unknown|join('; ') }}</div>
+          <div style="font-weight:400; color:var(--warn); font-size:0.75rem;">unknown: {{ r.unknown|join('; ') }}</div>
           {% endif %}
         </td>
         <td style="padding:4px 6px;">{{ (r.proximity * 100)|round|int }}%</td>

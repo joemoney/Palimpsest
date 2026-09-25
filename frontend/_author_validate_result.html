@@ -6,8 +6,8 @@
 {% endif %}
 
 {% if saved %}
-<div class="card" style="border-color:#2e7d4f;">
-  <div style="font-weight:700; color:#2e7d4f;">Saved.</div>
+<div class="card" style="border-color:var(--ok);">
+  <div style="font-weight:700; color:var(--ok);">Saved.</div>
   <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">story_version {{ story_version }}</div>
   {% if errors %}
   <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">
@@ -18,8 +18,8 @@
 {% endif %}
 
 {% if errors %}
-<div class="card" style="border-color:#b0322c;">
-  <div style="font-weight:700; color:#b0322c;">
+<div class="card" style="border-color:var(--err);">
+  <div style="font-weight:700; color:var(--err);">
     {{ errors|length }} error{{ 's' if errors|length != 1 }}
     {% if not saved %} - hides this story from the player list until fixed{% endif %}
   </div>
@@ -35,8 +35,8 @@
 {% endif %}
 
 {% if warnings %}
-<div class="card" style="border-color:#a86a10;">
-  <div style="font-weight:700; color:#a86a10;">{{ warnings|length }} warning{{ 's' if warnings|length != 1 }}</div>
+<div class="card" style="border-color:var(--warn);">
+  <div style="font-weight:700; color:var(--warn);">{{ warnings|length }} warning{{ 's' if warnings|length != 1 }}</div>
   <ul style="margin:8px 0 0; padding-left:20px;">
     {% for issue in warnings %}
     <li style="font-size:0.9rem;">
