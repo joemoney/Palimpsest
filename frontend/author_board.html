@@ -638,6 +638,13 @@ function canonLeaks(c){
 function issues(){
   const out=[];
   const ends=model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='destination');
+  // Mirrors author_lint.ending_arc_issues: the arc is what the narrator gets once an ending commits.
+  for(const n of model.nodes.filter(n=>n.kind==='ending'&&(n.ekind==='terminal'?n.source==='endings':true))){
+    const arc=n.arc||{};const miss=['title','description'].filter(k=>!(arc[k]||'').trim());
+    if(!miss.length)continue;
+    const what=miss.length===2?'arc title or description':'arc '+miss[0];
+    out.push({lvl:'warn',text:`${n.title||n.id} has no ${what}, so ${miss.includes('description')?'the finale starts from its name alone':'the finale act is titled with its name'}.`,id:n.id});
+  }
   if(!ends.some(n=>n.catchAll))out.push({lvl:'error',text:'No catch-all ending. If every other ending is ruled out, the story has nowhere to go.',id:null});
   for(const n of ends){
     const c=carriers(n);const threads=new Set(Object.values(c).flat());

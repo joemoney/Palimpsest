@@ -318,6 +318,21 @@ assert any("kind" in m and 'is kind "terminal"' in m for m in msgs), msgs
 assert any("catch_all" in m and "no viable_while is the catch-all" in m for m in msgs), msgs
 print("OK: L01 names the fix for kind \"failure\" and a catch_all key")
 
+# --- ending arcs: a missing arc title or description is a warning, one per ending ---------------
+arcs = {"mechanics": {"endings": {"engine": "ending_funnel", "entries": [
+    {"id": "full", "kind": "destination", "name": "Full", "arc": {"title": "T", "description": "D"}},
+    {"id": "bare", "kind": "destination", "name": "Bare"},
+    {"id": "notitle", "kind": "destination", "name": "No Title", "arc": {"description": "D"}},
+    {"id": "nodesc", "kind": "terminal", "name": "No Desc", "arc": {"title": "T", "description": "  "}}]}}}
+got = {i["node_id"]: (i["severity"], i["message"]) for i in author_lint.ending_arc_issues(arcs)}
+assert set(got) == {"bare", "notitle", "nodesc"}, got
+assert all(sev == "warning" for sev, _ in got.values()), got
+assert got["bare"][1] == "Bare has no arc title or description, so the finale starts from its name alone."
+assert got["notitle"][1] == "No Title has no arc title, so the finale act is titled with its name."
+assert "no arc description" in got["nodesc"][1]
+assert author_lint.ending_arc_issues({"mechanics": {}}) == []
+print("OK: a missing arc title or description is one warning per ending, naming what's missing")
+
 # --- has_errors -------------------------------------------------------------------------------
 assert author_lint.has_errors([{"severity": "error"}])
 assert not author_lint.has_errors([{"severity": "warning"}])

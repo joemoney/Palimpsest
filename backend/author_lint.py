@@ -317,6 +317,32 @@ _STOPWORDS = {"the", "and", "you", "your", "for", "with", "that", "this", "what"
               "are", "not", "but", "all", "one", "out", "into", "from"}
 
 
+def ending_arc_issues(raw: dict) -> list:
+    """An ending's `arc` is what the narrator is given once the story commits to it - the finale
+    act's title and description (`EndingFunnel.final_arc`). Without one the engine still ends the
+    story, but the finale starts from the ending's name alone ("Bring the story to its ending:
+    <name>."), so a missing arc title or description is a warning: one per ending, naming what's
+    missing. Covers destinations and terminals under `mechanics.endings`; the legacy
+    `failure_conditions` shape carries its own required `ending_prompt` instead."""
+    block = (raw.get("mechanics") or {}).get("endings")
+    out = []
+    for e in (block.get("entries") or []) if isinstance(block, dict) else []:
+        if not isinstance(e, dict):
+            continue
+        arc = e.get("arc") if isinstance(e.get("arc"), dict) else {}
+        missing = [part for part, key in (("title", "title"), ("description", "description"))
+                   if not (arc.get(key) or "").strip()]
+        if not missing:
+            continue
+        name = e.get("name") or arc.get("title") or e.get("id") or "An ending"
+        what = "arc title or description" if len(missing) == 2 else f"arc {missing[0]}"
+        effect = ("the finale starts from its name alone" if "description" in missing
+                  else "the finale act is titled with its name")
+        out.append({"id": "arc", "severity": "warning", "node_id": e.get("id"),
+                    "message": f"{name} has no {what}, so {effect}."})
+    return out
+
+
 def thread_cast_issues(raw: dict) -> list:
     """L16 for a thread's `cast`: every name must be an authored character. A character's name
     is its only identity (CLAUDE.md), so a cast entry left behind by a rename names nobody."""
@@ -433,6 +459,7 @@ def lint(raw: dict, model: dict) -> list:
     in two vocabularies is noise."""
     schema = schema_errors(raw)
     return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw) + revelation_issues(raw) + world_issues(raw) + thread_cast_issues(raw)
+            + ending_arc_issues(raw)
             + stat_tier_issues(raw) + structural_issues(model) + cast_issues(model))
 
 
