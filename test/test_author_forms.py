@@ -93,4 +93,13 @@ assert [t["label"] for t in out["mechanics"]["stats"]["axes"]["nerve"]["tiers"]]
 assert out["plot"]["initial_scene"] == {"location": "loc_b", "summary": "Dusk."}
 print("OK: Forms edits and the tier ladder / World tab edits to the same section both land")
 
+# --- inventory items: a label or an item record, and the record's shape is the engine's -----------
+def inv_errors(items):
+    raw = {"protagonist": {"default_name": "X", "starting_inventory": items}}
+    return [e["message"] for e in author_lint.schema_errors(raw) if e["message"].startswith("protagonist")]
+assert inv_errors(["a brass key", {"id": "itm_001", "label": "a cutter", "tags": ["tool"], "uses": 3}]) == []
+assert inv_errors([{"label": "a cutter", "colour": "red"}]), "an unknown key on an item record is caught"
+assert inv_errors([{"id": "itm_001"}]), "an item record needs a label"
+print("OK: starting inventory accepts a label or an {id, label, tags, uses} record, and nothing else")
+
 print("\nALL CHECKS PASSED: test_author_forms")

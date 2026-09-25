@@ -120,7 +120,10 @@
         "traits": { "type": "array", "items": { "type": "string" } },
         "starting_inventory": {
           "type": "array",
-          "items": { "oneOf": [{ "type": "string" }, { "type": "object" }] }
+          "items": { "oneOf": [
+            { "title": "Label only", "description": "A bare label, e.g. \"a brass key\". Read as an item with that label and nothing else.", "type": "string" },
+            { "$ref": "#/$defs/item" }
+          ] }
         },
         "stats": { "type": "object", "additionalProperties": { "type": "number" } },
         "background": { "type": "object", "additionalProperties": { "type": "string" } }
@@ -322,6 +325,20 @@
       "additionalProperties": false
     },
 
+    "item": {
+      "title": "Item record",
+      "description": "An inventory item as the tagged_items engine keeps it. The engine mints ids for items gained in play; a starting item may author its own.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "What the model cites to spend or lose this item, e.g. itm_001." },
+        "label": { "type": "string", "description": "What the item is, as the narrator sees it." },
+        "tags": { "type": "array", "items": { "type": "string" }, "description": "Kinds this item counts as, from mechanics.inventory.tags; gates and conditions test these (item_tag)." },
+        "uses": { "type": "integer", "minimum": 0, "description": "Uses left. With uses, spending one decrements it; without, spending the item removes it." }
+      },
+      "required": ["label"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
     "tracked_entity": {
       "type": "object",
       "properties": {

@@ -2224,6 +2224,36 @@ function defaultFor(n){
   return '';
 }
 function formsChanged(){save();renderHealth()}
+// oneOf support. A value is matched to the variant its JSON type fits, then (for objects) the one
+// whose required keys it has and whose schema knows the most of its keys - never by position, which
+// showed an item record as the "string" variant with every key flagged unknown.
+function schemaKind(v){v=resolveSchema(v)||{};const t=Array.isArray(v.type)?v.type[0]:v.type;
+  if(t==='integer'||t==='number')return 'number';if(t)return t;if(v.properties||v.additionalProperties)return 'object';return null}
+function valueKind(x){return x==null?null:Array.isArray(x)?'array':typeof x==='object'?'object':typeof x}
+function variantFor(variants,val){
+  const vk=valueKind(val);if(vk===null)return 0;
+  let best=0,score=-Infinity;
+  variants.forEach((v,i)=>{if(schemaKind(v)!==vk)return;let sc=100;
+    if(vk==='object'){const props=v.properties||{};
+      sc+=(v.required||[]).every(r=>r in val)?50:0;
+      sc-=Object.keys(val).filter(k=>!k.startsWith('_')&&!(k in props)&&!v.additionalProperties).length}
+    if(sc>score){score=sc;best=i}});
+  return best;
+}
+function variantName(v,i){
+  if(v.title)return v.title;
+  if(v.required&&v.required.length)return v.required.map(prettyKey).join(' + ');
+  return {string:'Text',number:'Number',boolean:'Yes / no',array:'List',object:'Record'}[schemaKind(v)]||('Form '+(i+1));
+}
+// Switching variants keeps what the author wrote where it can: a text becomes the record's label
+// (or first required text field), a record's label becomes the text.
+function convertVariant(val,to){
+  const kind=schemaKind(to);
+  if(kind==='object'&&typeof val==='string'){const o=defaultFor(to);const props=to.properties||{};
+    const k=['label','name','title'].find(x=>x in props)||(to.required||[]).find(r=>schemaKind(props[r])==='string');if(k)o[k]=val;return o}
+  if(kind==='string'&&val&&typeof val==='object')return val.label||val.name||val.title||'';
+  return defaultFor(to);
+}
 function renderFormField(holder,key,sch,ctx){
   // holder[key] is the value; ctx = {section, rel, label, required, onStructure}
   const raw=sch;sch=resolveSchema(sch)||{};
@@ -2246,11 +2276,15 @@ function renderFormField(holder,key,sch,ctx){
   if(val===undefined&&composite){const add=el('button','btn small','+ Add '+label.toLowerCase());add.type='button';add.onclick=()=>{holder[key]=defaultFor(sch);formsChanged();ctx.onStructure()};wrap.appendChild(add);return wrap}
   if(sch.const!==undefined){const c=el('span','chip',String(sch.const));c.style.justifySelf='start';c.title='Fixed by the schema: this names the engine that runs the section.';wrap.appendChild(c);if(val===undefined){holder[key]=sch.const}return wrap}
   if(sch.oneOf){
-    const variants=sch.oneOf.map(v=>resolveSchema(v));
-    const cur=Math.max(0,variants.findIndex(v=>(v.required||[]).every(r=>val&&r in val)));
-    const pick=cbSelect(variants.map((v,i)=>[String(i),(v.required||Object.keys(v.properties||{})).map(prettyKey).join(' + ')||('Form '+(i+1))]),String(cur),v=>{holder[key]=defaultFor(variants[Number(v)]);formsChanged();ctx.onStructure()});
-    wrap.appendChild(pick);
-    const inner=el('div','fnest');renderObjectBody(holder[key],variants[cur],inner,ctx);wrap.appendChild(inner);return wrap;
+    const variants=sch.oneOf.map(v=>resolveSchema(v)||{});
+    const cur=variantFor(variants,val);
+    const pick=cbSelect(variants.map((v,i)=>[String(i),variantName(v,i)]),String(cur),x=>{
+      holder[key]=convertVariant(holder[key],variants[Number(x)]);formsChanged();ctx.onStructure()});
+    pick.setAttribute('aria-label',label+' form');wrap.appendChild(pick);
+    const v=variants[cur],inner=el('div','fnest');
+    if(schemaKind(v)==='object')renderObjectBody(holder[key],v,inner,ctx);
+    else inner.appendChild(renderFormField(holder,key,v,{...ctx,label:variantName(v,cur),required:true,inList:true}));
+    wrap.appendChild(inner);return wrap;
   }
   if(sch.enum){
     const opts=(ctx.required?[]:[['','(not set)']]).concat(sch.enum.map(e=>[String(e),String(e)]));
