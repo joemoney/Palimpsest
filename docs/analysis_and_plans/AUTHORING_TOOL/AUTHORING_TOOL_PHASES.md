@@ -223,10 +223,12 @@ before and after.
 
 ## Phase S1: The board becomes the source of truth
 
-**Status: mechanically complete. Every gate item except the acceptance run is built and
-tested - schema, lint, the `/author` routes, the board frontend, the save flow, and README
-sync. Not yet closed: step 8, the acceptance run (migrating CR-10/CR-05 content into the
-three real stories) - in progress, see below.**
+**Status: CLOSED (2026-09-24), with the acceptance run narrowed to The Missing Core.**
+Every mechanical gate item is built and tested - schema, lint, the `/author` routes, the
+board frontend, the save flow, and README sync - and the acceptance run passed on The Missing
+Core, authored on the board by the user and saved: see "Acceptance run," below. The original
+plan called for all three real stories; that was narrowed on the user's decision (`example`
+and New Babel are not covered by this gate - see below).
 
 **Done:**
 - **D7** (`relationship_to_player` → `first_contact`), fully shipped end to end - engine,
@@ -279,15 +281,16 @@ three real stories) - in progress, see below.**
 - **Play is closed for the duration of the overhaul** - see its own note below. Not part of
   the original S1 plan, but it removes what would otherwise be the real blocker on step 8.
 
-**Still open:**
-- **Step 8**: migrating CR-10 (`role`/`delivers`/`activate_when`) and CR-05
-  (`mechanics.endings`) content into the three real stories - `example`, New Babel, and The
-  Missing Core. In progress: the user is authoring `example` and New Babel's content by hand.
-  The Missing Core's content doesn't need designing - CR-10's mapping table (roles,
-  activations, deliveries for all five subplots) and CR-05's proposed ending set are already
-  written out in `Story_Mechanics_Update.md` (the "Proposed ending set: The Missing Core"
-  and "Mapping for The Missing Core" tables) - transcribing them onto the board is what's
-  left, and nobody has claimed it yet.
+**Acceptance run (step 8): passed on The Missing Core only.** The user authored a storyboard
+for it on the board (8 nodes, 12 edges, two `destination` endings) and saved it. Checked
+against the saved file: a no-op `to_board_model` → `from_board_model` round trip is
+byte-identical; `author_lint.lint` returns 0 errors and 0 warnings (schema L01 included);
+`state_store.load_template` refuses it with `UnknownEngineError` naming
+`mechanics.endings.engine: 'ending_funnel'` - the D1 loud failure, correct while the engine
+piece doesn't exist; full offline suite green (51/51).
+**Not covered by the S1 gate:** `example` and New Babel. Neither has a `mechanics.endings`
+block; they load and play on the v2 engine as-is. Authoring their CR-05 endings is
+storyboard-led work that lands under D6 / S5, demand-driven.
 
 **Play closed during the overhaul.** `backend/app.py`'s `_close_play_during_overhaul`
 (`before_request` hook, `PLAY_ENABLED` env var, default off) returns 503 with an explanatory
@@ -481,7 +484,8 @@ losing anything.
   automatic per-save sync still only ever touches a README that already exists.
 - **Migrate the three stories** onto the board as the S1 acceptance run. For The Missing
   Core, CR-10's own mapping table (roles, activations and deliveries for all five subplots)
-  and CR-05's proposed ending set are the source. **Still open** - see "Still open," above.
+  and CR-05's proposed ending set are the source. **Done for The Missing Core only** - see
+  "Acceptance run," above.
 
 **Gate.**
 - **Round trip: met.** For every real story and fixture, `load → board model → write` with
@@ -506,8 +510,7 @@ losing anything.
   lint, the schema file, README sync, and the save flow - all previously
   "not yet gated at all, because nothing exists to gate," now built and covered by the tests
   above.
-- **Still open:** the acceptance run itself (step 8) - the phase's gate isn't formally closed
-  until it runs, even though every mechanical item above is met.
+- **Acceptance run: met, narrowed to The Missing Core** - see "Acceptance run," above.
 
 **Risk.** The writer. Every lossy template editor loses data by rebuilding from its own
 model, and the resulting diff looks like a formatting change. The byte-identical round trip
@@ -525,9 +528,9 @@ remaining risk in S1 is schedule/scope, not data loss.
 6. ~~README synopsis sync~~ **Done**, plus the one-time backfill onto all three real stories.
 7. ~~`test_author_routes.py`~~ **Done**, alongside `test_author_lint.py` and
    `test_readme_sync.py`.
-8. **Still open:** migrate the three real stories' CR-10/CR-05 content onto the board by
-   hand, as the S1 acceptance run - see "Still open," above, for exactly what's left and for
-   whom.
+8. ~~Migrate the real stories' CR-10/CR-05 content onto the board by hand, as the S1
+   acceptance run~~ **Done for The Missing Core** (the gate was narrowed to it); `example`
+   and New Babel are not covered - see "Acceptance run," above.
 
 ---
 
