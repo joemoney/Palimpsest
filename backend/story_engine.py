@@ -471,6 +471,10 @@ STATUS_LABELS = {
     "subplot_generation": "Branching",
     "act_advancement_check": "Weighing",
     "end_story_final_arc": "Concluding",
+    # CR-05's two judge calls, both Tier C and both rare: a terminal's confirmation only on a
+    # turn its condition trips, the commit judge only at a check with a ready destination.
+    "terminal_confirm": "Reckoning",
+    "ending_commit_judge": "Deciding",
     "summary_rollover": "Remembering",
     # The last two _timed() labels are the ones that can't run inside a turn at all -
     # generate_steering_seed and generate_character_from_relationship are only ever reached
@@ -501,6 +505,8 @@ DEFAULT_STEP_ESTIMATE_SECONDS = {
     "subplot_generation": 6,
     "act_advancement_check": 4,
     "end_story_final_arc": 15,
+    "terminal_confirm": 2,
+    "ending_commit_judge": 3,
     "summary_rollover": 19,
 }
 
@@ -1422,6 +1428,124 @@ def _apply_failure_effect(ctx: dict, effect):
 mechanics.register_effect("failure.trigger", _apply_failure_effect)
 
 
+def _recent_scene(ctx: dict) -> str:
+    return (ctx["state"]["history"]["recent_turns"] or [""])[-1]
+
+
+def _confirm_terminal(ctx: dict, entry: dict) -> bool:
+    """CR-05: a terminal's `ready_when` tripped in code; a judge confirms it against the
+    authored `criteria` before the story ends on it. No `criteria` means the condition is the
+    whole rule, and nothing is asked.
+
+    Tier C, per the registry's default (CLAUDE.md: "An engine call is Tier C unless its module
+    records why not"): a yes/no reading of one scene against one sentence of criteria."""
+    criteria = (entry.get("criteria") or "").strip()
+    if not criteria:
+        return True
+    prompt = f"""An interactive story has reached a condition that may end it. Decide whether the
+scene just narrated actually meets the ending's criteria, or merely came close.
+
+CRITERIA: {criteria}
+
+SCENE JUST NARRATED:
+{_recent_scene(ctx)}
+
+Reply with JSON only: {{"confirmed": true or false}}"""
+    result = _timed("terminal_confirm", lambda: call_llm_json(prompt), model=TIER_C_MODEL)
+    return bool((result or {}).get("confirmed") is True)
+
+
+def _judge_commit(ctx: dict, ready: list):
+    """CR-05's commit judge: one call chooses among the ready destinations, or answers null
+    ("not now: mid-climax"). Returns the chosen entry, or None.
+
+    Numbered, never named by id, for the same reason `detect_gate_refusal` numbers gates. The
+    `criteria` shown here are judge-only by design (CR-03); this prompt is never a narration
+    prompt, and nothing in it is written back into one.
+
+    Tier C, per the registry default. CR-05's open question 1 asks whether the flagship stories
+    want a stronger model for this call; nothing measured says so yet, so it stays C until
+    something does."""
+    lines = "\n".join(
+        f"{n}. {e.get('name') or e.get('id')}: {e.get('criteria') or 'no further criteria'}"
+        for n, e in enumerate(ready, 1))
+    prompt = f"""An interactive story is ready to begin one of its designed endings. Decide whether
+now is the moment, and if so which.
+
+STORY SO FAR: {ctx["state"]["history"]["compressed_summary"] or "The story has just begun."}
+MOST RECENT SCENE:
+{_recent_scene(ctx)}
+
+ENDINGS NOW WITHIN REACH (number. name: what must be true of the story for it to fit):
+{lines}
+
+Choose the ending whose criteria the story genuinely meets. If the story is mid-climax or a
+scene is still unresolved, answer null - the question will be asked again later.
+
+Reply with JSON only: {{"ending": <the NUMBER above, or null>}}"""
+    result = _timed("ending_commit_judge", lambda: call_llm_json(prompt), model=TIER_C_MODEL)
+    try:
+        index = int((result or {}).get("ending"))
+    except (TypeError, ValueError):
+        return None
+    return ready[index - 1] if 1 <= index <= len(ready) else None
+
+
+def check_ending_funnel(ctx: dict):
+    """CR-05's commit step, once per turn after the state update. Decides nothing itself - the
+    `ending_funnel` engine says what is tripped, ready or due (all pure, in code) - and makes
+    only the model calls a commit can need, then routes into `_begin_endgame`, the one ending
+    path. In order:
+
+      1. A terminal whose `ready_when` holds, confirmed by a judge. Every turn.
+      2. At a check inside the commit window, a ready destination chosen by the commit judge.
+         After JUDGE_NULL_LIMIT consecutive "not now" answers, the leader among the ready set
+         is committed without asking again.
+      3. At or past `commit_by`, a forced commit of the leader among viable destinations,
+         with a bridging note for its unplanted waypoints.
+
+    Zero judge calls unless something is ready or tripped (CR-05's first acceptance line).
+    Returns the committed entry, or None."""
+    bound = mechanics.bound_for(ctx["story"], "endings")
+    if bound is None or ctx["state"]["plot"]["endgame"]["requested"]:
+        return None
+    engine, cfg = bound.engine, bound.cfg
+    endings = mechanics.endings
+    if engine.committed(ctx):
+        return None
+    # Plant, prune and score against the state this turn ended on, before anything below
+    # reads the funnel.
+    mechanics.apply_effects(ctx, engine.settle(cfg, ctx))
+
+    for entry in engine.tripped_terminals(cfg, ctx):
+        if _confirm_terminal(ctx, entry):
+            endings.record_commit(ctx, entry)
+            _begin_endgame(ctx, engine.final_arc(entry), cause="terminal")
+            return entry
+        endings.record_terminal_cooldown(ctx, cfg, entry)
+
+    if engine.commit_due(cfg, ctx):
+        ready = engine.ready(cfg, ctx)
+        if ready:
+            chosen = _judge_commit(ctx, ready)
+            if chosen is None and endings.record_judge_null(ctx) >= endings.JUDGE_NULL_LIMIT:
+                chosen = engine.leader(cfg, ctx, ready)
+            if chosen is not None:
+                endings.record_commit(ctx, chosen)
+                _begin_endgame(ctx, engine.final_arc(chosen), cause="committed")
+                return chosen
+
+    if engine.forced_due(cfg, ctx):
+        viable = engine.viable(cfg, ctx)
+        if viable:
+            leader = engine.leader(cfg, ctx, viable)
+            endings.record_commit(ctx, leader, forced=True)
+            _begin_endgame(ctx, engine.final_arc(leader, engine.bridging_note(cfg, ctx, leader)),
+                           cause="forced")
+            return leader
+    return None
+
+
 def check_and_advance_act(ctx: dict):
     """At a pacing checkpoint, ask the director whether the current act has narratively
     resolved and, if so, generate the next one. No-op once the story is ending.
@@ -1778,6 +1902,24 @@ def _section_recent(ctx: dict) -> str:
     return f"RECENT EXCHANGES:\n{recent}"
 
 
+def _finale_pace(ctx: dict) -> str:
+    """CR-05's `finale_turns`: an authored floor and ceiling on how many scenes the finale runs.
+    Counted from the turn the ending was entered. Empty unless the story authors endings with
+    `finale_turns` - P-2, no directive for a feature the story doesn't use."""
+    bound = mechanics.bound_for(ctx["story"], "endings")
+    finale = (bound.cfg.get("finale_turns") or {}) if bound else {}
+    if not finale:
+        return ""
+    endgame = ctx["state"]["plot"]["endgame"]
+    # This prompt narrates the scene after turn_count, so the scene number is one more.
+    scene = ctx["state"]["pacing"]["turn_count"] - (endgame.get("requested_turn") or 0) + 1
+    if finale.get("max") is not None and scene >= finale["max"]:
+        return '\nThis must be the final scene: end it with the exact line "THE END".'
+    if finale.get("min") is not None and scene < finale["min"]:
+        return "\nDo not conclude in this scene; the ending still has further to run."
+    return ""
+
+
 def _section_pacing_or_endgame(ctx: dict) -> str | None:
     """The one section that's genuinely two mutually exclusive modes rather than a single
     optional block: once the player has asked to end the story, this becomes the ENDGAME
@@ -1790,13 +1932,17 @@ def _section_pacing_or_endgame(ctx: dict) -> str | None:
         subplots_view = _all_subplots(ctx)
         active_titles = [sp["title"] for sp in subplots_view.values() if sp["active"]]
         final_arc = endgame["final_arc"] or {}
+        opener = ("The player has asked to conclude the story."
+                  if endgame.get("cause") == "player_request" else
+                  "The story has reached its ending.")
         return (
-            f'ENDGAME: The player has asked to conclude the story. Narrate toward a satisfying, '
+            f'ENDGAME: {opener} Narrate toward a satisfying, '
             f'conclusive\nending for: "{final_arc.get("title", "")}" - {final_arc.get("description", "")}\n'
             f"Resolve these open threads and do not introduce any new subplots, factions, or plot "
             f"threads: {', '.join(active_titles) or 'none remaining'}.\n"
             'When the story reaches a natural conclusion, end the narration with the exact line '
             '"THE END" on\nits own line. Do not include an "OPTIONS:" block or numbered choices.'
+            + _finale_pace(ctx)
         )
     pacing_state = ctx["state"]["pacing"]
     nudge_frequency = ctx["story"]["plot"].get("pacing", {}).get("nudge_frequency", DEFAULT_NUDGE_FREQUENCY)
@@ -2262,6 +2408,9 @@ def update_state_after_turn(
     # the same turn - then keep the pool topped up with whatever room is left
     status = check_subplot_status(ctx)
     apply_thread_conditions(ctx)
+    # CR-05: commit before generation and act advancement, so a turn that commits an ending
+    # doesn't also invent a subplot or an act the finale would then have to ignore
+    check_ending_funnel(ctx)
     for _ in status["completed"]:
         generate_new_subplot(ctx)
 

@@ -141,11 +141,11 @@ yes({"item_tag": "vault_key"}, c=tagged); no({"item_tag": "crowbar"}, c=tagged)
 print("OK: leverage_kind, leverage_label_matches and item_tag leaves")
 
 ENDING = {"id": "e", "waypoints": [{"id": "w1"}, {"id": "w2"}, {"id": "w3"}]}
-done = ctx(endings_state={"waypoints_done": {"w1": 10, "w2": 20}})
+done = ctx(mechanics={"endings": {"waypoints_done": {"e.w1": 10, "e.w2": 20, "other.w3": 5}}})
 yes({"waypoints_done": 2}, c=done, ending=ENDING); no({"waypoints_done": 3}, c=done, ending=ENDING)
 no({"waypoints_done": "all"}, c=done, ending=ENDING)
 yes({"waypoints_done": ["w1", "w2"]}, c=done, ending=ENDING); no({"waypoints_done": ["w3"]}, c=done, ending=ENDING)
-all_done = ctx(endings_state={"waypoints_done": {"w1": 1, "w2": 2, "w3": 3}})
+all_done = ctx(mechanics={"endings": {"waypoints_done": {"e.w1": 1, "e.w2": 2, "e.w3": 3}}})
 yes({"waypoints_done": "all"}, c=all_done, ending=ENDING)
 no({"waypoints_done": 1}, c=ctx(), ending=ENDING)
 print("OK: waypoints_done - 'all', a count, a list; nothing is planted before the ledger exists")

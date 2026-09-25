@@ -94,6 +94,12 @@ class MechanicEngine:
     resolve_order = 100  # §6.2 - lower resolves first; ties broken by slot name
     prompt_budget = 0    # §5.4 - max chars prompt_sections may contribute, 0 = none
 
+    def check_config(self, cfg):
+        """Load-time validation of this engine's authored config, called from `validate()`.
+        Raise ValueError for content the engine cannot run. Most engines raise lazily from
+        their own accessors instead; this is for an invariant that must hold before play."""
+        return None
+
     def init_state(self, cfg, ctx) -> dict:
         """Runtime state this engine owns, at save creation. {} for a stateless engine."""
         return {}
@@ -252,6 +258,15 @@ def validate(story):
         print(f"WARNING: tiers on {', '.join(hooked)} author on_enter (CR-01), which this build "
               f"does not read yet - crossing into those tiers fires nothing.")
 
+    # CR-05's declare-to-bind case: endings authored with no engine would never be steered
+    # toward or reached, and - with no player end-story command (D6) - the story could never
+    # end at all.
+    endings_block = (story.get("mechanics") or {}).get("endings")
+    if isinstance(endings_block, dict) and endings_block.get("entries") and "endings" not in declared:
+        print("WARNING: this story authors mechanics.endings entries but declares no engine - "
+              "no ending will ever be steered toward or reached. Add \"engine\": "
+              "\"ending_funnel\".")
+
     for slot, cfg in _declared(story):
         if (slot, cfg["engine"]) not in _REGISTRY:
             known = sorted(n for s, n in _REGISTRY if s == slot)
@@ -259,6 +274,7 @@ def validate(story):
                 f"mechanics.{slot}.engine is {cfg['engine']!r}, which this build does not "
                 f"have. Known engines for {slot!r}: {known or 'none'}"
             )
+        _REGISTRY[(slot, cfg["engine"])].check_config(cfg)
 
 
 def bind(story) -> list:
@@ -458,4 +474,4 @@ def run_observation_pipeline(ctx, diff):
 
 # Engines register by being imported. At the bottom, because each one imports names from
 # this module - the package is the contract, the modules are the implementations.
-from . import failure, gate, items, ledger, pacing, resource, reveal, social, threads  # noqa: E402,F401
+from . import endings, failure, gate, items, ledger, pacing, resource, reveal, social, threads  # noqa: E402,F401

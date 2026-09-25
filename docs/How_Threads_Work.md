@@ -179,15 +179,18 @@ it round-trips correctly, but not all of it does anything in actual play yet.**
 - `fail_when` **works, for the thread itself.** The same pass marks a live or pending thread
   `failed` when its `fail_when` holds (read CLOSED: an unknown referent never fails it). Failure
   runs before activation and latches; a failed thread leaves the live pool, so its slot can be
-  refilled. What failure does *to endings* - pruning a destination carried only by failed
-  threads - is the ending funnel's job and isn't live yet (below).
-- `delivers`, waypoints, and the whole ending funnel (`mechanics.endings`) **do nothing in play
-  today either** — `ending_funnel` isn't a registered engine yet. A story authoring
-  `mechanics.endings` fails to load loudly (`UnknownEngineError`) rather than silently doing
-  nothing, which is deliberate (see CLAUDE.md, "Build order: the storyboard leads, the engine
-  follows") — the board is the upstream design surface, and the engine's job is to catch up to
-  what's already authored, not the reverse. Engine work for this lands piece by piece, as real
-  authoring on the board needs it — not pre-planned ahead of time.
+  refilled, and a destination whose remaining waypoints are carried only by failed threads is
+  pruned at the next funnel check (below).
+- The ending funnel (`mechanics.endings`, engine `ending_funnel`) **works for reaching an
+  ending** (S5, 2026-09-25): waypoints are planted (`done_when` in code, `detect` through the
+  state-update pass), destinations are pruned (`viable_while`, or every remaining carrier
+  failed), scored and narrowed at each check, and committed - by the commit judge when one is
+  ready, at `commit_by` by force, or through a confirmed terminal - into the finale.
+- **Not live yet: steering.** Nothing yet feeds waypoints into act generation or pacing
+  nudges, `hint`s are never used, carriers aren't prioritised or activated early, and subplot
+  generation isn't limited to texture. So a story *reaches* its endings but isn't yet *pulled
+  toward* them. That is the next S5 piece, landing as real authoring on the board needs it
+  (CLAUDE.md, "Build order: the storyboard leads, the engine follows").
 
 So: design freely. What you build on the board is real, saved, correct content — it's just not
 *playable* content yet for the parts the engine hasn't caught up to.

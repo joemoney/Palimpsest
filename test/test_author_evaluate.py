@@ -23,6 +23,8 @@ STORY = {
         "stats": {"engine": "bounded_counter", "floor": 0, "ceiling": 100, "axes": {"sync": {}, "reach": {}}},
         "revelations": {"engine": "triggered_reveal", "entries": [{"id": "frag_2", "trigger": "t", "content": "c"}]},
         "flags": {"declared": [{"id": "lark_departed", "detect": "Lark leaves"}]},
+        # CR-11's engine, not built in this build: the projection must name it, not swallow it.
+        "side_threads": {"engine": "side_threads"},
         "endings": {"engine": "ending_funnel", "entries": [{
             "id": "handover", "kind": "destination", "name": "The Handover",
             "viable_while": {"not": {"all": [{"stat": "sync", "gte": 85}, {"flag": "lark_departed"}]}},
@@ -74,10 +76,12 @@ for junk in (None, [], "x", {"stats": "no", "flags": None, "subplots": {"nope": 
     author_evaluate.evaluate_all(STORY, junk)
 print("OK: omitted keys keep the seeded value; a garbage sample degrades instead of raising")
 
-# An unbuilt engine is reported, not swallowed: ending_funnel is not registered in this build,
-# so the projection drops it, `left_out` names it, and a leaf that needs it reads unknown.
+# An unbuilt engine is reported, not swallowed: side_threads (CR-11) is not registered in this
+# build, so the projection drops it and `left_out` names it. ending_funnel is registered now
+# (S5) and must not be reported as left out.
 _, left_out = author_evaluate.evaluate_all(STORY, {})
-assert ("endings", "ending_funnel") in left_out, left_out
+assert ("side_threads", "side_threads") in left_out, left_out
+assert ("endings", "ending_funnel") not in left_out, left_out
 print("OK: an unbuilt engine is reported in left_out")
 
 # Real Missing Core, when its private submodule is checked out: every condition in the saved

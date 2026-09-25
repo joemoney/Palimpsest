@@ -34,7 +34,7 @@ not exist yet (build order: the storyboard leads).
 **State this reads that the engine does not write yet**, each with a sound lower bound so a
 condition still means something meanwhile: `mechanics.stats.tier_log` (a tier reached and then
 left - falls back to "the current value is at or above that tier's threshold"), a
-relationship's `peak` (falls back to the current score), and `endings_state.waypoints_done`
+relationship's `peak` (falls back to the current score), and `mechanics.endings.waypoints_done`
 (CR-05's ledger of planted waypoints - absent, nothing is planted).
 
 **Legacy forms** (`stat: {axis, at_least}`, `revelation`, a character-object `relationship`)
@@ -456,7 +456,10 @@ def _waypoints_done(value, ctx, polarity, ending):
     if not isinstance(ending, dict):
         return _unknown(polarity, "waypoints_done outside an ending")
     ids = [w.get("id") for w in ending.get("waypoints") or [] if isinstance(w, dict)]
-    done = set((_state(ctx).get("endings_state") or {}).get("waypoints_done") or {})
+    # The ending_funnel engine's ledger, keyed "<ending id>.<waypoint id>" (a waypoint id is
+    # only unique within its ending), under the engine's own state bucket.
+    ledger = ((_state(ctx).get("mechanics") or {}).get("endings") or {}).get("waypoints_done") or {}
+    done = {k.split(".", 1)[1] for k in ledger if k.startswith(f"{ending.get('id')}.")}
     have = [i for i in ids if i in done]
     if value == "all":
         need = len(ids)

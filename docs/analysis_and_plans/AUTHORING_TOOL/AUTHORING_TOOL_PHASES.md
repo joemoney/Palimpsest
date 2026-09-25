@@ -782,6 +782,49 @@ to land out of order and partially, tracked here after the fact rather than plan
     than starting for one turn.
   **Not in this piece** (ending funnel, still unbuilt): a failed carrier pruning a destination,
   early carrier activation from the Narrow phase, and generation limited to texture.
+- **CR-05, the reaching half: `ending_funnel` registered** (2026-09-25). The Missing Core, the
+  one story authoring `mechanics.endings`, now loads through `load_template()` instead of
+  raising `UnknownEngineError`, and a stubbed 214-turn run force-commits at its authored
+  `commit_by` (205). `backend/mechanics/endings.py` owns the state (`mechanics.endings` in the
+  save: `waypoints_done`, `pruned`, `scores`, `steered`, `judge_nulls`, `terminal_cooldown`,
+  `committed`) and every pure decision; `story_engine.check_ending_funnel` makes the two Tier C
+  calls (`ending_commit_judge`, `terminal_confirm`, both in `STATUS_LABELS`) and routes every
+  commit through `_begin_endgame`, whose `cause` is now `committed` / `forced` / `terminal` for
+  funnel endings. Waypoints: `done_when` checked in code every turn, `detect` through the
+  engine's one observation field `waypoints_hit` (numbered detect texts; ending ids and names
+  never reach the state-update pass). CR-10's carrier prune is in: a non-catch-all destination
+  whose every remaining waypoint is carried only by failed threads is pruned at the next check.
+  `finale_turns` bounds the finale; the ENDGAME prompt no longer says the player asked to end
+  when they didn't. Load refuses an endings block with no catch-all (`check_config`, a new
+  hook on the engine base class that `validate()` calls), and `validate()` warns for endings
+  authored with no engine. The board's timeline "not built" chip is gone. Covered by
+  `test/test_ending_funnel.py`.
+  **Decisions made in passing - flag if wrong:**
+  - **Waypoint ledger keys are qualified**, `"<ending id>.<waypoint id>"`, as `delivers`
+    spells them, since a waypoint id is only unique within its ending; `conditions.
+    waypoints_done` now reads the engine's bucket (`mechanics.endings`) rather than the
+    top-level `endings_state` the spec sketched.
+  - **A blank budget boundary means that phase never begins**, not an engine default: when a
+    story may end is a creative decision. No `open_until` means the commit window is open
+    from the start. `check_every` (6) and `steer_top` (2) do have defaults - they are cadence.
+  - **A destination with no `ready_when` is never ready**; it can only be reached by a forced
+    commit.
+  - **The carrier prune is the conservative reading** of CR-10: it fires only when *no*
+    remaining waypoint has a live or unstarted carrier, and a waypoint with no carrier at all
+    never counts. A catch-all is never pruned by it.
+  - **An ending with no `arc` enters the finale on its name alone** - never its `criteria`,
+    `hint` or a `_`-prefixed author note (The Missing Core's `_theme` is one).
+  - **A forced commit's bridging note is built in code** from the unplanted waypoints' `plant`
+    texts (already narrator-facing), not asked of a model as CR-05 sketched.
+  - **Both judges are Tier C** (the registry default). CR-05's open question 1 - a stronger
+    model for the flagship commit judge - stays open until something measured says so.
+  - Split `resolve()` / `settle()`: `resolve()` sees the state from before the turn's effects,
+    so everything checked in code (`done_when`, pruning, scoring) runs in `settle()`, after
+    them, applied by `check_ending_funnel`. Only `detect` hits go through `resolve()`.
+  **Not in this piece:** steering (waypoints into act generation and pacing nudges, `hint`s,
+  drive nudges, carrier priority and early activation, generation limited to texture), the
+  `epilogue` shown after THE END, `max_acts`, and D5/D6 (retiring `failure_conditions` and the
+  player's end-story command).
 
 **Goal.** Every "not built" chip disappears, eventually.
 

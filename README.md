@@ -261,8 +261,8 @@ you. This walkthrough builds a story from an empty folder to a saved,
 lint-clean template.
 
 Before you start, know that **the storyboard runs ahead of the engine**. It
-lets you author features the story engine can't run yet, such as the ending
-funnel. Fields like that are marked with a **not built** chip. A story that
+lets you author features the story engine can't run yet, such as tier
+`on_enter` directives. Fields like that are marked with a **not built** chip. A story that
 uses them saves fine, but it won't load for play until the engine catches up.
 That's expected during the V3 overhaul, and so is the fact that play itself
 is closed for now (see `PLAY_ENABLED`). Author the story you want, not the one
@@ -546,9 +546,11 @@ Drag the boundaries to set them. If none are set yet, **Start from
 40 / 90 / 140** gives you a starting point. The same numbers, plus **Check
 every N turns**, **Steer top N destinations** and **Finale min/max turns**,
 are also under *Ending funnel settings* in the Story health panel. A blank
-field means the engine default. The failure-ending row shows a tick at each
-failure ending's min turn. This is all marked *not built*: the engine that
-runs the ending funnel doesn't exist yet.
+*Check every* or *Steer top* uses the engine's default (6 and 2). A blank
+phase boundary means that phase never begins. With no *commit by*, for
+example, the story is never forced to an ending, so it ends only when an
+ending becomes ready. The failure-ending row shows a tick at each failure
+ending's min turn.
 
 #### Step 13 - Test your conditions with Sample state
 Click **Sample state** to describe a moment of play. You can set stat values,

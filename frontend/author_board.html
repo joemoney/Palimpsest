@@ -1584,7 +1584,7 @@ function renderTimeline(){
   const es=model.endings_settings=model.endings_settings||{};
   const touched=()=>{save();if(!sel)renderInspector()};
   const head=el('div','tl-head');
-  const t=el('strong',null,'Timeline');head.appendChild(t);head.appendChild(el('span','vis notbuilt','not built'));
+  const t=el('strong',null,'Timeline');head.appendChild(t);
   const numIn=(label,key,ph)=>{const w=el('label');w.style.cssText='display:inline-flex;gap:5px;align-items:center';w.appendChild(document.createTextNode(label));
     const i=el('input');i.type='number';i.min='1';i.value=es[key]??'';i.placeholder=ph;
     i.addEventListener('input',()=>{const v=i.value.trim();if(v===''||Number(v)<1)delete es[key];else es[key]=Number(v);touched();paint()});

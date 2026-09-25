@@ -85,10 +85,23 @@ def build_ctx(story: dict, sample: dict) -> dict:
         "pacing": {"turn_count": sample.get("turn") if isinstance(sample.get("turn"), int) else 0},
         "characters": characters,
     }
-    if _list(sample.get("waypoints_done")):
-        state["endings_state"] = {"waypoints_done": {w: 0 for w in _list(sample["waypoints_done"])}}
     if _map(sample.get("tier_log")):
-        state["mechanics"] = {"stats": {"tier_log": {a: _list(l) for a, l in sample["tier_log"].items()}}}
+        state.setdefault("mechanics", {})["stats"] = {
+            "tier_log": {a: _list(l) for a, l in sample["tier_log"].items()}}
+    if _list(sample.get("waypoints_done")):
+        # The engine's ledger is keyed "<ending id>.<waypoint id>". The board's sample bar
+        # sends bare waypoint ids, so a bare id counts as planted under every ending that has
+        # one by that name; a qualified key is taken as it is.
+        entries = (((story.get("mechanics") or {}).get("endings") or {}).get("entries") or [])
+        ledger = {}
+        for w in _list(sample["waypoints_done"]):
+            if "." in w:
+                ledger[w] = 0
+                continue
+            for e in entries:
+                if any(isinstance(x, dict) and x.get("id") == w for x in e.get("waypoints") or []):
+                    ledger[f"{e.get('id')}.{w}"] = 0
+        state.setdefault("mechanics", {})["endings"] = {"waypoints_done": ledger}
     return {"story": story, "state": state}
 
 
