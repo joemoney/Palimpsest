@@ -505,6 +505,14 @@ def _apply_subplots(out: dict, nodes: list, edges: list) -> None:
         else:
             sp.pop("delivers", None)
 
+        # The thread's authored cast: character names, kept in the order the author ticked them.
+        # An empty list is absent, not [] (P-2).
+        cast = [c for c in (n.get("cast") or []) if isinstance(c, str) and c.strip()]
+        if cast:
+            sp["cast"] = cast
+        else:
+            sp.pop("cast", None)
+
 
 def _apply_terminals(out: dict, nodes: list) -> None:
     """failure_conditions-sourced terminals only - a node whose source is `mechanics.endings`

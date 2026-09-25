@@ -738,6 +738,10 @@
         "role": { "enum": ["spine", "personal", "texture"] },
         "activate_when": { "$ref": "#/$defs/condition" },
         "delivers": { "type": "array", "items": { "type": "string" } },
+        "cast": {
+          "$comment": "The authored characters this thread involves (world.characters keys). Author-only for now: the storyboard uses it; no engine reads it yet, and it is never prompted.",
+          "type": "array", "items": { "type": "string" }
+        },
         "fail_when": { "$ref": "#/$defs/condition" },
         "on_complete": {
           "type": "object",

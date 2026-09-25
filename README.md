@@ -469,6 +469,12 @@ fix that in Step 8.
    - **On complete: stat events**: comma-separated cost keys applied when
      the thread completes, e.g. `lattice.rejoined`. These only mean something
      in a story that prices its stats (see Step 12).
+4. Under **Characters in this thread**, tick who the thread involves. The
+   list comes from the Cast tab, and a character whose name already appears
+   in the thread's text is marked so you can spot them. Ticked characters
+   show as chips on the thread's box on the canvas. This is for you only:
+   nothing is sent to the narrator. The health panel warns about a
+   *personal* thread with nobody in it.
 
 #### Step 8 - Wire it up
 Every Start, thread and ending box has a round **port** on its right edge.
@@ -528,8 +534,13 @@ Switch to the **Cast** tab and click **+ Character**. For each character:
 | **Canon** | You only | Secret truths about the character, added with **+ Canon note**. The engine never reads them. |
 
 The **leak check** marks any canon that has crept into the description or
-hook in red, because those two fields reach the narrator. **Named on the
-board** lists the threads and endings whose text mentions the character.
+hook in red, because those two fields reach the narrator. **Threads** lists
+every thread with a checkbox. It's the same link as a thread's *Characters in
+this thread* (Step 7), editable from either side. **Named on the board**
+lists the threads and endings whose text mentions the character, which is a
+text match and not a link. Renaming a character updates every thread that
+casts them and every relationship condition that names them. Deleting a
+character removes them from every thread.
 
 #### Step 11 - Write memory fragments (optional)
 Memory fragments are pieces of backstory the story reveals only when something

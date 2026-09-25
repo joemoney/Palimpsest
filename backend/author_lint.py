@@ -285,6 +285,19 @@ _STOPWORDS = {"the", "and", "you", "your", "for", "with", "that", "this", "what"
               "are", "not", "but", "all", "one", "out", "into", "from"}
 
 
+def thread_cast_issues(raw: dict) -> list:
+    """L16 for a thread's `cast`: every name must be an authored character. A character's name
+    is its only identity (CLAUDE.md), so a cast entry left behind by a rename names nobody."""
+    known = set(((raw.get("world") or {}).get("characters") or {}))
+    out = []
+    for sid, sp in ((raw.get("plot") or {}).get("subplots") or {}).items():
+        for name in (sp or {}).get("cast") or []:
+            if name not in known:
+                out.append({"id": "L16", "severity": "error",
+                            "message": f"Thread {sp.get('title') or sid} casts {name}, who is not a character in this story."})
+    return out
+
+
 def world_issues(raw: dict) -> list:
     """World-tab hygiene, under L16 (dangling ids) where an id is involved: a `connected_to`, an
     opening location or a gate `target` naming a location the story doesn't author. Only
@@ -387,7 +400,7 @@ def lint(raw: dict, model: dict) -> list:
     template: a condition that isn't an object at all is L01's finding, and reporting it twice
     in two vocabularies is noise."""
     schema = schema_errors(raw)
-    return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw) + revelation_issues(raw) + world_issues(raw)
+    return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw) + revelation_issues(raw) + world_issues(raw) + thread_cast_issues(raw)
             + stat_tier_issues(raw) + structural_issues(model) + cast_issues(model))
 
 

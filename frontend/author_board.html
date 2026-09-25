@@ -99,6 +99,8 @@ svg.edges{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible}
 .node .head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 12px 0;font:500 10.5px/1.2 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--k)}
 .node h3{font:600 17.5px/1.15 var(--display);margin:5px 12px 4px;letter-spacing:.005em;text-wrap:balance}
 .node p{margin:0 12px 10px;color:var(--muted);font-size:12.5px;line-height:1.42}
+.node .castline{margin:-4px 12px 8px;display:flex;flex-wrap:wrap;gap:4px}
+.node .castline .chip{color:var(--r-personal)}
 .node .foot{border-top:1px solid var(--line);padding:6px 12px 7px;display:flex;gap:6px 8px;flex-wrap:wrap;align-items:center;font:11px/1.3 var(--mono);color:var(--muted)}
 .chip{display:inline-block;padding:1px 7px;border-radius:999px;border:1px solid currentColor;font:500 10px/1.5 var(--mono);letter-spacing:.04em;text-transform:none}
 .node.start{background:var(--start-bg);color:var(--start-ink);border-color:var(--start-bg);border-radius:18px}
@@ -498,6 +500,17 @@ function mentions(c){
   return model.nodes.filter(n=>n.kind!=='start'&&(hit(n.title)||hit(n.theme)||(n.waypoints||[]).some(w=>hit(w.plant))));
 }
 function namedIn(n){return model.characters.filter(c=>mentions(c).includes(n))}
+// A thread's authored cast (plot.subplots.<id>.cast): character names, author-only. Distinct from
+// namedIn(), which is only a text match on the thread's prose.
+function threadsOf(name){return model.nodes.filter(n=>n.kind==='subplot'&&(n.cast||[]).includes(name))}
+function setInCast(n,name,on){n.cast=(n.cast||[]).filter(x=>x!==name);if(on)n.cast.push(name);if(!n.cast.length)delete n.cast}
+// A character rename or delete follows through into every thread's cast and every condition
+// that names them (relationship leaves) - a name is a character's only identity.
+function renameCharEverywhere(old,v){
+  for(const n of model.nodes)if(n.cast)n.cast=n.cast.map(x=>x===old?v:x);
+  for(const x of allConditions()){const before=JSON.stringify(x.cond);const c=condRename(x.cond,'relationship',old,v);if(JSON.stringify(c)!==before)x.set(c)}
+}
+function dropCharEverywhere(name){for(const n of model.nodes)if(n.cast){n.cast=n.cast.filter(x=>x!==name);if(!n.cast.length)delete n.cast}}
 // L03 canon leak: a 40+ character run of author-only canon appearing in a prompted field.
 // Client-side copy for instant highlighting only - the authoritative check is
 // backend/author_lint.py, run server-side on Validate/Save (decision D3).
@@ -535,6 +548,8 @@ function issues(){
     const carries=model.edges.some(e=>e.type==='delivers'&&e.from===n.id);
     if(n.role==='spine'&&!carries)out.push({lvl:'warn',text:`${n.title} is a spine thread but carries no waypoint.`,id:n.id});
     if(n.role==='texture'&&carries)out.push({lvl:'warn',text:`${n.title} is texture but carries waypoints. Make it spine or personal.`,id:n.id});
+    if(n.role==='personal'&&!(n.cast||[]).length)out.push({lvl:'warn',text:`${n.title} is a relationship arc with no character in it. Tick who it involves.`,id:n.id});
+    for(const name of n.cast||[])if(!chr(name))out.push({lvl:'error',text:`${n.title} casts ${name}, who is not in the Cast tab.`,id:n.id});
   }
   const seen=new Set();
   for(const c of model.characters){
@@ -605,6 +620,7 @@ function renderCanvas(){
     d.appendChild(head);
     d.appendChild(el('h3',null,n.title||'Untitled'));
     d.appendChild(el('p',null,n.theme||'Add the main theme in the panel.'));
+    if(n.kind==='subplot'&&(n.cast||[]).length){const cl=el('div','castline');n.cast.forEach(name=>cl.appendChild(el('span','chip',name)));d.appendChild(cl)}
     let c;
     if(n.kind==='ending'&&n.ekind==='destination'){
       c=carriers(n);
@@ -974,7 +990,24 @@ function renderInspector(){
   // On the Start box these are meta.title / meta.synopsis (the World tab edits the same fields).
   insp.appendChild(field('Title',textInput(n.title,v=>{n.title=v;if(n.kind==='start'){model.meta.title=v;model.story=v;$('#storyTitle').textContent=v||'Untitled story'}insp.querySelector('h2').textContent=v||'Untitled'})));
   insp.appendChild(field(n.kind==='start'?'Synopsis':'Main theme',area(n.theme,v=>{n.theme=v;if(n.kind==='start')model.meta.synopsis=v})));
-  const cast=n.kind==='start'?[]:namedIn(n);
+  if(n.kind==='subplot'){
+    insp.appendChild(el('h4',null,'Characters in this thread'));
+    if(!model.characters.length)insp.appendChild(el('p','note','No authored characters yet. Add them in the Cast tab.'));
+    else{
+      insp.appendChild(el('p','note','Who this thread involves. Author-only for now: it organises the board and the health checks, and is never sent to the narrator.'));
+      const named=new Set(namedIn(n).map(c=>c.name));
+      const list=el('div','afterlist');
+      model.characters.filter(c=>c.name).forEach(c=>{const l=el('label');const cb=el('input');cb.type='checkbox';cb.checked=(n.cast||[]).includes(c.name);
+        cb.onchange=()=>{const y=insp.scrollTop;setInCast(n,c.name,cb.checked);save();renderCanvas();renderHealth();renderInspector();insp.scrollTop=y};
+        const other=threadsOf(c.name).filter(t=>t!==n).length;
+        l.appendChild(cb);l.appendChild(el('span',null,c.name+(named.has(c.name)&&!cb.checked?' (named in this thread\u2019s text)':'')+(other?` \u00b7 in ${other} other thread${other===1?'':'s'}`:'')));list.appendChild(l)});
+      insp.appendChild(list);
+      const w=el('div','linkchips');w.style.marginTop='6px';
+      (n.cast||[]).forEach(name=>{const b=el('button','linkchip',name);b.type='button';b.style.setProperty('--k','var(--r-personal)');b.title='Open in the Cast tab';b.onclick=()=>openChar(name);w.appendChild(b)});
+      if((n.cast||[]).length)insp.appendChild(w);
+    }
+  }
+  const cast=n.kind==='start'||n.kind==='subplot'?[]:namedIn(n);
   if(cast.length){
     insp.appendChild(el('h4',null,'Characters named here'));
     const w=el('div','linkchips');
@@ -1134,7 +1167,7 @@ function renderCharInspector(){
   const nm=el('input');nm.type='text';nm.value=c.name;
   nm.addEventListener('change',()=>{const v=nm.value.trim();
     if(!v||(v!==c.name&&chr(v))){say(v?`${v} is already in the cast.`:'A character needs a name.');nm.value=c.name;return}
-    c.name=v;sel.name=v;h2.textContent=v;save();renderCast();renderHealth();refresh()});
+    const old=c.name;c.name=v;sel.name=v;renameCharEverywhere(old,v);h2.textContent=v;save();renderCast();renderHealth();refresh()});
   insp.appendChild(field('Name',nm,VIS.every,el('div','fieldnote','The key in world.characters. Relationship scores attach to this exact name, so renaming mid-story orphans a live save’s score.')));
 
   const leakHint=f=>()=>{const l=canonLeaks(c).find(l=>l.field===f);return l?['err',`Repeats canon “${l.key}” — this reaches the narrator.`]:null};
@@ -1168,6 +1201,18 @@ function renderCharInspector(){
   const ab=el('button','btn small','+ Canon note');ab.type='button';ab.style.marginTop='8px';
   ab.onclick=()=>{c.canon.push({k:'',v:''});save();render();const ks=insp.querySelectorAll('.canonrow input');ks.length&&ks[ks.length-1].focus()};insp.appendChild(ab);
 
+  insp.appendChild(el('h4',null,'Threads'));
+  const threads=model.nodes.filter(n=>n.kind==='subplot');
+  if(!threads.length)insp.appendChild(el('p','note','No threads yet.'));
+  else{insp.appendChild(el('p','note','The threads this character is part of. The same list as each thread\u2019s \u201cCharacters in this thread\u201d.'));
+    const tl=el('div','afterlist');
+    threads.forEach(n=>{const l=el('label');const cb=el('input');cb.type='checkbox';cb.checked=(n.cast||[]).includes(c.name);
+      cb.onchange=()=>{const y=insp.scrollTop;setInCast(n,c.name,cb.checked);save();renderCast();renderHealth();renderInspector();insp.scrollTop=y};
+      const sp=el('span',null,`${n.title||n.id} (${n.role||'spine'})`);l.appendChild(cb);l.appendChild(sp);tl.appendChild(l)});
+    insp.appendChild(tl);
+    const tw=el('div','linkchips');tw.style.marginTop='6px';
+    threadsOf(c.name).forEach(n=>{const b=el('button','linkchip',n.title||n.id);b.type='button';b.style.setProperty('--k',kcol(n));b.title='Open this thread';b.onclick=()=>openNode(n.id);tw.appendChild(b)});
+    if(threadsOf(c.name).length)insp.appendChild(tw)}
   const m=mentions(c);
   insp.appendChild(el('h4',null,'Named on the board'));
   insp.appendChild(el('p','note',m.length?'Threads and endings whose prose names this character. A text match, not a schema link.':'No thread or ending names this character yet.'));
@@ -1182,7 +1227,7 @@ function renderCharInspector(){
   r.appendChild(up);r.appendChild(dn);insp.appendChild(r);
 
   const del=el('button','btn danger','Delete character');del.type='button';del.style.marginTop='22px';
-  del.onclick=()=>{model.characters.splice(model.characters.indexOf(c),1);sel=null;save();render();say('Deleted '+(c.name||'character'))};
+  del.onclick=()=>{model.characters.splice(model.characters.indexOf(c),1);dropCharEverywhere(c.name);sel=null;save();render();say('Deleted '+(c.name||'character'))};
   insp.appendChild(del);
   refresh();
 }
@@ -1332,7 +1377,7 @@ document.addEventListener('keydown',ev=>{
   if((ev.key==='Delete'||ev.key==='Backspace')&&sel){
     if(sel.type==='edge'){model.edges=model.edges.filter(e=>gkey(e)!==sel.key)}
     else if(sel.type==='axis')return;
-    else if(sel.type==='char'){const c=chr(sel.name);if(!c)return;model.characters.splice(model.characters.indexOf(c),1);say('Deleted '+c.name)}
+    else if(sel.type==='char'){const c=chr(sel.name);if(!c)return;model.characters.splice(model.characters.indexOf(c),1);dropCharEverywhere(c.name);say('Deleted '+c.name)}
     else if(sel.type==='frag'){deleteFrag(sel.idx);ev.preventDefault();return}
     else if(['loc','faction','lore'].includes(sel.type))return;
     else{const n=node(sel.id);if(!n||n.kind==='start')return;model.nodes=model.nodes.filter(x=>x!==n);model.edges=model.edges.filter(e=>e.from!==n.id&&e.to!==n.id)}
@@ -1489,6 +1534,7 @@ function renderCast(){
     const f=el('div','foot');
     f.appendChild(el('span',null,`${words(c.description)} words`));
     if((c.canon||[]).length)f.appendChild(el('span',null,`· ${c.canon.length} canon`));
+    const th=threadsOf(c.name).length;if(th)f.appendChild(el('span',null,`· in ${th} thread${th===1?'':'s'}`));
     const m=mentions(c).length;if(m)f.appendChild(el('span',null,`· named in ${m}`));
     if(broken.has(c.name))f.appendChild(el('span','chip err','fix'));
     b.appendChild(f);
