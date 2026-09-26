@@ -397,10 +397,17 @@ def bond_issues(raw: dict) -> list:
 _CAST_FROM = ("any", "authored", "generated", "followed")
 
 
-def _may_move_problem(entry: str, recipe: dict, raw: dict) -> str:
-    """Why `entry` (one `may_move` value) names something this story or recipe lacks, or ''."""
+def _may_move_problem(entry: str, recipe, raw: dict) -> str:
+    """Why `entry` (one `may_move` value) names something this story or recipe lacks, or ''.
+    `recipe` None means CR-12's `player_threads`: a pursuit has no slots, so a bond is out and
+    `relationship:cast` (whoever the pursuit ends up casting) stands in for a slot."""
     mech = raw.get("mechanics") or {}
-    slots = conditions.recipe_character_slots({**recipe, "_scope": "side_recipe"})
+    if recipe is None:
+        slots = {"cast"}
+        if entry.startswith("bond:"):
+            return "names a bond, and a player-started pursuit has no slots to name one between"
+    else:
+        slots = conditions.recipe_character_slots({**recipe, "_scope": "side_recipe"})
     known = set(((raw.get("world") or {}).get("characters") or {}))
     kind, _, rest = entry.partition(":")
     if kind == "bond":
@@ -433,6 +440,38 @@ def _item_tag_problem(tag: str, raw: dict) -> str:
     return f"names item tag {tag}, which mechanics.inventory.tags does not list" if tags and tag not in tags else ""
 
 
+# CR-12: the synthetic recipe every player-started thread is generated from, so a callback can
+# follow one. Reserved: an authored recipe by this name would be ambiguous.
+PURSUIT_RECIPE = "player_pursuit"
+
+
+def _player_thread_issues(block: dict, raw: dict) -> list:
+    """CR-12 `mechanics.side_threads.player_threads`."""
+    pt = block.get("player_threads")
+    if not isinstance(pt, dict):
+        return []
+    out = []
+    confirm = pt.get("confirm")
+    if not isinstance(confirm, dict):
+        out.append({"id": "side_threads", "severity": "warning",
+                    "message": "Player-started threads have no confirmation rule: say how many times a pursuit must be "
+                               "reported, within how many turns, before it becomes a thread."})
+    elif isinstance(confirm.get("reports"), int) and isinstance(confirm.get("within_turns"), int) \
+            and confirm["reports"] > confirm["within_turns"]:
+        out.append({"id": "side_threads", "severity": "error",
+                    "message": f"A pursuit must be reported {confirm['reports']} times within {confirm['within_turns']} turns, "
+                               "but it can be reported at most once a turn, so no pursuit can ever be confirmed."})
+    if not pt.get("abandon_after_offers"):
+        out.append({"id": "side_threads", "severity": "warning",
+                    "message": "Player-started threads never end as abandoned: set how many offers without progress "
+                               "mean the player lost interest. The turn limit still ends them."})
+    for entry in pt.get("may_move") or []:
+        problem = _may_move_problem(entry, None, raw) if isinstance(entry, str) else "is not text"
+        if problem:
+            out.append({"id": "L10", "severity": "error", "message": f"Player-started threads: may_move {entry} {problem}."})
+    return out
+
+
 def side_thread_issues(raw: dict) -> list:
     """CR-11 `mechanics.side_threads` (and r5's wider casts, vignettes and callbacks). L10 for
     every reference that names something the story lacks - a character, location, item tag,
@@ -455,6 +494,8 @@ def side_thread_issues(raw: dict) -> list:
     ids = [r.get("id") for r in recipes]
     for rid in sorted({i for i in ids if ids.count(i) > 1 and i}):
         err(f"Side-thread recipe {rid} is authored twice.", "side_threads")
+    if PURSUIT_RECIPE in ids:
+        err(f"A recipe is called {PURSUIT_RECIPE}, the name reserved for player-started threads. Rename it.", "side_threads")
 
     for r in recipes:
         rid = r.get("id") or "a recipe"
@@ -498,10 +539,12 @@ def side_thread_issues(raw: dict) -> list:
         follows = r.get("follows")
         if isinstance(follows, dict):
             target = follows.get("recipe", "any")
-            if target != "any" and target not in ids:
+            if target == PURSUIT_RECIPE and not isinstance(block.get("player_threads"), dict):
+                err(f"Recipe {rid} follows player-started threads, and this story has none (Player-started side threads is off).")
+            elif target not in ("any", PURSUIT_RECIPE) and target not in ids:
                 err(f"Recipe {rid} follows recipe {target}, which is not a recipe in this story.")
-        if not (r.get("premise") or "").strip():
-            warn(f"Recipe {rid} has no premise, so the generator has nothing to write an episode from.")
+            if "abandoned" in (follows.get("outcome") or []) and target not in ("any", PURSUIT_RECIPE):
+                warn(f"Recipe {rid} follows {target} when it was abandoned, but only a player-started thread can be abandoned.")
 
     if block.get("default_recipe") is False and not recipes:
         warn("Side threads have no recipes and the built-in recipe is off, so no side thread can ever start.")
@@ -523,6 +566,8 @@ def side_thread_issues(raw: dict) -> list:
         for b in starts:
             if b not in beats:
                 err(f"Side threads start after beat {b}, which mechanics.pacing_loop.beats does not define.")
+
+    out.extend(_player_thread_issues(block, raw))
 
     vign = block.get("vignettes")
     if isinstance(vign, dict) and not (vign.get("seeds") or vign.get("subjects")):

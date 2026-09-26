@@ -603,8 +603,8 @@ and the sample run set both. Same mechanism, no SYNC clause to test.
 
 **Deferred, and not blocking:**
 - ~~All the CR-11 surfaces~~ **Landed 2026-09-26** (see "CR-11 on the board", after the diagram
-  rework note below), except CR-12's `player_threads` settings and the sample bar's list of
-  eligible (recipe, cast) bindings.
+  rework note below), and CR-12's `player_threads` settings (2026-09-26, same note), except the
+  sample bar's list of eligible (recipe, cast) bindings.
 - The loader does not yet pass declared flags' `detect` text to the state-update pass, so a
   declared flag cannot be *set* in play - engine work (S5), demand-driven.
 - Rewriting stored gate `requires` from the legacy spellings into the canonical grammar. The
@@ -765,6 +765,19 @@ loudly until S5 builds them (D1).
   the engine is built.
 - **The leak check does not cover recipe premises or vignette seeds yet.** L03 exists only as the
   board's client-side character check; the server-side leak test is S4 work.
+
+**CR-12 on the board (2026-09-26).** `mechanics.side_threads.player_threads` (`max_active`,
+`confirm.reports`/`within_turns`, `abandon_after_offers`, `may_move`) in the schema and as a
+section of the Side threads tab. `reports` has a schema minimum of 2 (CR-12's acceptance: a
+single report never opens a thread); lint errors when `reports > within_turns` (at most one
+report a turn, so it could never confirm). `may_move` takes `relationship:cast` in place of
+slots and refuses `bond:` (a pursuit has no slots to name a bond between). Callbacks gain the
+outcome `abandoned` and can follow `player_pursuit`, the synthetic recipe CR-12 names; an
+authored recipe by that id is an error.
+**Not in this piece:** retiring `player_driven_goals` (`plot_manager add-goal`, the Plot Manager
+page's goal list and the `PLAYER GOAL:` nudge line). That is engine work: the goals keep working
+until `episodic_threads` exists to take them over, rather than being removed with nothing in
+their place.
 
 ---
 

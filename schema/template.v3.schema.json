@@ -730,11 +730,11 @@
         },
         "may_create_npc": { "type": "boolean" },
         "follows": {
-          "$comment": "CR-11 (r5 C) callback: this recipe follows a concluded side thread, at most once per thread. Local to recipes on purpose - not a condition leaf, so no ending can read a side thread's outcome. Outcomes: resolved (its end condition or detect hit), failed (its fails_when), expired (reached max_turns), finale (concluded when the story's finale began).",
+          "$comment": "CR-11 (r5 C) callback: this recipe follows a concluded side thread, at most once per thread. Local to recipes on purpose - not a condition leaf, so no ending can read a side thread's outcome. Outcomes: resolved (its end condition or detect hit), failed (its fails_when), expired (reached max_turns), finale (concluded when the story's finale began), abandoned (a player thread offered abandon_after_offers times without advancing, CR-12). recipe may be player_pursuit, the synthetic recipe every player-started thread uses.",
           "type": "object",
           "properties": {
             "recipe": { "type": "string" },
-            "outcome": { "type": "array", "items": { "enum": ["resolved", "failed", "expired", "finale"] } },
+            "outcome": { "type": "array", "items": { "enum": ["resolved", "failed", "expired", "finale", "abandoned"] } },
             "min_turns_since": { "type": "integer", "minimum": 0 }
           },
           "patternProperties": { "^_": true },
@@ -764,6 +764,31 @@
         },
         "default_recipe": { "description": "When nothing authored is eligible, fall back to the built-in recipe: the pair with the strongest bond among characters seen recently. On unless set to false.", "type": "boolean" },
         "recipes": { "type": "array", "items": { "$ref": "#/$defs/side_recipe" } },
+        "player_threads": {
+          "$comment": "CR-12 player-started side threads: a pursuit the protagonist chose off the rails, confirmed in code by repeated reports, then run with every CR-11 guarantee (end conditions, detect, the max_turns backstop). Absent means the feature does not exist (P-2). Replaces the save's player_driven_goals once the engine is built.",
+          "type": "object",
+          "properties": {
+            "max_active": { "description": "How many player-started threads can run at once. Their own count: the engine's pool never blocks one.", "type": "integer", "minimum": 1 },
+            "confirm": {
+              "description": "A pursuit opens a thread only after being reported this many times within this many turns, so one curious scene never becomes a thread.",
+              "type": "object",
+              "properties": {
+                "reports": { "type": "integer", "minimum": 2 },
+                "within_turns": { "type": "integer", "minimum": 2 }
+              },
+              "required": ["reports", "within_turns"],
+              "additionalProperties": false
+            },
+            "abandon_after_offers": { "description": "A player thread offered this many times without advancing ends as abandoned: the player lost interest.", "type": "integer", "minimum": 1 },
+            "may_move": {
+              "description": "What a pursuit's premise and end conditions may involve. relationship:cast means the relationships of whoever the pursuit casts; otherwise relationship:<authored character>, stat:<axis>, item:<tag>, leverage:<kind>.",
+              "type": "array",
+              "items": { "type": "string", "pattern": "^(relationship:.+|stat:.+|item:.+|leverage:.+)$" }
+            }
+          },
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        },
         "vignettes": {
           "$comment": "CR-11 (r5 B): single scenes of texture, no thread and no generation call. Seeds are narrator-visible.",
           "type": "object",

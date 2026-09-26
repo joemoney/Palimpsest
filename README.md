@@ -631,7 +631,21 @@ threads** tab and click **+ Add side threads**:
      with the protagonist, a stat, items with a tag, or a kind of leverage.
    - **Callback** (optional): make the recipe follow an episode that already
      ended, e.g. the favour repaid. Each ended episode is followed at most once.
-5. **Vignettes** (optional). Single scenes of texture with no thread and no
+5. **Player-started side threads** (optional). Click **+ Let the player start
+   side threads** so that a pursuit the player chooses off the rails, like
+   running errands for a bar owner, gets a shape and an end. The state-update
+   pass reports a pursuit only when the protagonist chose it and it matches no
+   existing thread. It becomes a side thread once it has been reported
+   **Reported** times within **Within turns** turns, so one curious scene never
+   does. Set how many can run at once, and after how many offers without
+   progress one ends as abandoned. **May move** works as for recipes, except
+   that a pursuit has no slots: its cast is whoever was in the scenes that
+   reported it, named as *the cast*. A pursuit whose cast would include a
+   protected character never opens. The player still can't end the story. A
+   recipe's callback can follow *a thread the player started*, including one
+   the player abandoned. This replaces the Plot Manager's player goals once
+   its engine is built; until then, player goals work as before.
+6. **Vignettes** (optional). Single scenes of texture with no thread and no
    extra model call. Set how often, write seeds of your own, and tick which
    places, characters or held items may also be featured.
 

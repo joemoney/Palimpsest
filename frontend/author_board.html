@@ -2699,6 +2699,8 @@ function renderSide(){
   rc.appendChild(grid);rc.appendChild(btn('+ Recipe',addRecipe));
   wrap.appendChild(rc);
 
+  renderPlayerThreads(wrap,S,changed);
+
   const V=S.vignettes;
   const vg=wsection('Vignettes',V?VIS.every:null,'A single scene of texture now and then: no thread, no end, no extra model call. The narrator gets one optional line naming a subject, taken in turn from your seeds and from places, characters and items the story hasn’t featured lately. Never while a pacing rule is armed, and a side thread’s line always wins.');
   if(!V)vg.appendChild(btn('+ Add vignettes',()=>{S.vignettes={};changed();renderSide()},'btn small'));
@@ -2715,6 +2717,33 @@ function renderSide(){
   wrap.appendChild(vg);
   wrap.appendChild(btn('Remove side threads',()=>{if(!confirm('Remove side threads, with every recipe?'))return;model.side_threads=null;if(sel&&sel.type==='recipe')sel=null;save();render();say('Side threads removed.')},'btn danger'));
   sv.appendChild(wrap);sv.scrollTop=top;
+}
+// CR-12: player-started side threads, inside mechanics.side_threads.
+const PURSUIT_RECIPE='player_pursuit';
+function renderPlayerThreads(wrap,S,changed){
+  const P=S.player_threads;
+  const sec=wsection('Player-started side threads',null,'When the player goes off the rails on purpose - running errands for a bar owner, fixing up a wreck for its own sake - the engine can give that pursuit a shape and an end. The state-update pass reports a pursuit only when the protagonist chose it and it matches no existing thread; it becomes a side thread once it has been reported often enough, so one curious scene never does. It then runs like any side thread, and also ends if the player stops following it up. The player still cannot end the story: a pursuit like \u201cleave for good\u201d becomes, at most, a side thread.');
+  wrap.appendChild(sec);
+  if(!P){sec.appendChild(btn('+ Let the player start side threads',()=>{S.player_threads={};changed();renderSide()},'btn small'));return}
+  const nums=el('div','row');nums.style.cssText='gap:14px;flex-wrap:wrap;align-items:flex-end';
+  nums.appendChild(field('At once',numIn(P.max_active,v=>putOrDel(P,'max_active',v),'e.g. 1',1),null,el('div','fieldnote','Counted apart from the engine\u2019s own side threads, which never block one.')));
+  const C=P.confirm||{};
+  const setC=(k,v)=>{P.confirm=P.confirm||{};putOrDel(P.confirm,k,v);if(!Object.keys(P.confirm).length)delete P.confirm};
+  nums.appendChild(field('Reported',numIn(C.reports,v=>setC('reports',v),'times, e.g. 2',2)));
+  nums.appendChild(field('Within turns',numIn(C.within_turns,v=>setC('within_turns',v),'e.g. 5',2),null,el('div','fieldnote','A pursuit becomes a thread once reported this often within this many turns. A different pursuit restarts the count.')));
+  nums.appendChild(field('Abandoned after offers',numIn(P.abandon_after_offers,v=>putOrDel(P,'abandon_after_offers',v),'e.g. 6',1),null,el('div','fieldnote','Offered this many times without moving on, it ends: the player lost interest.')));
+  sec.appendChild(nums);
+  sec.appendChild(el('h4',null,'May move'));
+  sec.appendChild(el('p','note','What a pursuit\u2019s premise and end conditions may involve. A pursuit has no slots: its cast is whoever was in the scenes that reported it, so relationships are named as \u201cthe cast\u201d. A pursuit whose cast would include a protected character never opens.'));
+  const opts=[['relationship:cast','the protagonist\u2019s relationships with the pursuit\u2019s cast']];
+  for(const ax of (model.refs||{}).stats||[])opts.push([`stat:${ax}`,`stat ${ax.toUpperCase()}`]);
+  for(const t of itemTags())opts.push([`item:${t}`,`items tagged ${t}`]);
+  for(const k of leverageKinds())opts.push([`leverage:${k}`,`leverage of kind ${k}`]);
+  const mm=P.may_move||[];const extra=mm.filter(m=>!opts.some(([v])=>v===m)).map(m=>[m,m+' (not found)']);
+  const ml=el('div','afterlist');
+  [...opts,...extra].forEach(([v,l])=>ml.appendChild(checkRow(l,mm.includes(v),on=>{const x=(P.may_move||[]).filter(y=>y!==v);if(on)x.push(v);if(x.length)P.may_move=x;else delete P.may_move;changed()})));
+  sec.appendChild(ml);
+  sec.appendChild(btn('Turn off player-started threads',()=>{delete S.player_threads;changed();renderSide()},'btn small'));
 }
 function addRecipe(){
   const S=model.side_threads;S.recipes=S.recipes||[];
@@ -2793,10 +2822,10 @@ function renderRecipeInspector(){
   insp.appendChild(el('p','note','A recipe can follow an episode that already ended: the favour repaid, the grudge returned. Each ended episode is followed at most once. No ending can see a side thread’s outcome; this is the only thing that can.'));
   insp.appendChild(checkRow('Follows an earlier side thread',!!r.follows,on=>{if(on)r.follows={recipe:'any'};else delete r.follows;after();repaint()}));
   if(r.follows){const F=r.follows;
-    insp.appendChild(field('Which recipe',cbSelect([['any','any recipe'],...S.recipes.filter(x=>x.id).map(x=>[x.id,x.id])],F.recipe||'any',v=>{F.recipe=v;after()})));
+    insp.appendChild(field('Which recipe',cbSelect([['any','any recipe'],...(S.player_threads?[[PURSUIT_RECIPE,'a thread the player started']]:[]),...S.recipes.filter(x=>x.id).map(x=>[x.id,x.id])],F.recipe||'any',v=>{F.recipe=v;after()})));
     const ol=el('div','afterlist');
-    [['resolved','it resolved'],['failed','it failed'],['expired','it reached its turn limit'],['finale','the finale ended it']].forEach(([k,l])=>ol.appendChild(checkRow(l,(F.outcome||[]).includes(k),on=>{const x=(F.outcome||[]).filter(y=>y!==k);if(on)x.push(k);if(x.length)F.outcome=x;else delete F.outcome;after()})));
-    insp.appendChild(field('Only if',ol,null,el('div','fieldnote','None ticked means any outcome.')));
+    [['resolved','it resolved'],['failed','it failed'],['expired','it reached its turn limit'],['finale','the finale began'],...(S.player_threads?[['abandoned','the player abandoned it']]:[])].forEach(([k,l])=>ol.appendChild(checkRow(l,(F.outcome||[]).includes(k),on=>{const x=(F.outcome||[]).filter(y=>y!==k);if(on)x.push(k);if(x.length)F.outcome=x;else delete F.outcome;after()})));
+    insp.appendChild(el('h4',null,'Only if it ended because'));insp.appendChild(ol);insp.appendChild(el('div','fieldnote','None ticked means any outcome.'));
     insp.appendChild(field('At least this many turns later',numIn(F.min_turns_since,v=>{putOrDel(F,'min_turns_since',v);renderSide()},'e.g. 20',0)));
   }
   insp.appendChild(btn('Delete recipe',()=>{S.recipes.splice(i,1);if(!S.recipes.length)delete S.recipes;sel=null;save();render();say('Recipe deleted.')},'btn danger'));

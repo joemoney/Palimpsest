@@ -1,4 +1,4 @@
-"""CR-11 on the storyboard: `mechanics.bonds` (the Cast tab's bond grid) and
+"""CR-11 and CR-12 on the storyboard: `mechanics.bonds` (the Cast tab's bond grid) and
 `mechanics.side_threads` (the Side threads tab) through the board model and back, the `bond`
 condition leaf, recipe conditions that name cast slots, and their lint. Neither engine is built
 yet (build order: the storyboard leads), so this covers authoring only.
@@ -160,6 +160,41 @@ assert not any("side_threads" in p for p in by), "a recipe's slot condition has 
 rows, _ = author_evaluate.evaluate_all(story, {})
 assert not {r["path"]: r for r in rows}["plot.main_thread.acts[0].requires"]["satisfied"], "the seed (-20) applies"
 print("OK: the sample state reads seeds and sample bond scores; recipe conditions are left out of it")
+
+# --- CR-12: player-started side threads (mechanics.side_threads.player_threads) -------------------
+pt = copy.deepcopy(RAW)
+pt["mechanics"]["side_threads"]["player_threads"] = {
+    "max_active": 1, "confirm": {"reports": 2, "within_turns": 5}, "abandon_after_offers": 6,
+    "may_move": ["relationship:cast", f"relationship:{MIRA}", "item:document"]}
+pt["mechanics"]["side_threads"]["recipes"].append(
+    {"id": "old_favour", "premise": "p", "cast": {"a": {"from": "followed", "slot": "a"}},
+     "follows": {"recipe": "player_pursuit", "outcome": ["abandoned", "resolved"]}})
+assert author_lint.side_thread_issues(pt) == [], author_lint.side_thread_issues(pt)
+assert not [e for e in author_lint.schema_errors(pt) if "side_threads" in e["message"]], author_lint.schema_errors(pt)
+m = author_model.to_board_model(pt)
+assert author_model.from_board_model(pt, m)["mechanics"]["side_threads"] == pt["mechanics"]["side_threads"]
+bad = copy.deepcopy(pt)
+P = bad["mechanics"]["side_threads"]["player_threads"]
+P["confirm"] = {"reports": 6, "within_turns": 5}
+P["may_move"] = ["relationship:Ghost", "stat:trace"]
+del P["abandon_after_offers"]
+bad["mechanics"]["side_threads"]["recipes"].append({"id": "player_pursuit", "premise": "p", "cast": {"a": {}}})
+bad["mechanics"]["side_threads"]["recipes"][0]["follows"] = {"recipe": "unrequited", "outcome": ["abandoned"]}
+msgs = [(i["severity"], i["message"]) for i in author_lint.side_thread_issues(bad)]
+for sev, needle in (("error", "no pursuit can ever be confirmed"), ("warning", "never end as abandoned"),
+                    ("error", "may_move relationship:Ghost"), ("error", "may_move stat:trace"),
+                    ("error", "reserved for player-started threads"), ("warning", "only a player-started thread can be abandoned")):
+    assert any(s == sev and needle in m for s, m in msgs), (needle, msgs)
+schema_bad = copy.deepcopy(pt)
+schema_bad["mechanics"]["side_threads"]["player_threads"]["confirm"]["reports"] = 1
+schema_bad["mechanics"]["side_threads"]["player_threads"]["may_move"] = ["bond:cast,cast"]
+errs = [e["message"] for e in author_lint.schema_errors(schema_bad)]
+assert len([e for e in errs if "player_threads" in e]) == 2, errs
+off = copy.deepcopy(pt)
+del off["mechanics"]["side_threads"]["player_threads"]
+assert any("has none" in i["message"] for i in author_lint.side_thread_issues(off)), "following pursuits needs the feature on"
+print("OK: player_threads round-trips; lint catches an unconfirmable rule, dangling may_move, the reserved "
+      "recipe id and callbacks to pursuits with the feature off; one report can never confirm (schema)")
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for slug in ("example", os.path.join("private", "the_missing_core"), os.path.join("private", "new_babel")):
