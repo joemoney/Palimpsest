@@ -10,6 +10,7 @@ works. For that:
 |---|---|
 | **The storyboard-first overhaul: what it is and why** | `docs/Design_Overhaul.md` |
 | **Authoring tool: what it is, view by view** | `docs/Authoring_Tool_Spec.md` |
+| Writing a story by editing `template.json` directly (for agents), and `scripts/lint_template.py` | `docs/Agent_Authoring_Manual.md` |
 | **The mechanic change requests the overhaul is built from (CR-01–CR-12)** | `docs/Story_Mechanics_Update.md` |
 | **Authoring tool phases, gates, and the decisions (D1–D7) that bind them** | `docs/analysis_and_plans/AUTHORING_TOOL/AUTHORING_TOOL_PHASES.md` |
 | How threads (spine/personal/texture) relate to acts and endings, with a diagram | `docs/How_Threads_Work.md` |

@@ -912,7 +912,7 @@ def author_derived_route(story_slug):
         return render_template("_author_derived_table.html", error=f"Could not read the board state: {e}")
     steps = [(s.get("key"), s.get("label") or s.get("key")) for s in written.get("character_creation") or []
              if isinstance(s, dict) and s.get("key") and s.get("options")]
-    options = {s.get("key"): {o.get("id"): o.get("label") or o.get("id") for o in s.get("options") or []}
+    options = {s.get("key"): {o.get("id"): o.get("name") or o.get("id") for o in s.get("options") or []}
                for s in written.get("character_creation") or [] if isinstance(s, dict)}
     used = {name for _, name in derived.uses(written)}
     return render_template("_author_derived_table.html", error=None, rows=derived.table(written),

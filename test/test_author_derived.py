@@ -26,8 +26,8 @@ RAW = {
     "world": {"rules": ["Lark Ferris is {lark_is} ({lark_pron}), fixed for the whole story."]},
     "plot": {"opening_scene": {"narration_before_name": "Name?", "narration_after_name": "Hello, {player_name}."}},
     "character_creation": [
-        {"key": "gender", "label": "Gender", "prompt": "p", "options": [{"id": g, "label": l} for g, l in GENDER]},
-        {"key": "trade", "label": "Trade", "prompt": "p", "options": [{"id": t, "label": t} for t in TRADE]},
+        {"key": "gender", "label": "Gender", "prompt": "p", "options": [{"id": g, "name": l} for g, l in GENDER]},
+        {"key": "trade", "label": "Trade", "prompt": "p", "options": [{"id": t, "name": t} for t in TRADE]},
     ],
     # Story_Mechanics_Update.md CR-04's own example, first match wins.
     "derived": [

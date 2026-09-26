@@ -254,6 +254,12 @@ old ones complete, and acts are open-ended with no fixed count - but it's
 here for when the story needs a deliberate push.
 
 ### How to Author a Story (the Storyboard)
+
+*Writing the JSON by hand instead, or asking an AI agent to? See
+[docs/Agent_Authoring_Manual.md](docs/Agent_Authoring_Manual.md). It covers the same file,
+section by section, with `python3 scripts/lint_template.py <slug>` as the command-line
+Validate.*
+
 The storyboard is a visual editor at `/author`. You use it to lay out a
 story's structure: its endings, the threads that lead to them, the cast, and
 the stats that measure progress. It writes the story's `template.json` for

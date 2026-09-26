@@ -243,7 +243,7 @@ try:
     # --- /derived (CR-04): every creation combination and the values it gets -----------------
     dv_model = copy.deepcopy(ev_model)
     dv_model["forms"]["character_creation"] = [{"key": "trade", "label": "Trade", "prompt": "p", "options": [
-        {"id": "diver", "label": "Diver"}, {"id": "fixer", "label": "Fixer"}]}]
+        {"id": "diver", "name": "Diver"}, {"id": "fixer", "name": "Fixer"}]}]
     dv_model["derived"] = [{"when": {"creation": {"trade": "diver"}}, "set": {"kit": "a mask"}}]
     resp = client.post("/author/author_test_story/derived", data={"model": json.dumps(dv_model)})
     assert resp.status_code == 200, resp.status_code

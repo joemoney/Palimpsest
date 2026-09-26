@@ -1026,7 +1026,7 @@ function cbLeaf(c,kind,set){
     const st=steps.find(x=>x.key===step);
     row.appendChild(cbSelect(steps.map(x=>[x.key,x.label||x.key]),step,v=>{const n=steps.find(x=>x.key===v);set({creation:{[v]:n&&n.options[0]?n.options[0].id:''}})}));
     row.appendChild(el('span',null,'is'));
-    row.appendChild(cbSelect((st?st.options:[]).map(o=>[o.id,o.label||o.id]),opt,v=>set({creation:{[step]:v}})));
+    row.appendChild(cbSelect((st?st.options:[]).map(o=>[o.id,o.name||o.id]),opt,v=>set({creation:{[step]:v}})));
     if(!steps.length)row.appendChild(el('span','fieldnote warn','No character creation yet - add it on the Protagonist card.'));
   }else if(kind==='bond'){
     const who=[...(cbScope.slots||[]).map(x=>[x,`slot ${x}`]),...model.characters.map(x=>[x.name,x.name])];
