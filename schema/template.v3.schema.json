@@ -980,7 +980,24 @@
       "properties": {
         "nudge_frequency": { "type": "integer" },
         "act_check_frequency": { "type": "integer" },
-        "max_parallel_subplots": { "type": "integer" }
+        "max_parallel_subplots": { "type": "integer" },
+        "story_clock": {
+          "$comment": "CR-13 (Story_Mechanics_Update.md): turns that move nothing don't spend the story's budget, up to a free streak. Absent means every turn counts. Not built yet: mechanics.validate() warns while nothing reads it.",
+          "type": "object",
+          "properties": {
+            "free_idle_streak": {
+              "description": "How many turns in a row that move nothing (a question, a look around) cost the story no time. After that the options lean forward, the push directive fires once, and idle turns count again.",
+              "type": "integer", "minimum": 1
+            },
+            "push_directive": {
+              "description": "Narrator-facing, one turn, when the free streak is used up: something in the world that moves, in the story's own voice. Optional: without it only the options lean forward.",
+              "type": "string"
+            }
+          },
+          "required": ["free_idle_streak"],
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        }
       },
       "required": ["nudge_frequency", "act_check_frequency"],
       "patternProperties": { "^_": true },

@@ -800,6 +800,14 @@ posts to `/author/<slug>/derived` for the table. Lint: `derived_issues`.
   Core's `world.rules`, but The Missing Core's creation has no gender step (trade and arrival
   only), so the rule the spec sketches cannot be written against it as it stands.
 
+**CR-13 on the board (2026-09-26).** `plot.pacing.story_clock` (`free_idle_streak`, required;
+`push_directive`, narrator, optional) in the schema, edited from an **Idle turns** section under
+Ending funnel settings (Story health panel) - the same object the Forms tab's Pacing section
+edits, so the two can't disagree. The budget fields relabel to "story-clock turn" when it is on.
+`mechanics.validate()` warns while nothing reads it. The engine piece (two clocks, idle detection
+from existing observations, the streak, lean-forward options, the push) is specified in
+`Story_Mechanics_Update.md` CR-13 and waits for demand like the rest of S5.
+
 ---
 
 ## Phase S4: Lore, visibility and the narrator preview

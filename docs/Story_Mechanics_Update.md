@@ -31,6 +31,7 @@ This update takes the remaining prose-carried mechanics and gives each an engine
 | CR-10 | **Threads as carriers**: subplot roles, `delivers`, `activate_when`, failure; generation limited to texture | — (follows from CR-05) | **P0** |
 | CR-11 | **Side threads and NPC bonds**: one-way NPC-to-NPC scores; a parallel track of AI-written episodes, started and ended by state; r5 adds location and item casts, stat/item/leverage `may_move`, vignettes and callbacks | — (template gap) | P1 |
 | CR-12 | Player-started side threads: detected pursuits, confirmed in code; replaces `player_driven_goals` | — (template gap) | P2 |
+| CR-13 | **Story clock**: turns that move nothing don't spend the story's budget, up to an authored free streak; then the options lean forward and the world pushes | — (template gap) | P1 |
  
 None of these adds a per-turn LLM call. CR-11 adds an occasional generation call, only when a side thread starts. CR-05 adds a judge call only at commitment (typically one to three per playthrough) and when a terminal ending's code gate trips. Waypoint detection rides on the existing state-update pass.
  
@@ -800,6 +801,92 @@ All three CR-11 guarantees still apply: `resolves_when` / `fails_when`, `detect`
 **Deferred texture ideas** (not specced; revisit after side threads are measured in play)
 - **Faction life.** `world.factions` has goals and a stance toward the player but no scores. Feuds and standing need a faction axis, a new engine along the lines of `scored_bonds`.
 - **Off-screen world news.** Events that happen without the protagonist and surface as one line through NPCs. This needs a world clock or triggers and a per-story news pool.
+
+---
+
+### CR-13 — Story clock: idle turns don't spend the budget (P1)
+
+*Not the `CR-13` in `story_engine.py`'s `ties_to_main_plot` comment, which comes from the older `SCHEMA_COVERAGE_CRD` numbering (see the note under CR-12).*
+
+**Problem:** every exchange counts as a turn, and the ending budget (`open_until`, `narrow_until`, `commit_by`), act checks, `per_turn` drift and side-thread limits all run on that count. A player who stops to ask questions - about a character, the place, what something means - spends the story's budget without the story moving. At about 500 words a turn, a budget sized from a novel's length (see the estimate that prompted this: `commit_by` 205 ≈ 100,000 words) then ends the story early in *plot* terms for a curious player, and on time for one who never asks anything. Curiosity should be free, up to a point.
+
+**Principle:** the player may linger; the story may not stall. What counts as "nothing happened" is decided in code from what the state-update pass already reports (P-7), never by asking a model "was this idle?". Every story must still end: the free allowance is bounded, and the bound is the engine's, not the prompt's.
+
+**Schema** (`plot.pacing.story_clock`; absent means the feature does not exist and every turn counts, as today - P-2):
+
+```json
+"pacing": {
+  "nudge_frequency": 8,
+  "act_check_frequency": 12,
+  "story_clock": {
+    "free_idle_streak": 3,
+    "push_directive": "Someone knocks at the depot door: the Company man, early, with papers."
+  }
+}
+```
+
+- `free_idle_streak` (required, ≥ 1): how many idle turns in a row cost nothing. A creative decision, so authored; there is no engine default.
+- `push_directive` (optional, narrator-visible): the one-turn push once the streak is used up, in the story's own voice. Without it, only the options lean forward.
+
+**Two clocks.** `pacing.turn_count` keeps counting every exchange. A new `pacing.story_clock` counts turns that moved the story, plus every idle turn past the free streak.
+
+| Reads the **story clock** | Stays on **`turn_count`** (every exchange) |
+|---|---|
+| Ending budget phases and forced commit (`open_until`, `narrow_until`, `commit_by`), funnel `check_every`, terminal `min_turn` | Pacing nudge cadence (`nudge_frequency`): a player stuck asking questions is exactly who needs one |
+| Act check cadence (`act_check_frequency`) | Flag staleness window, summary rollover, recent-turns window (context bounds, CLAUDE.md) |
+| `turn_gte` condition leaves | Relationship and bond `cap_per_window` (rate limits on exchanges) |
+| Stat `per_turn` drift (asking questions takes little in-world time) | Reveal, flag and character timestamps (the save's history) |
+| Side-thread `cooldown_turns` / `max_turns` / callback `min_turns_since` (CR-11), player-thread confirmation window (CR-12) | The finale's own length (`finale_turns`): the finale always counts |
+
+**Idle, defined in code.** A turn is idle when the state-update pass reports **none** of:
+- a thread moved past `touched`;
+- a flag set;
+- a waypoint hit, or a `done_when` newly true;
+- a fragment revealed;
+- a stat event or change;
+- a social or bond event;
+- an item gained or used;
+- a leverage entry;
+- a location change;
+- a new named character;
+- side-thread progress.
+
+No new observation field and no new LLM call: it is a function of the observations every turn already produces. A turn inside the finale is never idle.
+
+**The streak.** `idle_streak` counts consecutive idle turns and resets on any non-idle turn.
+1. **Free.** While `idle_streak <= free_idle_streak`, an idle turn does not advance the story clock.
+2. **Lean forward.** From the turn after the streak is reached, and for as long as the streak holds, the options instruction adds: offer choices that act, commit or go somewhere, not further questions. The player can still type anything; this is guidance, not the guarantee.
+3. **Push.** On the first of those turns only, `push_directive` (if authored) joins the narration prompt for one turn, like a fired pacing rule. It does not fire again until the streak has reset and been used up again.
+4. **Pay.** Every further idle turn advances the story clock in full. This is the guarantee: a streak can delay the budget by at most `free_idle_streak` turns per run of idleness, and never stop it.
+
+**Interplay.**
+- **Pacing loop (beat_counter):** unchanged. It classifies every turn and reads `turn_count`. An inquiry turn usually classifies as the quiet beat and feeds its counter, which is how a rule designed to break long lulls still fires.
+- **Armed rules win.** If a pacing rule fires on the same turn as the push, the rule's directive is used and the push is not (at most one pacing directive per turn). The push is then spent for this streak.
+- **Ending funnel:** the Timeline bar and `budget` are read in story-clock turns. The engine's forced commit is unchanged in kind, it just arrives later for a curious player.
+- **Regenerate** restores the pre-turn snapshot, which includes `story_clock` and `idle_streak`.
+
+**State** (in `state.pacing`, created only when the story authors `story_clock`):
+```json
+"story_clock": 41, "idle_streak": 2, "push_fired_for_streak": false
+```
+
+**Authoring tool.**
+- Ending funnel settings (Story health panel) get an **Idle turns** section: the free streak and the push directive. The Forms tab's Pacing section edits the same fields.
+- The Timeline bar and budget fields say their turns are story-clock turns when the clock is authored.
+- The Sample state's **Turn** sets the story clock when the story authors one.
+
+**Acceptance**
+- **Absent module:** with no `story_clock`, every prompt and every counter behaves exactly as today (P-2).
+- **Idle detection:** a turn whose observations report nothing on the list is idle; any single item makes it not idle; a finale turn is never idle.
+- **Free streak:** `free_idle_streak` idle turns in a row leave the story clock unchanged; the next one advances it.
+- **Bound:** for any sequence of turns, `story_clock >= turn_count - free_idle_streak * (number of idle runs)`, and a run of k idle turns costs max(0, k - free_idle_streak).
+- **Push:** fires once per exhausted streak, never when a pacing rule fired that turn, never in the finale.
+- **Lean forward:** the options instruction carries the line exactly while the streak is exhausted.
+- **Two clocks:** each consumer in the table reads the clock its column names.
+- **Budget:** no new observation field, no new LLM call; the push line is covered by the narration prompt budget.
+
+**Open question.** Should an idle turn be free for the pacing nudge as well? Leaving the nudge on `turn_count` means a curious player is nudged sooner in story-clock terms, which is the intent. Revisit if nudges feel pushy in play.
+
 ---
  
 ## 4. Worked migrations
@@ -838,6 +925,7 @@ All three CR-11 guarantees still apply: `resolves_when` / `fails_when`, `detect`
 | C | CR-04, CR-06 | none | ↓ net (rules shrink, lore capped) |
 | D | CR-07, CR-08, CR-09 | none | + one-shot lines; CR-09 measured first |
 | E | CR-11, then CR-12 | side-thread generation (only when one starts, at most `max_active` live) | + ≤4 bond lines when both characters are in the scene; + one side-thread line on turns with no armed rule |
+| — | CR-13 (independent; any time after CR-05) | none | + one options line while an idle streak is exhausted; + one push line, once per exhausted streak |
  
 CR-05 moved from Phase C to B in r2 because it addresses the drift directly. It still waits for CR-02 (it's built from conditions) and CR-03 (it adds two new prompt audiences that canon could leak into).
  

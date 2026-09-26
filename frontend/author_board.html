@@ -1423,6 +1423,25 @@ function renderEdgeInspector(){
   const del=el('button','btn danger','Remove link');del.type='button';del.style.marginTop='22px';
   del.onclick=()=>{model.edges=model.edges.filter(e=>gkey(e)!==g.key);sel=null;save();render();say('Link removed')};insp.appendChild(del);
 }
+// CR-13: the story clock, plot.pacing.story_clock - the same object the Forms tab's Pacing
+// section edits (model.forms['plot.pacing']), so the two editors can never disagree.
+function storyClock(){const P=model.forms&&model.forms['plot.pacing'];return P&&typeof P==='object'&&P.story_clock&&typeof P.story_clock==='object'?P.story_clock:null}
+function renderStoryClockSettings(){
+  const h=el('h4',null,'Idle turns ');h.appendChild(el('span','vis notbuilt','not built'));insp.appendChild(h);
+  insp.appendChild(el('p','note','A turn that moves nothing - the player asks a question or looks around, and no thread, flag, waypoint, fragment, stat, relationship, item or place changes - can cost the story no time, for a few turns in a row. After that the choices offered lean toward acting, the push below happens once, and idle turns count again, so every story still ends. With this on, the budget above is counted in story-clock turns. The pacing nudge still counts every turn.'));
+  const P=model.forms&&model.forms['plot.pacing'];
+  if(!P||typeof P!=='object'){insp.appendChild(el('p','note warn','This story has no pacing section yet. Add it in Forms \u203a Pacing first.'));return}
+  const SC=storyClock();
+  const refresh=()=>{const y=insp.scrollTop;renderInspector();insp.scrollTop=y;renderTimeline()};
+  if(!SC){insp.appendChild(btn('+ Make idle turns free',()=>{P.story_clock={free_idle_streak:3};save();renderHealth();refresh();say('Idle turns are free for 3 in a row. Change the number to suit the story.')},'btn small'));return}
+  insp.appendChild(field('Free idle turns in a row',numIn(SC.free_idle_streak,v=>putOrDel(SC,'free_idle_streak',v),'e.g. 3',1),null,
+    el('div','fieldnote','How many questions or look-arounds in a row cost no time. The next idle turn counts, and so does every one after it until something happens.')));
+  const pd=el('textarea');pd.value=SC.push_directive||'';pd.placeholder='e.g. Someone knocks at the depot door: the Company man, early, with papers.';
+  pd.addEventListener('input',()=>{putOrDel(SC,'push_directive',pd.value.trim()?pd.value:undefined);save();renderHealth()});
+  insp.appendChild(field('Push when the free turns run out',pd,['narrator','narrator \u00b7 once per idle streak'],
+    el('div','fieldnote','One turn only, in the story\u2019s voice: something in the world that moves. Leave it empty and only the choices change. A pacing rule firing the same turn takes precedence.')));
+  insp.appendChild(btn('Turn off (every turn counts)',()=>{delete P.story_clock;save();renderHealth();refresh()},'btn small'));
+}
 function renderOverview(){
   insp.appendChild(eyebrow('Story health'));
   insp.appendChild(el('h2',null,model.story));
@@ -1468,15 +1487,17 @@ function renderOverview(){
     if(v===undefined){if(es.budget)delete es.budget[key];if(es.budget&&!Object.keys(es.budget).length)delete es.budget}
     else{es.budget=es.budget||{};es.budget[key]=v}
   },ph);
-  insp.appendChild(budgetField('Open until (turn)','open_until','e.g. 40'));
-  insp.appendChild(budgetField('Narrow until (turn)','narrow_until','e.g. 90'));
-  insp.appendChild(budgetField('Commit by (turn)','commit_by','e.g. 140'));
+  const unit=storyClock()?'story-clock turn':'turn';
+  insp.appendChild(budgetField(`Open until (${unit})`,'open_until','e.g. 40'));
+  insp.appendChild(budgetField(`Narrow until (${unit})`,'narrow_until','e.g. 90'));
+  insp.appendChild(budgetField(`Commit by (${unit})`,'commit_by','e.g. 140'));
   const finaleField=(label,key,ph)=>numField(label,()=>es.finale_turns&&es.finale_turns[key],v=>{
     if(v===undefined){if(es.finale_turns)delete es.finale_turns[key];if(es.finale_turns&&!Object.keys(es.finale_turns).length)delete es.finale_turns}
     else{es.finale_turns=es.finale_turns||{};es.finale_turns[key]=v}
   },ph);
   insp.appendChild(finaleField('Finale min turns','min','e.g. 3'));
   insp.appendChild(finaleField('Finale max turns','max','e.g. 8'));
+  renderStoryClockSettings();
 
   insp.appendChild(el('h4',null,'Using the board'));
   const tips=el('ul','tips');

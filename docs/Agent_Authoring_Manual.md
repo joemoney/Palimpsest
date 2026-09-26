@@ -118,6 +118,7 @@ by leaving the mechanic out.
 | `mechanics.failure_conditions` | `triggered_ending` | Built but **retired**: write terminals in `mechanics.endings` instead. |
 | `mechanics.flags` | (no engine key) | Declared flags are readable by conditions. **Gap:** the state-update pass is not yet told each flag's `detect` text, so a declared flag is set only if the model happens to use its exact id. |
 | `mechanics.tracked_entity` | (no engine key) | Built |
+| `plot.pacing.story_clock` | none | **Not built** (loads, with a warning; every turn still counts) |
 | `mechanics.lore` | `keyed_lore` | **Not built** (refuses load) |
 | `mechanics.bonds` | `scored_bonds` | **Not built** (refuses load) |
 | `mechanics.side_threads` | `episodic_threads` | **Not built** (refuses load) |
@@ -290,6 +291,10 @@ Required: `main_thread`, `pacing`, `initial_scene`, `opening_scene`. Optional: `
 - `pacing`: `nudge_frequency` and `act_check_frequency` (turns, required),
   `max_parallel_subplots`. The act check runs when a thread completes in the current act **or**
   every `act_check_frequency` turns, and the model then judges whether the act has resolved.
+  Optional `story_clock` (CR-13, not built): `{"free_idle_streak": 3, "push_directive": "..."}`.
+  Up to `free_idle_streak` turns in a row that move nothing don't count against the ending
+  budget, act checks or `turn_gte`. After that the options lean forward, `push_directive` (narrator,
+  one turn) fires once, and idle turns count again. See `Story_Mechanics_Update.md` CR-13.
 - `initial_scene`: `location` (a location id) and `summary`.
 - `opening_scene` has exactly one of two shapes:
   - `{"narration_before_name": "...", "narration_after_name": "..."}`: the player names the

@@ -762,6 +762,18 @@ example, the story is never forced to an ending, so it ends only when an
 ending becomes ready. The failure-ending row shows a tick at each failure
 ending's min turn.
 
+Under the same settings, **Idle turns** (marked *not built*) makes turns that
+move nothing free, a few at a time: the player asks a question or looks
+around, and no thread, flag, waypoint, fragment, stat, relationship, item or
+place changes. Click **+ Make idle turns free**, then set **Free idle turns in
+a row** and, optionally, **Push when the free turns run out**. That push is one
+turn of something in the world moving, in the story's voice. After the free
+streak, the choices offered lean toward acting, the push happens once, and idle
+turns count again, so every story still ends. With it on, the budget above is
+counted in story-clock turns (the field labels say so). The pacing nudge still
+counts every turn. Until the engine reads it, a story that sets it loads with a
+warning and every turn still counts.
+
 #### Step 16 - Test your conditions with Sample state
 Click **Sample state** to describe a moment of play. You can set stat values,
 relationship scores and peaks, bond scores (for every starting bond and every

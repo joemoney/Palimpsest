@@ -116,7 +116,8 @@ for the story, not for you.
 - **Validate**: lint without saving. **Save**: writes the file, even with errors. Errors only
   keep the story out of the player's list.
 - **The health badge** (e.g. "6 issues"): opens **Story health** in the right panel. **Story
-  flags** and **Ending funnel settings** live in that panel.
+  flags** and **Ending funnel settings** live in that panel. So does **Idle turns** (**+ Make
+  idle turns free**, **Free idle turns in a row**, **Push when the free turns run out**).
 
 The **right panel** (the inspector) shows whatever card is selected. Most fields save as you
 type. Ids and names save when the field loses focus (click elsewhere or press Tab).
@@ -369,6 +370,14 @@ Steps:
 Also suggest when the story may end, if the author hasn't set it: open the health panel →
 **Ending funnel settings**, or tick **Timeline** to drag the phase boundaries. Name the turn
 numbers for the three boundaries (open, narrow, commit by).
+
+If the author expects players to linger (lots of questions, investigation), suggest **Idle
+turns** in the same panel. Give:
+- a **Free idle turns in a row** number (2–3 is typical);
+- a **Push when the free turns run out** line in the story's voice: one concrete thing in the
+  world that moves and asks for a decision, not a summary.
+
+It isn't built yet: the story loads with a warning, and every turn still counts until it is.
 
 ### 6.3 "Give me waypoints for <ending>"
 

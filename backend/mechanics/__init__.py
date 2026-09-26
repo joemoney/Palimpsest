@@ -265,6 +265,12 @@ def validate(story):
         print(f"WARNING: tiers on {', '.join(hooked)} author on_enter (CR-01), which this build "
               f"does not read yet - crossing into those tiers fires nothing.")
 
+    # Same for CR-13's story clock: authored, round-trips, no reader yet - every turn still
+    # spends the budget. Delete in the change that builds the story clock.
+    if ((story.get("plot") or {}).get("pacing") or {}).get("story_clock"):
+        print("WARNING: plot.pacing.story_clock (CR-13) is authored but this build does not "
+              "read it yet - every turn, idle or not, still counts against the ending budget.")
+
     # CR-05's declare-to-bind case: endings authored with no engine would never be steered
     # toward or reached, and - with no player end-story command (D6) - the story could never
     # end at all.
