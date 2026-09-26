@@ -32,6 +32,7 @@ This update takes the remaining prose-carried mechanics and gives each an engine
 | CR-11 | **Side threads and NPC bonds**: one-way NPC-to-NPC scores; a parallel track of AI-written episodes, started and ended by state; r5 adds location and item casts, stat/item/leverage `may_move`, vignettes and callbacks | — (template gap) | P1 |
 | CR-12 | Player-started side threads: detected pursuits, confirmed in code; replaces `player_driven_goals` | — (template gap) | P2 |
 | CR-13 | **Story clock**: turns that move nothing don't spend the story's budget, up to an authored free streak; then the options lean forward and the world pushes | — (template gap) | P1 |
+| CR-14 | Scene length by moment: the word range follows what the turn is (a question, a quiet beat, a fired directive, the finale) instead of one range for every scene | — (template gap) | P2 |
  
 None of these adds a per-turn LLM call. CR-11 adds an occasional generation call, only when a side thread starts. CR-05 adds a judge call only at commitment (typically one to three per playthrough) and when a terminal ending's code gate trips. Waypoint detection rides on the existing state-update pass.
  
@@ -887,6 +888,61 @@ No new observation field and no new LLM call: it is a function of the observatio
 
 **Open question.** Should an idle turn be free for the pacing nudge as well? Leaving the nudge on `turn_count` means a curious player is nudged sooner in story-clock terms, which is the intent. Revisit if nudges feel pushy in play.
 
+
+---
+
+### CR-14 — Scene length by moment (P2)
+
+**Problem:** every scene is asked for the same word range (`narration.scene_length`, 470–500 in all three stories). A question gets 500 words, most of them scenery nobody asked for; a crisis gets the same 500. Padding is the visible symptom: the model fills the range whether or not the moment has anything to fill it with. A token cap (`max_tokens`) does not fix this. The model does not write to fit it; it is cut off by it, which loses the options block and costs a follow-up call (see `story_engine.py`'s notes on `OPENROUTER_MAX_TOKENS` and `finish_reason: "length"`). The token cap stays a runaway guard only; length stays authored in words.
+
+**Principle:** the length follows the moment, chosen in code from what is known *before* the scene is written. What is only known after (this turn's beat, whether it was idle) cannot choose this turn's length; the one exception, a turn that is only a question, is left to the narrator as an authored instruction, because a scene that runs long is a slightly worse scene, not a broken promise (P-7's test).
+
+**Schema** (`narration.scene_length_by_moment`; absent means every scene uses `narration.scene_length`, as today - P-2):
+
+```json
+"narration": {
+  "scene_length": {"min": 470, "max": 500},
+  "scene_length_by_moment": {
+    "beats": {"respite": {"min": 250, "max": 350}, "threat": {"min": 450, "max": 550}},
+    "directive": {"min": 450, "max": 550},
+    "finale": {"min": 500, "max": 650},
+    "inquiry": {"min": 120, "max": 220}
+  }
+}
+```
+
+Every key is optional; each is `{min, max}` in words.
+
+**Choosing the range** (in code, before narration; first match wins):
+
+| Order | Moment | Known before narration because | Range used |
+|---|---|---|---|
+| 1 | The finale (an ending is committed) | `endgame` state | `finale` |
+| 2 | A pacing directive fires this turn, or CR-13's push fires | the directive is chosen before the prompt is built | `directive` |
+| 3 | Otherwise, by the **previous** turn's classified beat | `beat_counter` recorded it last turn | `beats.<that beat>` |
+| 4 | Otherwise | — | `narration.scene_length` |
+
+Row 3 uses the previous beat because a scene's register carries over: the turn after a quiet scene usually continues quietly. The pacing loop exists to break that when it runs too long (row 2 then takes over).
+
+**Inquiry (narrator-judged).** When `inquiry` is authored, the length line gains one sentence: *"If the player's action is only a question or a look around, answer it in {inquiry.min}-{inquiry.max} words instead, and end on something they can act on."* Never on a directive or finale turn. This is deliberately not decided in code: telling a question from an action before narration would need a model call (rejected: no new per-turn call) or a keyword heuristic on the player's text, which misreads "I ask the guard to open the gate".
+
+**Interplay.**
+- **CR-13:** independent, and complementary. CR-13 makes idle turns cost no budget; CR-14 makes them short to read. An idle streak's push turn is a directive turn (row 2).
+- **Options block:** unchanged; the range governs the scene only, as today.
+- **`max_tokens`:** unchanged, a ceiling well above the largest authored `max`. Worth deriving from it later rather than keeping one fixed constant, but that is not this CR.
+- **Stats readout / delta block:** unaffected; they are placed by token, not counted in the scene.
+
+**State:** none new. Row 3 reads the beat `beat_counter` already records.
+
+**Authoring tool.** A **Scene length by moment** section beside Narration in the Forms tab (schema-driven, with the beat names offered from `mechanics.pacing_loop.beats`). Lint: a `beats` key naming a beat the pacing loop doesn't define is L10; `min > max` is an error; a `beats` block in a story with no pacing loop is a warning (row 3 can never apply).
+
+**Acceptance**
+- **Absent module:** with no `scene_length_by_moment`, every narration prompt is byte-identical to today's (P-2).
+- **Selection:** each row of the table selects its range, in order; a moment with no authored range falls through to the next row.
+- **Inquiry:** the inquiry sentence appears exactly when `inquiry` is authored and the turn is not a directive or finale turn.
+- **Budget:** no new observation field, no new LLM call.
+- **Measured:** words per turn by moment are logged, so authored ranges can be checked against what the model actually wrote (the same classifier-first discipline as beat definitions).
+
 ---
  
 ## 4. Worked migrations
@@ -926,6 +982,7 @@ No new observation field and no new LLM call: it is a function of the observatio
 | D | CR-07, CR-08, CR-09 | none | + one-shot lines; CR-09 measured first |
 | E | CR-11, then CR-12 | side-thread generation (only when one starts, at most `max_active` live) | + ≤4 bond lines when both characters are in the scene; + one side-thread line on turns with no armed rule |
 | — | CR-13 (independent; any time after CR-05) | none | + one options line while an idle streak is exhausted; + one push line, once per exhausted streak |
+| — | CR-14 (independent; beat lengths need a pacing loop) | none | ± the length line changes numbers; + one inquiry sentence when authored. Narration itself gets shorter on quiet turns. |
  
 CR-05 moved from Phase C to B in r2 because it addresses the drift directly. It still waits for CR-02 (it's built from conditions) and CR-03 (it adds two new prompt audiences that canon could leak into).
  
