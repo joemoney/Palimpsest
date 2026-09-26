@@ -1,0 +1,29 @@
+{% if error %}
+<div class="fieldnote err">{{ error }}</div>
+{% elif rows is none %}
+<div class="fieldnote warn">Character creation has more than {{ limit }} combinations, too many to list. Make sure the last rule has no condition, so every player gets values.</div>
+{% elif not names %}
+<div class="fieldnote">No rule sets a value yet.</div>
+{% else %}
+<div class="fieldnote">{{ rows|length }} way{{ 's' if rows|length != 1 }} to finish character creation, and the values each gets. A blank cell in a column the story uses is a <strong>{name}</strong> the narrator would be handed as written.</div>
+<div style="overflow:auto; max-width:100%; margin-top:6px;">
+<table class="bondgrid" style="width:100%;">
+  <tr>
+    {% for key, label in steps %}<th>{{ label }}</th>{% endfor %}
+    <th>Rule</th>
+    {% for name in names %}<th>{{ '{' ~ name ~ '}' }}{% if name not in used %}<br><span style="font-weight:400; color:var(--muted);">unused</span>{% endif %}</th>{% endfor %}
+  </tr>
+  {% for r in rows %}
+  <tr>
+    {% for key, label in steps %}<td style="text-align:left;">{{ options[key][r.choices[key]] }}</td>{% endfor %}
+    <td>{{ r.rule + 1 if r.rule is not none else 'none' }}</td>
+    {% for name in names %}
+      {% if name in r["values"] %}<td style="text-align:left;">{{ r["values"][name] }}</td>
+      {% elif name in used %}<td style="color:var(--err); font-weight:700;">unset</td>
+      {% else %}<td style="color:var(--muted);">&mdash;</td>{% endif %}
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% endif %}

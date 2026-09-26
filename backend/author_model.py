@@ -166,6 +166,8 @@ def to_board_model(raw: dict) -> dict:
     for key in CR11_BLOCKS:
         block = (raw.get("mechanics") or {}).get(key)
         result[key] = copy.deepcopy(block) if isinstance(block, dict) else None
+    # CR-04: the top-level `derived` rules, as the template holds them ([] when absent).
+    result["derived"] = copy.deepcopy(raw.get("derived")) if isinstance(raw.get("derived"), list) else []
     result["forms"] = _forms_to_board(raw)
     result["form_sections"] = [list(s) for s in FORM_SECTIONS]  # read-only: the tab's section list
     result["refs"] = _condition_refs(raw)
@@ -528,6 +530,8 @@ def from_board_model(raw: dict, model: dict) -> dict:
     for key in CR11_BLOCKS:
         if key in model:
             _apply_cr11_block(out, raw, key, model[key])
+    if "derived" in model:
+        _apply_derived(out, raw, model["derived"])
     _apply_positions(out, nodes)
 
     return out
@@ -1014,6 +1018,29 @@ def _apply_cr11_block(out: dict, raw: dict, key: str, block) -> None:
     cleaned = _prune_blank(copy.deepcopy(block))
     cleaned.pop("engine", None)
     mechanics[key] = {"engine": CR11_BLOCKS[key], **cleaned}
+
+
+def _apply_derived(out: dict, raw: dict, rules) -> None:
+    """CR-04 `derived`. Untouched when unchanged; emptied removes the key (P-2). A rule keeps
+    its `when` only when it has one (none means "always", the usual last rule), and a value row
+    with no name is dropped. A rule's value may be an empty string on purpose, so values are
+    not pruned."""
+    current = raw.get("derived") if isinstance(raw.get("derived"), list) else []
+    if rules == current:
+        return
+    cleaned = []
+    for rule in rules or []:
+        if not isinstance(rule, dict):
+            continue
+        entry = {k: copy.deepcopy(v) for k, v in rule.items() if k.startswith("_")}
+        if rule.get("when"):
+            entry["when"] = copy.deepcopy(rule["when"])
+        entry["set"] = {k.strip(): v for k, v in (rule.get("set") or {}).items() if isinstance(k, str) and k.strip()}
+        cleaned.append(entry)
+    if cleaned:
+        out["derived"] = cleaned
+    else:
+        out.pop("derived", None)
 
 
 def _lore_to_board_entries(raw: dict) -> list:

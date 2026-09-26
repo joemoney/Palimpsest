@@ -240,6 +240,19 @@ try:
     assert resp.status_code == 200 and b"Could not read the board state" in resp.data
     print("OK: /api/evaluate reports an unreadable model or sample instead of erroring")
 
+    # --- /derived (CR-04): every creation combination and the values it gets -----------------
+    dv_model = copy.deepcopy(ev_model)
+    dv_model["forms"]["character_creation"] = [{"key": "trade", "label": "Trade", "prompt": "p", "options": [
+        {"id": "diver", "label": "Diver"}, {"id": "fixer", "label": "Fixer"}]}]
+    dv_model["derived"] = [{"when": {"creation": {"trade": "diver"}}, "set": {"kit": "a mask"}}]
+    resp = client.post("/author/author_test_story/derived", data={"model": json.dumps(dv_model)})
+    assert resp.status_code == 200, resp.status_code
+    assert b"2 ways to finish character creation" in resp.data and b"Diver" in resp.data and b"a mask" in resp.data
+    assert b"none" in resp.data, "the combination no rule matches is shown as such"
+    resp = client.post("/author/author_test_story/derived", data={"model": "not json"})
+    assert resp.status_code == 200 and b"Could not read the board state" in resp.data
+    print("OK: /derived lists every creation combination and the derived values each gets")
+
     os.environ["AUTHOR_USER_IDS"] = "someone-else"
     resp = client.post("/author/author_test_story/api/evaluate", data={"model": "{}", "sample": "{}"})
     assert resp.status_code == 404, resp.status_code

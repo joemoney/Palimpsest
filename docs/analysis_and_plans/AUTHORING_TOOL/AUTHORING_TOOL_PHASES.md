@@ -779,6 +779,27 @@ page's goal list and the `PLAYER GOAL:` nudge line). That is engine work: the go
 until `episodic_threads` exists to take them over, rather than being removed with nothing in
 their place.
 
+**CR-04 on the board (2026-09-26).** Top-level `derived` (not under `mechanics`: CR-04 puts it
+there, and it is not an engine block - there is no `engine` key to declare). `backend/derived.py`
+holds the pure rule, shared with the engine to come: `resolve()` (first match, `when` CLOSED),
+`combinations()`/`table()` (every way to finish character creation, capped at 512), `uses()`
+(every `{name}` in text a model would be sent, skipping author-only fields, the stat readout's own
+format fields and `_` notes) and the built-in placeholders legal per location (`{player_name}` in
+the opening; the pacing directive's four). The board edits the rules on the Protagonist card,
+with a new **Creation choice** leaf in the condition builder, and **Check every combination**
+posts to `/author/<slug>/derived` for the table. Lint: `derived_issues`.
+- **Loud until built.** Nothing substitutes `{name}` yet, so `mechanics.validate()` raises
+  `UnknownEngineError` for a template that authors `derived` - the alternative is a narrator
+  handed `{lark_is}` verbatim. The playable projection does not drop it (it drops `mechanics`
+  blocks only); preview/playtest (S6) will need to, or the engine piece lands first.
+- **Engine piece, when demanded:** resolve once when the last creation step completes (or at
+  save creation for a story with none), store the values in the save, and substitute `{name}`
+  wherever narrator- and judge-facing text is assembled, including the pacing directive's
+  `.format()` and the opening narration.
+- **Content, for the rework:** CR-04's acceptance deletes Lark's gender rule from The Missing
+  Core's `world.rules`, but The Missing Core's creation has no gender step (trade and arrival
+  only), so the rule the spec sketches cannot be written against it as it stands.
+
 ---
 
 ## Phase S4: Lore, visibility and the narrator preview

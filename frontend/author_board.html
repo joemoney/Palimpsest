@@ -886,6 +886,7 @@ function condLabel(c){
       if(k in c.stat)return `${String(c.stat.axis||'').toUpperCase()} ${op} ${c.stat[k]}`;
   }
   if(typeof c.relationship==='string')for(const k of ['tier_gte','tier_lte','peak_gte'])if(k in c)return `${c.relationship} ${k} ${c[k]}`;
+  if(c.creation&&typeof c.creation==='object'&&!Array.isArray(c.creation))return Object.entries(c.creation).map(([k,v])=>`${k} = ${v}`).join(', ');
   if(Array.isArray(c.bond)&&c.bond.length===2){const w=`${c.bond[0]} \u2192 ${c.bond[1]}`;
     if('tier_gte' in c)return `${w} at least ${c.tier_gte}`;if('tier_lte' in c)return `${w} at most ${c.tier_lte}`;
     if('gte' in c)return `${w} >= ${c.gte}`;if('lte' in c)return `${w} <= ${c.lte}`;return w}
@@ -926,7 +927,7 @@ function rawConditionField(current,on,placeholder){
    name something that doesn't exist. Inputs commit on `change`, not `input`, because a commit
    repaints the whole builder and would steal focus mid-keystroke. */
 const MAX_COND_DEPTH=3;
-const LEAF_KINDS=[['stat','Stat'],['relationship','Relationship'],['bond','Bond (one character to another)'],['flag','Flag'],['revealed','Revelation revealed'],['subplot_status','Thread status'],['turn_gte','Turn at least'],['act_gte','Act at least'],['waypoints_done','Waypoints done'],['tier_reached','Tier reached']];
+const LEAF_KINDS=[['stat','Stat'],['relationship','Relationship'],['bond','Bond (one character to another)'],['creation','Creation choice'],['flag','Flag'],['revealed','Revelation revealed'],['subplot_status','Thread status'],['turn_gte','Turn at least'],['act_gte','Act at least'],['waypoints_done','Waypoints done'],['tier_reached','Tier reached']];
 const THREAD_STATUSES=['active','progressed','completed','failed'];
 let cbUid=0;
 // The scope of the builder being painted: {slots} for a side-thread recipe, whose conditions may
@@ -944,6 +945,7 @@ function condKind(c){
     if(k==='waypoints_done')return (v==='all'||typeof v==='number')?k:'raw';
     if(k==='subplot_status')return v&&typeof v==='object'&&Object.keys(v).length===1?k:'raw';
     if(k==='tier_reached')return Array.isArray(v)&&v.length===2?k:'raw';
+    if(k==='creation')return v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===1?k:'raw';
     return 'raw';
   }
   if(ks.length===2&&typeof c.stat==='string'&&('gte' in c||'lte' in c||'between' in c))return 'stat';
@@ -957,6 +959,7 @@ function defaultLeaf(kind){
   switch(kind){
     case 'stat':return {stat:(R.stats||[])[0]||'',gte:0};
     case 'relationship':return {relationship:(model.characters[0]||{}).name||'',peak_gte:0};
+    case 'creation':{const st=creationSteps()[0];return {creation:{[st?st.key:'']:st&&st.options[0]?st.options[0].id:''}}}
     case 'bond':{const who=[...(cbScope.slots||[]),...model.characters.map(x=>x.name)];const t=bondTiers();
       return {bond:[who[0]||'',who[1]||''],...(t.length?{tier_gte:t[0]}:{gte:0})}}
     case 'flag':return {flag:(R.flags||[])[0]||''};
@@ -1018,6 +1021,13 @@ function cbLeaf(c,kind,set){
     row.appendChild(cbSelect([['peak_gte','peak score at least'],['tier_gte','tier at least'],['tier_lte','tier at most']],cmp,v=>{
       cmp=v;val=cmp==='peak_gte'?0:'';set(build())}));
     row.appendChild(cmp==='peak_gte'?cbNumber(val,v=>{val=v;set(build())}):cbText(val,v=>{val=v;set(build())}));
+  }else if(kind==='creation'){
+    const steps=creationSteps();let [step,opt]=Object.entries(c.creation)[0];
+    const st=steps.find(x=>x.key===step);
+    row.appendChild(cbSelect(steps.map(x=>[x.key,x.label||x.key]),step,v=>{const n=steps.find(x=>x.key===v);set({creation:{[v]:n&&n.options[0]?n.options[0].id:''}})}));
+    row.appendChild(el('span',null,'is'));
+    row.appendChild(cbSelect((st?st.options:[]).map(o=>[o.id,o.label||o.id]),opt,v=>set({creation:{[step]:v}})));
+    if(!steps.length)row.appendChild(el('span','fieldnote warn','No character creation yet - add it on the Protagonist card.'));
   }else if(kind==='bond'){
     const who=[...(cbScope.slots||[]).map(x=>[x,`slot ${x}`]),...model.characters.map(x=>[x.name,x.name])];
     let [a,b]=c.bond,cmp=['tier_gte','tier_lte','gte','lte'].find(k=>k in c),val=c[cmp];
@@ -2525,6 +2535,46 @@ function renderProtagonistInspector(){
   const sync=()=>{model.forms.character_creation=holder.v===undefined||(Array.isArray(holder.v)&&!holder.v.length)?null:holder.v};
   if(holder.v===undefined){const add=el('button','btn small','+ Add character creation');add.type='button';add.onclick=()=>{model.forms.character_creation=[];formsChanged();renderInspector()};insp.appendChild(add)}
   else{const cc=el('div','fbody');cc.appendChild(renderFormField(holder,'v',schemaAt('character_creation'),{section:'character_creation',rel:'',label:'Steps',required:true,onStructure:()=>{sync();renderInspector();renderLanes()}}));insp.appendChild(cc);sync()}
+  renderDerivedSection();
+}
+// CR-04: creation-derived values (top-level `derived`). model.derived is the rule list as the
+// template holds it; author_model writes it back only when it changed.
+function creationSteps(){const c=model.forms&&model.forms.character_creation;return (Array.isArray(c)?c:[]).filter(x=>x&&x.key).map(x=>({key:x.key,label:x.label,options:(x.options||[]).filter(o=>o&&o.id)}))}
+function derivedNames(){const out=[];for(const r of model.derived||[])for(const k of Object.keys(r.set||{}))if(!out.includes(k))out.push(k);return out}
+function renderDerivedSection(){
+  const D=model.derived=model.derived||[];
+  const h=el('h4',null,'Derived values ');h.appendChild(el('span','vis '+NOT_BUILT[0],NOT_BUILT[1]));insp.appendChild(h);
+  insp.appendChild(el('p','note','Facts worked out once, when character creation is finished, instead of asking the narrator to work them out every turn. Write {name} in any text the narrator sees, e.g. \u201cLark Ferris is {lark_is} ({lark_pron})\u201d. The first rule whose condition holds decides every value, so end with a rule with no condition. Nothing fills these in during play yet, so a story using them won\u2019t load for play until it does.'));
+  const changed=()=>{save();renderHealth()};
+  const repaint=()=>{const y=insp.scrollTop;renderInspector();insp.scrollTop=y};
+  D.forEach((r,i)=>{
+    const box=el('div','cb-group');box.style.marginBottom='8px';
+    const head=el('div','cb-leaf');head.appendChild(el('strong',null,`Rule ${i+1}`));
+    head.appendChild(el('span','fieldnote',r.when?'applies when':'applies to everyone who reaches it'));
+    const up=btn('\u2191',()=>{D.splice(i-1,0,D.splice(i,1)[0]);changed();repaint()},'btn small');up.disabled=i===0;up.title='Check this rule earlier';head.appendChild(up);
+    head.appendChild(btn('Remove',()=>{D.splice(i,1);changed();repaint()},'btn small'));
+    box.appendChild(head);
+    box.appendChild(conditionBuilder(r.when,v=>{if(v===undefined)delete r.when;else r.when=v;save()}));
+    const rows=Object.entries(r.set||{});
+    const write=list=>{r.set=Object.fromEntries(list);changed()};
+    rows.forEach(([k,v],j)=>{const row=el('div','cb-leaf');
+      const n=el('input');n.type='text';n.value=k;n.placeholder='name, e.g. lark_is';n.style.width='130px';n.setAttribute('aria-label','Value name');
+      n.addEventListener('change',()=>{const nv=n.value.trim().replace(/\W+/g,'_');if(!nv||(nv!==k&&rows.some(([x])=>x===nv))){say(nv?`${nv} is already set by this rule.`:'A value needs a name.');n.value=k;return}rows[j]=[nv,rows[j][1]];write(rows);repaint()});
+      const val=el('input');val.type='text';val.value=v;val.placeholder='value, e.g. a woman';val.style.flex='1';val.setAttribute('aria-label',`Value of ${k}`);
+      val.addEventListener('input',()=>{rows[j]=[rows[j][0],val.value];write(rows)});
+      row.appendChild(el('span',null,'{'));row.appendChild(n);row.appendChild(el('span',null,'} ='));row.appendChild(val);
+      row.appendChild(btn('\u00d7',()=>{rows.splice(j,1);write(rows);repaint()},'btn small'));box.appendChild(row)});
+    const missing=derivedNames().filter(x=>!(x in (r.set||{})));
+    const add=btn(missing.length?`+ Value (${missing[0]})`:'+ Value',()=>{let name=missing[0];if(!name){let k=rows.length+1;do{name='value_'+k++}while(rows.some(([x])=>x===name))}rows.push([name,'']);write(rows);repaint()},'btn small');
+    box.appendChild(add);insp.appendChild(box)});
+  insp.appendChild(btn('+ Rule',()=>{D.push({set:Object.fromEntries(derivedNames().map(x=>[x,'']))});changed();repaint()},'btn small'));
+  const chk=el('button','btn small','Check every combination');chk.type='button';chk.style.marginLeft='6px';
+  chk.setAttribute('hx-post',`/author/${STORY_SLUG}/derived`);
+  chk.setAttribute('hx-vals','js:{model: JSON.stringify(getBoardModel())}');
+  chk.setAttribute('hx-target','#derived-results');chk.setAttribute('hx-swap','innerHTML');
+  insp.appendChild(chk);
+  const res=el('div');res.id='derived-results';res.style.marginTop='8px';insp.appendChild(res);
+  if(window.htmx)htmx.process(chk);
 }
 function renderOpeningInspector(){
   insp.appendChild(eyebrow('Opening · plot.initial_scene, plot.opening_scene'));

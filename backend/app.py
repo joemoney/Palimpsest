@@ -12,6 +12,7 @@ import author_assist
 import author_evaluate
 import author_lint
 import author_model
+import derived
 import label_sheet
 import readme_sync
 import mechanics
@@ -894,6 +895,29 @@ def author_evaluate_route(story_slug):
     response.headers["HX-Trigger"] = json.dumps(
         {"author-stat-tiers": author_evaluate.stat_tiers(written, sample)})
     return response
+
+
+@app.route("/author/<story_slug>/derived", methods=["POST"])
+@login_required
+def author_derived_route(story_slug):
+    """CR-04: every way a player can finish character creation, and the derived values each
+    one gets, through `derived.table` - the rule the engine will apply (D3). Never touches disk;
+    the template read is the on-disk one patched with the posted model, as Save would write it."""
+    if _author_enabled_or_404():
+        return ("Not found.", 404)
+    try:
+        model = json.loads(request.form.get("model", ""))
+        written = author_model.from_board_model(state_store.load_template_raw(story_slug), model)
+    except (ValueError, FileNotFoundError, json.JSONDecodeError, TypeError) as e:
+        return render_template("_author_derived_table.html", error=f"Could not read the board state: {e}")
+    steps = [(s.get("key"), s.get("label") or s.get("key")) for s in written.get("character_creation") or []
+             if isinstance(s, dict) and s.get("key") and s.get("options")]
+    options = {s.get("key"): {o.get("id"): o.get("label") or o.get("id") for o in s.get("options") or []}
+               for s in written.get("character_creation") or [] if isinstance(s, dict)}
+    used = {name for _, name in derived.uses(written)}
+    return render_template("_author_derived_table.html", error=None, rows=derived.table(written),
+                           steps=steps, options=options, names=derived.variables(written), used=used,
+                           limit=derived.MAX_COMBINATIONS)
 
 
 @app.route("/author/<story_slug>/raw", methods=["GET", "POST"])

@@ -12,13 +12,34 @@
     "protagonist": { "$ref": "#/$defs/protagonist" },
     "mechanics": { "$ref": "#/$defs/mechanics" },
     "plot": { "$ref": "#/$defs/plot" },
-    "character_creation": { "$ref": "#/$defs/character_creation" }
+    "character_creation": { "$ref": "#/$defs/character_creation" },
+    "derived": { "$ref": "#/$defs/derived" }
   },
   "required": ["schema_version", "story_version", "meta", "narration", "world", "protagonist", "mechanics", "plot"],
   "patternProperties": { "^_": true },
   "additionalProperties": false,
 
   "$defs": {
+
+    "derived": {
+      "description": "CR-04: values fixed once, when character creation completes. The first rule whose condition holds wins, and its values can be written as {name} in any text the narrator sees.",
+      "$comment": "Written by the board now; the engine that substitutes {name} is not built, so mechanics.validate() refuses a template authoring this until it is (a narrator must never be handed a raw {name}).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "when": { "$ref": "#/$defs/condition" },
+          "set": {
+            "type": "object",
+            "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+            "additionalProperties": { "type": "string" }
+          }
+        },
+        "required": ["set"],
+        "patternProperties": { "^_": true },
+        "additionalProperties": false
+      }
+    },
 
     "meta": {
       "type": "object",

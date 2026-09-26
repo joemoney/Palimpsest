@@ -24,11 +24,11 @@ FORM_PATHS = [p for p, _ in author_model.FORM_SECTIONS]
 # (world.characters), the Diagram tab (plot.main_thread acts strip, plot.subplots lanes, endings,
 # terminals from legacy failure_conditions, the stat tier ladder), the Fragments tab
 # (mechanics.revelations), the Story health panel (mechanics.flags), lore in the World tab, bonds
-# in the Cast tab and the Side threads tab (CR-11).
+# in the Cast tab and the Side threads tab (CR-11), derived values on the Protagonist card (CR-04).
 DEDICATED = {
     "meta", "world", "plot.main_thread", "plot.subplots", "mechanics.revelations",
     "mechanics.endings", "mechanics.failure_conditions", "mechanics.flags", "mechanics.lore",
-    "mechanics.bonds", "mechanics.side_threads",
+    "mechanics.bonds", "mechanics.side_threads", "derived",
 }
 schema = author_lint.template_schema()
 defs = schema["$defs"]

@@ -16,6 +16,7 @@ import jsonschema
 
 import author_model
 import conditions
+import derived
 
 _SCHEMA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                              "schema", "template.v3.schema.json")
@@ -575,6 +576,70 @@ def side_thread_issues(raw: dict) -> list:
     return out
 
 
+def derived_issues(raw: dict) -> list:
+    """CR-04. Every `{name}` a model would be handed must resolve, for every way a player can
+    finish character creation - checked by enumerating them (`derived.table`), the same rule the
+    engine will apply, not a copy of it (D3). Errors: an unresolved `{name}`, a combination no
+    rule matches or whose rule leaves a used name unset, and a name that shadows a placeholder
+    the engine already fills. Warnings: a value nothing uses, and a rule no combination reaches."""
+    out = []
+    rules = derived.rules(raw)
+    names = set(derived.variables(raw))
+    used = derived.uses(raw)
+    for path, name in used:
+        if name not in names and name not in derived.builtin_for(path):
+            out.append({"id": "L10", "severity": "error",
+                        "message": f"{path} writes {{{name}}}, which no derived value sets, so the narrator "
+                                   "would be handed it as written."})
+    for name in sorted(names & derived.RESERVED):
+        out.append({"id": "derived", "severity": "error",
+                    "message": f"Derived value {name} has the name of a placeholder the engine already fills. Rename it."})
+    if not rules:
+        return out
+    used_names = {n for _, n in used if n in names}
+    for name in sorted(names - used_names):
+        out.append({"id": "derived", "severity": "warning",
+                    "message": f"Derived value {name} is set but no text writes {{{name}}}."})
+    rows = derived.table(raw)
+    if rows is None:
+        out.append({"id": "derived", "severity": "warning",
+                    "message": f"Character creation has more than {derived.MAX_COMBINATIONS} combinations, so the "
+                               "derived values can't be checked for every one. Make sure the last rule always applies."})
+        return out
+    label = lambda choices: ", ".join(f"{k} = {v}" for k, v in choices.items()) or "every player"  # noqa: E731
+    unmatched = [r for r in rows if r["rule"] is None]
+    if unmatched and used_names:
+        out.append({"id": "derived", "severity": "error",
+                    "message": f"No derived rule applies to {len(unmatched)} creation combination"
+                               f"{'s' if len(unmatched) != 1 else ''} (e.g. {label(unmatched[0]['choices'])}), so "
+                               f"{', '.join('{' + n + '}' for n in sorted(used_names))} would be unresolved. "
+                               "End with a rule that has no condition."})
+    for name in sorted(used_names):
+        gaps = [r for r in rows if r["rule"] is not None and name not in r["values"]]
+        if gaps:
+            out.append({"id": "derived", "severity": "error",
+                        "message": f"{{{name}}} would be unresolved for {len(gaps)} creation combination{'s' if len(gaps) != 1 else ''}: "
+                                   f"e.g. {label(gaps[0]['choices'])} gets rule {gaps[0]['rule'] + 1}, which doesn't set {name}."})
+    reached = {r["rule"] for r in rows}
+    for i, rule in enumerate(rules):
+        if i not in reached and _creation_only(rule.get("when")):
+            out.append({"id": "derived", "severity": "warning",
+                        "message": f"Derived rule {i + 1} never applies: an earlier rule catches every combination it covers."})
+    return out
+
+
+def _creation_only(cond) -> bool:
+    """True when `cond` reads nothing but creation choices, so the enumeration decides it
+    completely. A rule reading a stat or anything else might still be reached in play."""
+    if not cond:
+        return True
+    if isinstance(cond, list):
+        return all(_creation_only(c) for c in cond)
+    if not isinstance(cond, dict):
+        return False
+    return all(k == "creation" or (k in ("all", "any", "not") and _creation_only(v)) for k, v in cond.items())
+
+
 def world_issues(raw: dict) -> list:
     """World-tab hygiene, under L16 (dangling ids) where an id is involved: a `connected_to`, an
     opening location or a gate `target` naming a location the story doesn't author. Only
@@ -678,7 +743,7 @@ def lint(raw: dict, model: dict) -> list:
     in two vocabularies is noise."""
     schema = schema_errors(raw)
     return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw) + revelation_issues(raw) + world_issues(raw) + thread_cast_issues(raw)
-            + ending_arc_issues(raw) + bond_issues(raw) + side_thread_issues(raw)
+            + ending_arc_issues(raw) + bond_issues(raw) + side_thread_issues(raw) + derived_issues(raw)
             + stat_tier_issues(raw) + structural_issues(model) + cast_issues(model))
 
 

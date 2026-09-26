@@ -838,6 +838,11 @@ def iter_conditions(story):
     write. This is the single list of call sites and their polarity (D2: "every condition call
     site declares its polarity explicitly"); lint and the simulator both walk it, so a new
     condition field is added here once. `ending` is the entry for fields scoped to one."""
+    # CR-04. CLOSED: first match wins and the values are fixed for the whole story, so an unknown
+    # referent must fall through to the next rule rather than claim this one.
+    for i, rule in enumerate(story.get("derived") or []):
+        if isinstance(rule, dict) and rule.get("when"):
+            yield f"derived[{i}].when", rule["when"], CLOSED, None
     plot = story.get("plot") or {}
     for i, act in enumerate((plot.get("main_thread") or {}).get("acts") or []):
         if act.get("requires"):

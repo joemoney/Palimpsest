@@ -365,6 +365,19 @@ Go to `/author` and click your story. The board has four parts:
       for a name, and the name you give here is the fallback for a blank
       answer. When it isn't, the story never asks, and this is simply the
       protagonist's name.
+
+      **Derived values** (marked *not built*) are facts worked out once, when
+      character creation is finished, so the narrator doesn't have to work
+      them out every turn. Each rule has a condition (usually a **Creation
+      choice**, e.g. *gender is man*) and the values it sets, e.g. `lark_is`
+      = *a woman*. The first rule whose condition holds decides every value,
+      so end with a rule that has no condition. Write `{lark_is}` in any text
+      the narrator sees, e.g. a world rule: *Lark Ferris is {lark_is}*.
+      **Check every combination** lists each way a player can finish
+      creation and the values it gets. **Validate** flags a `{name}` nothing
+      sets, a combination no rule covers, a rule that leaves a used value
+      unset, and a rule that can never apply. Until the engine fills these
+      in during play, a story that uses them won't load for play.
     - **Opening**: the opening location (the same setting as the World
       tab's), the starting scene summary, and the opening narration. That's
       two parts, before and after the name, when the player names the

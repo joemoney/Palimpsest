@@ -203,6 +203,13 @@ def validate(story):
 
     Deliberately silent about a mechanics entry with no "engine" key - that is not an
     error, it is a mechanic the registry does not own yet."""
+    # CR-04 `derived` is not a mechanics block, but it fails the same way an unbuilt engine
+    # would if let through: nothing substitutes `{var}` yet, so the narrator would be handed
+    # `{lark_is}` verbatim. Refused here until the substitution exists (build order: loud).
+    if story.get("derived"):
+        raise UnknownEngineError(
+            "This story authors `derived` (CR-04 creation-derived values), which this build "
+            "cannot apply yet: nothing would substitute its {names} in the narrator's text.")
     # Declare-to-bind created one new way to author a story wrongly: seed protagonist.stats
     # (or a character_creation starting_stats) but never declare the engine, and the stats
     # sit in state doing nothing - no bounds, no prompt line, no stat_changes field. Silent
