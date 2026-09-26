@@ -1,0 +1,55 @@
+{% if error %}
+<div class="card" style="border-color:var(--err);">
+  <div style="font-weight:700; color:var(--err);">{{ error }}</div>
+</div>
+{% else %}
+<div class="card">
+  <div style="font-weight:700;">What the model would be sent</div>
+  <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">
+    Built by the real prompt builders for the current board and the sample state, with no model call and nothing saved.
+    Token counts are estimates (characters &divide; 4).
+  </div>
+  {% if left_out %}
+  <div style="color:var(--warn); font-size:0.85rem; margin-top:6px;">
+    Left out because this build has no engine for them:
+    {% for slot, engine in left_out %}<code>mechanics.{{ slot }}.engine = {{ engine }}</code>{{ ', ' if not loop.last }}{% endfor %}.
+  </div>
+  {% endif %}
+  {% for note in notes %}
+  <div style="color:var(--warn); font-size:0.85rem; margin-top:6px;">{{ note }}</div>
+  {% endfor %}
+  <div style="font-size:0.85rem; margin-top:6px; color:{{ 'var(--ok)' if narrator.matches else 'var(--err)' }}; font-weight:700;">
+    {{ 'The sections below rejoin into exactly the prompt a turn sends.' if narrator.matches else 'The sections below do NOT rejoin into the prompt a turn sends. Report this: the preview is wrong.' }}
+  </div>
+</div>
+
+<div class="card" style="margin-top:10px;">
+  <div style="font-weight:700;">Narrator prompt <span style="color:var(--muted); font-weight:400;">&middot; about {{ narrator.tokens }} tokens, {{ narrator.sections|length }} sections</span></div>
+  {% for s in narrator.sections %}
+  <details style="border-top:1px solid var(--line); margin-top:6px; padding-top:6px;">
+    <summary style="cursor:pointer; font-size:0.85rem;"><code>{{ s.name }}</code> <span style="color:var(--muted);">&middot; about {{ s.tokens }} tokens</span></summary>
+    <pre style="white-space:pre-wrap; font-size:0.8rem; margin:6px 0 0; color:var(--ink);">{{ s.text }}</pre>
+  </details>
+  {% endfor %}
+  <details style="border-top:1px solid var(--line); margin-top:6px; padding-top:6px;">
+    <summary style="cursor:pointer; font-size:0.85rem;">The whole prompt, as one block</summary>
+    <pre style="white-space:pre-wrap; font-size:0.8rem; margin:6px 0 0; color:var(--ink);">{{ narrator.prompt }}</pre>
+  </details>
+</div>
+
+<div class="card" style="margin-top:10px;">
+  <div style="font-weight:700;">State-update prompt <span style="color:var(--muted); font-weight:400;">&middot; about {{ state_update.tokens }} tokens</span></div>
+  <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">
+    Sent after each scene to read what changed. The action and narration below are stand-ins.
+    The act-generator prompt is not shown: an act advances on a condition and only then asks a model, so it has no single text for a sample state.
+  </div>
+  <details style="margin-top:6px;">
+    <summary style="cursor:pointer; font-size:0.85rem;">Show it</summary>
+    <pre style="white-space:pre-wrap; font-size:0.8rem; margin:6px 0 0; color:var(--ink);">{{ state_update.prompt }}</pre>
+  </details>
+</div>
+{% endif %}
+<button type="button" onclick="document.getElementById('previewResult').innerHTML=''"
+        style="justify-self:end; border:none; background:none; cursor:pointer; color:var(--muted); font-size:0.8rem; padding:2px 4px; margin-top:6px;">
+  &times; Clear
+</button>

@@ -227,8 +227,9 @@ try:
     assert b"Conditions against the sample state" in resp.data
     assert b"side_threads" in resp.data, "an unbuilt engine must be named, not swallowed"
     # D4: the stat sidebar's data rides an HX-Trigger payload, not the fragment. This story
-    # has no stats block, so the payload is present but empty.
-    assert json.loads(resp.headers["HX-Trigger"]) == {"author-stat-tiers": {}}, resp.headers.get("HX-Trigger")
+    # has no stats block and no lore, so both payloads are present but empty.
+    assert json.loads(resp.headers["HX-Trigger"]) == {"author-stat-tiers": {}, "author-lore-injection": {}}, \
+        resp.headers.get("HX-Trigger")
     del ev_raw["mechanics"]["side_threads"]
     ss.write_template("author_test_story", ev_raw, bump_version=False)
     print("OK: /api/evaluate renders the condition table and names engines this build lacks")
@@ -239,6 +240,17 @@ try:
                        data={"model": json.dumps(ev_model), "sample": "[[["})
     assert resp.status_code == 200 and b"Could not read the board state" in resp.data
     print("OK: /api/evaluate reports an unreadable model or sample instead of erroring")
+
+    # --- /api/preview (S4): the real prompts for the board's model under a sample state ------
+    resp = client.post("/author/author_test_story/api/preview",
+                       data={"model": json.dumps(ev_model), "sample": json.dumps({"turn": 4})})
+    assert resp.status_code == 200, resp.status_code
+    assert b"Narrator prompt" in resp.data and b"State-update prompt" in resp.data, resp.data[:300]
+    assert b"rejoin into exactly the prompt a turn sends" in resp.data
+    assert b"TITLE: Author Route Test Story" in resp.data, "the story's own text is in the narrator prompt"
+    resp = client.post("/author/author_test_story/api/preview", data={"model": "not json", "sample": "{}"})
+    assert resp.status_code == 200 and b"Could not read the board state" in resp.data
+    print("OK: /api/preview renders both prompts, and reports an unreadable model instead of erroring")
 
     # --- /derived (CR-04): every creation combination and the values it gets -----------------
     dv_model = copy.deepcopy(ev_model)
@@ -255,6 +267,8 @@ try:
 
     os.environ["AUTHOR_USER_IDS"] = "someone-else"
     resp = client.post("/author/author_test_story/api/evaluate", data={"model": "{}", "sample": "{}"})
+    assert resp.status_code == 404, resp.status_code
+    resp = client.post("/author/author_test_story/api/preview", data={"model": "{}", "sample": "{}"})
     assert resp.status_code == 404, resp.status_code
     os.environ["AUTHOR_USER_IDS"] = alice_id
     print("OK: /api/evaluate 404s for a non-author account")

@@ -18,6 +18,7 @@ import jsonschema
 import author_model
 import conditions
 import derived
+import visibility
 
 _SCHEMA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                              "schema", "template.v3.schema.json")
@@ -189,29 +190,20 @@ def structural_issues(model: dict) -> list:
     return out
 
 
-_LEAK_MIN_LEN = 40
-
-
-def _norm(s: str) -> str:
-    return " ".join((s or "").lower().split())
+def _leaked_keys(text, canon_rows) -> list:
+    """The keys of every `canon` row (`{k, v}`) with a 40+ character run appearing verbatim in
+    `text`. The character check's form of L03; the general one is `visibility.leak_issues`, and
+    both call `visibility.shares_a_run`, so they cannot disagree about what a leak is."""
+    hay = visibility.norm(text)
+    return [row.get("k") for row in canon_rows or [] if visibility.shares_a_run(hay, visibility.norm(row.get("v")))]
 
 
 def _canon_leaks(character: dict) -> list:
     """L03's canon-leak check, scoped to a single character: a 40+ character run of `canon`
     (author-only) text reappearing verbatim in a field the narrator/judge actually sees."""
-    out = []
-    canon_rows = character.get("canon") or []
-    for field in ("description", "first_contact", "hook"):
-        hay = _norm(character.get(field))
-        if len(hay) < _LEAK_MIN_LEN:
-            continue
-        for row in canon_rows:
-            needle = _norm(row.get("v"))
-            for i in range(0, max(0, len(needle) - _LEAK_MIN_LEN) + 1, 4):
-                if needle[i:i + _LEAK_MIN_LEN] in hay:
-                    out.append({"field": field, "key": row.get("k")})
-                    break
-    return out
+    return [{"field": field, "key": key}
+            for field in ("description", "first_contact", "hook")
+            for key in _leaked_keys(character.get(field), character.get("canon"))]
 
 
 def cast_issues(model: dict) -> list:
@@ -560,14 +552,15 @@ def side_thread_issues(raw: dict) -> list:
     if pacing is None:
         warn("Side threads start after a pacing-loop beat, and this story has no mechanics.pacing_loop, "
              "so no beat is ever classified and none can start.")
-    elif starts is None:
-        if "respite" not in beats:
-            warn("Start after beats is blank, which means respite, and this story has no beat called respite. "
-                 "Pick the beats after which a side thread may start.")
     else:
-        for b in starts:
+        for b in starts or []:
             if b not in beats:
                 err(f"Side threads start after beat {b}, which mechanics.pacing_loop.beats does not define.")
+    if not starts:
+        # No engine default: which beat is the story's breathing room is a creative decision
+        # (CLAUDE.md), and a default of `respite` named a beat most stories do not have.
+        err("Start after beats is empty. Pick the pacing-loop beats after which a side thread may start; "
+            "there is no default.", "side_threads")
 
     out.extend(_player_thread_issues(block, raw))
 
@@ -589,7 +582,7 @@ def derived_issues(raw: dict) -> list:
     used = derived.uses(raw)
     for path, name in used:
         if name not in names and name not in derived.builtin_for(path):
-            out.append({"id": "L10", "severity": "error",
+            out.append({"id": "L11", "severity": "error",
                         "message": f"{path} writes {{{name}}}, which no derived value sets, so the narrator "
                                    "would be handed it as written."})
     for name in sorted(names & derived.RESERVED):
@@ -769,6 +762,121 @@ def transition_issues(raw: dict) -> list:
     return out
 
 
+# L14: the always-on narrator prompt (rules, style, tracked entity) is paid for every turn.
+# Authoring_Tool_Spec §6's default; a lint threshold, not an engine constant.
+ALWAYS_ON_TOKEN_BUDGET = 2500
+_ALWAYS_ON_SECTIONS = ("world_rules", "style", "tracked_entity")
+
+_SENTENCE_BREAK = re.compile(r"[.!?][\"')\]]*\s+(?=[A-Z\"'(])")
+_EVENT_TOKEN = re.compile(r"(?<![\w.])[a-z][a-z0-9_]{2,}\.[a-z][a-z0-9_]{2,}(?![\w.])")
+
+
+def fragment_issues(raw: dict) -> list:
+    """L02 (warning): a field the schema marks `x-assist: fragment` - an ending hint, a waypoint's
+    plant, a gate's refusal hint - is a clause the narrator works into a scene ("the ship is quieter
+    with Lark aboard"), not a sentence to be read out. One that starts with a capital and ends in a
+    full stop, or runs to more than one sentence, is written as prose and tends to be quoted."""
+    out = []
+    for path, text, kind in visibility.annotated_strings(raw, template_schema(), "x-assist"):
+        if kind != "fragment" or not text.strip():
+            continue
+        t = text.strip()
+        if _SENTENCE_BREAK.search(t):
+            why = "runs to more than one sentence"
+        elif t[0].isupper() and t[-1] in ".!?":
+            why = "starts with a capital and ends in a full stop"
+        else:
+            continue
+        out.append({"id": "L02", "severity": "warning",
+                    "message": f"{path} {why}. It is worked into a scene as a fragment, so write it as a clause "
+                               "(lower case, no full stop) rather than a finished sentence."})
+    return out
+
+
+def gate_issues(raw: dict) -> list:
+    """L05 (warning): with every gate shut, a location the player can only reach through a gated
+    one. Followed from the opening location along `connected_to`. Shown as a warning, not the error
+    the spec names: a room behind a locked door is ordinary design, and a lint error takes the story
+    off the player-facing list. The one thing that is always a mistake - the opening location itself
+    behind a gate - is an error."""
+    world = raw.get("world") or {}
+    locations = world.get("locations") if isinstance(world.get("locations"), dict) else {}
+    gates = ((raw.get("mechanics") or {}).get("gate") or {}).get("gates")
+    start = ((raw.get("plot") or {}).get("initial_scene") or {}).get("location")
+    if not locations or not isinstance(gates, list) or start not in locations:
+        return []
+    shut = {g.get("target") for g in gates if isinstance(g, dict) and g.get("target") in locations}
+    if not shut:
+        return []
+    if start in shut:
+        return [{"id": "L05", "severity": "error",
+                 "message": f"The opening location {start} is behind a gate, so the player starts somewhere they "
+                            "are not allowed to be."}]
+    seen, queue = {start}, [start]
+    while queue:
+        here = queue.pop()
+        for nxt in (locations.get(here) or {}).get("connected_to") or []:
+            if nxt in locations and nxt not in seen and nxt not in shut:
+                seen.add(nxt)
+                queue.append(nxt)
+    stranded = sorted(set(locations) - seen - shut)
+    if not stranded:
+        return []
+    return [{"id": "L05", "severity": "warning",
+             "message": f"With every gate shut, {', '.join(stranded)} can only be reached through a gated location "
+                        f"({', '.join(sorted(shut))}). Fine if that is the design; check each gate can open."}]
+
+
+def stat_event_rule_issues(raw: dict) -> list:
+    """L12 (warning): `world.rules` text naming a stat event (`lattice.rejoined`) that no axis's
+    `costs` prices. The rule tells the narrator about an event the engine will never award. Only a
+    dotted name in a namespace some real event uses is flagged, so ordinary prose ("e.g.", a file
+    name) is left alone."""
+    axes = ((raw.get("mechanics") or {}).get("stats") or {}).get("axes")
+    vocab = {e for spec in (axes or {}).values() if isinstance(spec, dict) for e in (spec.get("costs") or {})}
+    spaces = {e.split(".")[0] for e in vocab}
+    out = []
+    for i, rule in enumerate((raw.get("world") or {}).get("rules") or []):
+        for token in dict.fromkeys(_EVENT_TOKEN.findall(rule if isinstance(rule, str) else "")):
+            if token not in vocab and token.split(".")[0] in spaces:
+                out.append({"id": "L12", "severity": "warning",
+                            "message": f"world.rules[{i}] mentions the stat event {token}, which no axis's costs prices."})
+    return out
+
+
+def prompt_issues(raw: dict) -> list:
+    """L14 and L15, the two checks that need the real prompt builders (`story_engine`, imported
+    when needed so importing the linter stays light). A template the engine cannot seed a state
+    from is skipped: L01 and the structural checks already say why."""
+    out = []
+    try:
+        import author_preview
+        import story_engine
+        ctx, _, _ = author_preview.build_ctx(raw, {})
+        sections, _, _ = author_preview.narrator_sections(ctx)
+    except Exception:  # noqa: BLE001 - a lint check must never take the page down
+        return out
+    used = sum(s["tokens"] for s in sections if s["name"] in _ALWAYS_ON_SECTIONS)
+    if used > ALWAYS_ON_TOKEN_BUDGET:
+        parts = ", ".join(f"{s['name']} {s['tokens']}" for s in sections if s["name"] in _ALWAYS_ON_SECTIONS)
+        out.append({"id": "L14", "severity": "warning",
+                    "message": f"The always-on narrator prompt (rules, style, tracked entity) is about {used} tokens "
+                               f"({parts}), over the {ALWAYS_ON_TOKEN_BUDGET} budget. It is paid on every turn; move "
+                               "what only matters sometimes to lore or a tier."})
+    opening = (raw.get("plot") or {}).get("opening_scene") or {}
+    count = (raw.get("narration") or {}).get("option_count", 3)
+    for key in ("narration_before_name", "narration_after_name", "narration"):
+        text = opening.get(key)
+        if not isinstance(text, str) or not story_engine._OPTIONS_HEADING_RE.search(text):
+            continue
+        _, options = story_engine.parse_narration_and_options(text, option_count=count)
+        if len(options) < count:
+            out.append({"id": "L15", "severity": "error",
+                        "message": f"plot.opening_scene.{key} has an OPTIONS heading, but only {len(options)} of the "
+                                   f"{count} options parse. Each is a numbered line: 1. label || what happens."})
+    return out
+
+
 def world_issues(raw: dict) -> list:
     """World-tab hygiene, under L16 (dangling ids) where an id is involved: a `connected_to`, an
     opening location or a gate `target` naming a location the story doesn't author. Only
@@ -874,6 +982,8 @@ def lint(raw: dict, model: dict) -> list:
     return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw) + revelation_issues(raw) + world_issues(raw) + thread_cast_issues(raw)
             + ending_arc_issues(raw) + bond_issues(raw) + side_thread_issues(raw) + derived_issues(raw)
             + scene_length_issues(raw) + thread_reward_issues(raw) + transition_issues(raw)
+            + visibility.leak_issues(raw, template_schema()) + fragment_issues(raw) + gate_issues(raw)
+            + stat_event_rule_issues(raw) + prompt_issues(raw)
             + stat_tier_issues(raw) + structural_issues(model) + cast_issues(model))
 
 

@@ -597,7 +597,9 @@ Switch to the **Cast** tab and click **+ Character**. For each character:
 | **Canon** | You only | Secret truths about the character, added with **+ Canon note**. The engine never reads them. |
 
 The **leak check** marks any canon that has crept into the description or
-hook in red, because those two fields reach the narrator. **Threads** lists
+hook in red, because those two fields reach the narrator. Validate and Save
+run the same check on the server, and also on side-thread recipe premises and
+vignette seeds (checked against every character's canon). **Threads** lists
 every thread with a checkbox. It's the same link as a thread's *Characters in
 this thread* (Step 7), editable from either side. **Named on the board**
 lists the threads and endings whose text mentions the character, which is a
@@ -634,8 +636,9 @@ threads** tab and click **+ Add side threads**:
 
 1. **When they start and end.** How many can run at once, how many turns to
    wait between starts, and the turn limit after which the engine closes one.
-   Tick the pacing-loop beats after which one may start (none ticked means
-   *respite*).
+   Tick the pacing-loop beats after which one may start. At least one is
+   required: there is no default, because which beat is your story's breathing
+   room is your call.
 2. **Built-in recipe.** When none of your recipes applies, the engine casts
    the two characters seen recently with the strongest bond. Untick it to turn
    that off.
@@ -798,6 +801,33 @@ play would do. Nothing is saved.
 A good check for each ending that can be lost: set up the state that should
 rule it out, and confirm its *Viable while* no longer holds.
 
+If the story has lore, the sample bar also has **Text on the page**: type the
+player's action and the last scene, and the World tab's lore cards show which
+entries would be injected. A card says *injected*, *cut: over the maximum*
+(more were triggered than the maximum active; the highest priority wins),
+*dormant* (its unlock doesn't hold yet) or *not triggered*, and its tooltip
+says why. A key matches as a whole word or phrase, ignoring case. Stickiness
+needs history a sample doesn't have, so it isn't shown.
+
+#### Step 16b - See what the model is sent (Preview tab)
+Open the **Preview** tab, set the **Sample state** if you want a particular
+moment, and click **Render preview**. You get the narrator prompt split into
+its sections with a token estimate for each, the whole prompt as one block,
+and the state-update prompt. They come from the same code a real turn uses,
+so the sections rejoin into exactly the prompt a turn would send, and the tab
+says so (or says loudly that they don't). Nothing goes to a model and nothing
+is saved.
+
+- The preview lists any part of the story it left out because this build has
+  no engine for it (lore, bonds and side threads, for now), and says so for
+  derived values.
+- The act-generator prompt isn't shown: an act advances on a condition and
+  only then asks a model, so it has no single text for a sample state.
+- If the engine refuses the sample (for example more revealed fragments than
+  the prompt's own budget allows), the tab shows the engine's own message.
+- Use it to check a tier line, a lore trigger, a gate's refusal hint or how
+  much of the always-on prompt your rules and style take.
+
 #### Step 17 - Fill in everything else in the Forms tab
 The **Forms** tab covers every part of the template that has no dedicated
 editor: narration, pacing, and the settings of every mechanic (stats,
@@ -828,7 +858,10 @@ play yet.
 
 - **The forms are built from the template schema itself**, so they offer
   exactly the fields the story format allows. Each field's help text comes
-  from the schema.
+  from the schema, and so does its badge: **narrator** (the model that writes
+  the scene sees it, and when), **judge** (a model that reads the story to
+  update state or judge an ending sees it, never the narrator) or **author
+  only** (no model ever sees it). A field with no badge reaches no model.
 - **A section the story doesn't author** says so, with an **+ Add** button.
   An absent section means that feature doesn't exist in the story. Nothing
   about it is prompted or tracked.

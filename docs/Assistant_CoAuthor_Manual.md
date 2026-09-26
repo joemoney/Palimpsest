@@ -106,12 +106,18 @@ for the story, not for you.
 ### Top bar (left to right)
 
 - **Tabs:** **Diagram**, **Matrix**, **Cast**, **Fragments**, **World**, **Side threads**,
-  **Forms**.
+  **Forms**, **Preview**.
 - **Free canvas** (checkbox): the older drag-and-drop view. The default is the lanes view,
   so give your steps for lanes.
 - **Timeline** (checkbox): the ending-funnel timeline bar.
 - **+ Thread**, **+ Ending**: create a spine thread or a destination ending and open its panel.
-- **Sample state**: set a hypothetical moment of play, then **Evaluate conditions**.
+- **Sample state**: set a hypothetical moment of play, then **Evaluate conditions**. If the
+  story has lore there is also **Text on the page**: the player's action and the last scene,
+  used to show which lore entries would be injected (the World tab's cards say *injected*,
+  *cut: over the maximum*, *dormant* or *not triggered*).
+- **Preview** tab: **Render preview** shows the real narrator prompt (section by section, with
+  token estimates) and the state-update prompt for the current sample state. Field badges say who
+  sees a field: *narrator*, *judge* or *author only*; no badge means no model sees it.
 - **Raw JSON**: the whole file as text.
 - **Validate**: lint without saving. **Save**: writes the file, even with errors. Errors only
   keep the story out of the player's list.
@@ -664,11 +670,18 @@ new errors.
 | Id in the report | Means | Tell the author |
 |---|---|---|
 | `L01` | The file doesn't match the template's shape; the path is named | which card/section holds that path, and what to change there |
+| `L02` | A hint, plant or refusal hint written as a finished sentence | rewrite it as a lower-case clause with no full stop |
+| `L03` / `L04` | Secret text (canon, hidden background, ending criteria) repeated in text the narrator sees | reword the narrator-visible field; the message names both places |
+| `L05` | A location only reachable through a gated one, or a gated opening location | check the gate can open (Forms → Gates), or move the gate |
 | `L06` / `L07` | A stat axis has no tiers / its tiers are out of order or duplicated | stat bar → that axis → **+ Tier** / **Sort tiers by where they start** |
 | `L08` | No catch-all ending | open the fallback ending → tick **Catch-all** |
 | `L09` | A waypoint can never be recognised | fill its **detect** or **done_when** |
 | `L10` | A condition or reference names something that doesn't exist | find the condition (the path says which field); fix the name, or create/declare the thing |
+| `L11` | A `{name}` nothing sets | add a derived value for it, or remove the braces |
+| `L12` | A rule mentions a stat event no axis prices | fix the name, or add it to the axis's costs |
 | `L13` | A lore key is too generic or shared | make the key a specific word from the story |
+| `L14` | The always-on prompt (rules, style, tracked entity) is over about 2,500 tokens | shorten rules, or move situational ones to lore |
+| `L15` | The opening scene's OPTIONS lines don't parse | one numbered line per option: `1. label \|\| what happens` |
 | `L16` | A dangling id (a connection, gate target, opening location, fragment order, thread cast) | re-pick it from the list on that card |
 | `structural` | Nothing leads to an ending, an uncarried waypoint, a thread that never starts, a spine thread that carries nothing | carry the waypoint from a thread (6.1 step 6), or set **Becomes active** |
 | `arc` | An ending without an arc | fill **Arc title** and **Arc description** |

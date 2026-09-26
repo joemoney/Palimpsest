@@ -44,11 +44,11 @@
     "meta": {
       "type": "object",
       "properties": {
-        "title": { "type": "string" },
-        "genre": { "type": "string" },
-        "tone": { "type": "string" },
-        "synopsis": { "type": "string" },
-        "content_rules": { "type": "array", "items": { "type": "string" } }
+        "title": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "genre": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "tone": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "synopsis": { "x-visibility": "author", "x-visible-when": "the README pitch; never prompted", "type": "string" },
+        "content_rules": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "array", "items": { "type": "string" } }
       },
       "required": ["title"],
       "patternProperties": { "^_": true },
@@ -58,15 +58,19 @@
     "narration": {
       "type": "object",
       "properties": {
-        "pov": { "type": "string" },
-        "option_pov": { "type": "string" },
+        "pov": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "option_pov": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "option_count": {
+          "description": "How many numbered options end each scene. The engine asks for exactly this many and parses this many (story_engine, app). Absent means 3; fewer than 2 would not be a choice.",
+          "type": "integer", "minimum": 2
+        },
         "scene_length": {
           "type": "object",
           "properties": { "min": { "type": "integer" }, "max": { "type": "integer" } },
           "patternProperties": { "^_": true },
           "additionalProperties": false
         },
-        "style": { "type": "array", "items": { "type": "string" } },
+        "style": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "array", "items": { "type": "string" } },
         "scene_length_by_moment": { "$ref": "#/$defs/scene_length_by_moment" }
       },
       "required": ["pov"],
@@ -102,8 +106,8 @@
     "world": {
       "type": "object",
       "properties": {
-        "setting_summary": { "type": "string" },
-        "rules": { "type": "array", "items": { "type": "string" } },
+        "setting_summary": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "rules": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "array", "items": { "type": "string" } },
         "locations": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/location" }
@@ -125,8 +129,8 @@
     "location": {
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "description": { "type": "string" },
+        "name": { "x-visibility": "narrator", "x-visible-when": "here and adjacent", "type": "string" },
+        "description": { "x-visibility": "narrator", "x-visible-when": "the current location", "type": "string" },
         "connected_to": { "type": "array", "items": { "type": "string" } }
       },
       "required": ["name", "description"],
@@ -137,9 +141,9 @@
     "faction": {
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "goals": { "type": "string" },
-        "relationship_to_player": { "type": "string" }
+        "name": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "goals": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "relationship_to_player": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" }
       },
       "required": ["name"],
       "patternProperties": { "^_": true },
@@ -149,12 +153,12 @@
     "character": {
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "role": { "type": "string" },
-        "first_contact": { "type": "string" },
-        "hook": { "type": "string" },
-        "canon": { "type": "object", "additionalProperties": { "type": "string" } }
+        "name": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "description": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "role": { "x-visibility": "author", "type": "string" },
+        "first_contact": { "x-visibility": "narrator", "x-visible-when": "until scored", "type": "string" },
+        "hook": { "x-visibility": "narrator", "x-visible-when": "pacing nudge, until introduced", "type": "string" },
+        "canon": { "x-secret": true, "x-visibility": "author", "type": "object", "additionalProperties": { "type": "string" } }
       },
       "patternProperties": { "^_": true },
       "additionalProperties": false
@@ -163,8 +167,8 @@
     "protagonist": {
       "type": "object",
       "properties": {
-        "default_name": { "type": "string" },
-        "traits": { "type": "array", "items": { "type": "string" } },
+        "default_name": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "traits": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "array", "items": { "type": "string" } },
         "starting_inventory": {
           "type": "array",
           "items": { "oneOf": [
@@ -173,7 +177,7 @@
           ] }
         },
         "stats": { "type": "object", "additionalProperties": { "type": "number" } },
-        "background": { "type": "object", "additionalProperties": { "type": "string" } }
+        "background": { "x-secret": true, "x-visibility": "author", "type": "object", "additionalProperties": { "type": "string" } }
       },
       "required": ["default_name"],
       "patternProperties": { "^_": true },
@@ -296,8 +300,8 @@
       "type": "object",
       "properties": {
         "at": { "type": "number" },
-        "label": { "type": "string" },
-        "narration": { "type": "string" }
+        "label": { "x-visibility": "narrator", "x-visible-when": "once scored", "type": "string" },
+        "narration": { "x-visibility": "narrator", "x-visible-when": "once scored", "type": "string" }
       },
       "required": ["at"],
       "if": { "required": ["narration"] },
@@ -310,15 +314,15 @@
       "type": "object",
       "properties": {
         "at": { "type": "number" },
-        "label": { "type": "string" },
-        "narration": { "type": "string" },
+        "label": { "x-visibility": "narrator", "x-visible-when": "the current tier", "type": "string" },
+        "narration": { "x-visibility": "narrator", "x-visible-when": "the current tier", "type": "string" },
         "clause_max_words": { "type": "integer" },
         "on_enter": {
           "$comment": "CR-01: fires on an upward crossing into this tier. Not built until S5 step 2; mechanics.validate() warns while nothing reads it.",
           "type": "object",
           "properties": {
             "once": { "type": "boolean" },
-            "directive": { "type": "string", "minLength": 1 }
+            "directive": { "x-visibility": "narrator", "x-visible-when": "one turn, on entering the tier", "type": "string", "minLength": 1 }
           },
           "required": ["directive"],
           "patternProperties": { "^_": true },
@@ -365,7 +369,7 @@
             "type": "object",
             "properties": {
               "id": { "type": "string", "minLength": 1 },
-              "detect": { "type": "string" }
+              "detect": { "x-visibility": "judge", "x-visible-when": "state-update pass", "type": "string" }
             },
             "required": ["id"],
             "patternProperties": { "^_": true },
@@ -383,7 +387,7 @@
       "type": "object",
       "properties": {
         "id": { "type": "string", "description": "What the model cites to spend or lose this item, e.g. itm_001." },
-        "label": { "type": "string", "description": "What the item is, as the narrator sees it." },
+        "label": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string", "description": "What the item is, as the narrator sees it." },
         "tags": { "type": "array", "items": { "type": "string" }, "description": "Kinds this item counts as, from mechanics.inventory.tags; gates and conditions test these (item_tag)." },
         "uses": { "type": "integer", "minimum": 0, "description": "Uses left. With uses, spending one decrements it; without, spending the item removes it." }
       },
@@ -394,10 +398,10 @@
     "tracked_entity": {
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "pacing_note": { "type": "string" },
-        "canon": { "type": "object", "additionalProperties": { "type": "string" } }
+        "name": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "description": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "pacing_note": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "canon": { "x-secret": true, "x-visibility": "author", "type": "object", "additionalProperties": { "type": "string" } }
       },
       "required": ["name", "description"],
       "patternProperties": { "^_": true },
@@ -451,7 +455,7 @@
           "properties": {
             "positive": { "type": "string" },
             "negative": { "type": "string" },
-            "description": { "type": "string" }
+            "description": { "x-visibility": "author", "type": "string" }
           },
           "patternProperties": { "^_": true },
           "additionalProperties": false
@@ -500,7 +504,7 @@
         "id": { "type": "string" },
         "when": { "$ref": "#/$defs/relationship_when" },
         "once_per_character": { "description": "Default true: fire once per character, ever.", "type": "boolean" },
-        "directive": { "description": "Narrator-visible for the one turn it fires. {name} is the character.", "type": "string" },
+        "directive": { "x-visibility": "narrator", "x-visible-when": "one turn, when it fires", "description": "Narrator-visible for the one turn it fires. {name} is the character.", "type": "string" },
         "sets_flag": { "description": "Flag set once the exit scene is narrated. {id} is the character's first name, lowercased (Lark Ferris -> lark). Declare each resulting flag in mechanics.flags.declared so a condition can read it.", "type": "string" }
       },
       "required": ["id", "when", "directive"],
@@ -517,7 +521,7 @@
           "additionalProperties": {
             "type": "object",
             "properties": {
-              "definition": { "type": "string" },
+              "definition": { "x-visibility": "judge", "x-visible-when": "state-update pass", "type": "string" },
               "feeds": { "type": "string" },
               "resets": { "type": "array", "items": { "type": "string" } }
             },
@@ -537,15 +541,15 @@
               "threshold_by_act": { "type": "object", "additionalProperties": {} },
               "max_deferrals": { "type": "integer" },
               "suppress_when": { "type": "array", "items": { "type": "string" } },
-              "directive": { "type": "string" },
-              "reduced_directive": { "type": "string" }
+              "directive": { "x-visibility": "narrator", "x-visible-when": "one turn, when the rule fires", "type": "string" },
+              "reduced_directive": { "x-visibility": "narrator", "x-visible-when": "one turn, when the rule fires", "type": "string" }
             },
             "required": ["id", "watch"],
             "patternProperties": { "^_": true },
             "additionalProperties": false
           }
         },
-        "tie_break": { "type": "string" },
+        "tie_break": { "x-visibility": "judge", "x-visible-when": "state-update pass", "type": "string" },
         "counters": { "type": "object", "additionalProperties": { "type": "number" } }
       },
       "if": { "required": ["engine"] },
@@ -560,7 +564,7 @@
         "engine": { "const": "spendable_ledger" },
         "label": { "type": "string" },
         "kinds": { "type": "array", "items": { "type": "string" } },
-        "prompt_hint": { "type": "string" }
+        "prompt_hint": { "x-visibility": "judge", "x-visible-when": "state-update pass", "type": "string" }
       },
       "patternProperties": { "^_": true },
       "additionalProperties": false
@@ -629,9 +633,11 @@
             "type": "object",
             "properties": {
               "id": { "type": "string" },
-              "trigger": { "type": "string" },
-              "content": { "type": "string" },
+              "trigger": { "x-visibility": "judge", "x-visible-when": "state-update pass, until revealed", "type": "string" },
+              "content": { "x-visibility": "narrator", "x-visible-when": "once revealed", "type": "string" },
               "title": {
+                "x-visibility": "author",
+                "x-visible-when": "shown wherever a condition names the fragment",
                 "$comment": "Author-only name for the fragment, shown on the storyboard wherever a condition names it. The engine never reads it and it is never prompted.",
                 "type": "string"
               },
@@ -659,9 +665,9 @@
             "type": "object",
             "properties": {
               "id": { "type": "string" },
-              "trigger": { "type": "string" },
+              "trigger": { "x-visibility": "judge", "x-visible-when": "every turn", "type": "string" },
               "title": { "type": "string" },
-              "ending_prompt": { "type": "string" }
+              "ending_prompt": { "x-visibility": "narrator", "x-visible-when": "once triggered", "type": "string" }
             },
             "required": ["id", "trigger", "ending_prompt"],
             "patternProperties": { "^_": true },
@@ -687,7 +693,7 @@
               "id": { "type": "string" },
               "target": { "type": "string" },
               "requires": { "$ref": "#/$defs/condition" },
-              "refusal_hint": { "type": "string" }
+              "refusal_hint": { "x-assist": "fragment", "x-visibility": "narrator", "x-visible-when": "while the gate is shut", "type": "string" }
             },
             "required": ["target"],
             "patternProperties": { "^_": true },
@@ -718,7 +724,7 @@
               "also_when": { "$ref": "#/$defs/condition" },
               "unlock": { "$ref": "#/$defs/condition" },
               "sticky_turns": { "type": "integer", "minimum": 0 },
-              "content": { "type": "string" }
+              "content": { "x-visibility": "narrator", "x-visible-when": "while triggered", "type": "string" }
             },
             "required": ["id", "content"],
             "patternProperties": { "^_": true },
@@ -805,7 +811,7 @@
     "side_recipe": {
       "type": "object",
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
+        "id": { "x-visibility": "author", "type": "string", "minLength": 1 },
         "cast": {
           "description": "The recipe's roles, keyed by slot name (e.g. a, b, place). Conditions and may_move name slots, not people.",
           "type": "object",
@@ -813,6 +819,8 @@
         },
         "eligible_when": { "$ref": "#/$defs/condition" },
         "premise": {
+          "x-visibility": "narrator",
+          "x-visible-when": "through the generated episode",
           "description": "The situation the generator writes an episode from. Narrator-facing through the generated premise, so it goes through the leak check.",
           "type": "string"
         },
@@ -847,11 +855,12 @@
         "max_active": { "description": "How many side threads can run at once. Their own pool: a side thread never takes an authored thread's slot.", "type": "integer", "minimum": 1 },
         "cooldown_turns": { "description": "Turns to wait after one side thread starts before another may.", "type": "integer", "minimum": 0 },
         "start_after_beats": {
-          "description": "The pacing-loop beats after which a side thread may start. Names from mechanics.pacing_loop.beats.",
-          "type": "array", "items": { "type": "string" }
+          "description": "The pacing-loop beats after which a side thread may start. Names from mechanics.pacing_loop.beats. Required in practice: there is no default (lint errors on an absent or empty list, and the engine will refuse it when built).",
+          "type": "array", "minItems": 1, "items": { "type": "string" }
         },
         "max_turns": { "description": "Every side thread ends by this many turns after it starts; the engine closes it if nothing else does.", "type": "integer", "minimum": 1 },
         "protected": {
+          "x-visibility": "author",
           "description": "Authored characters no side thread may cast: someone whose arc the story needs to keep for itself.",
           "type": "array", "items": { "type": "string" }
         },
@@ -887,7 +896,7 @@
           "type": "object",
           "properties": {
             "every": { "description": "At least this many turns between vignettes.", "type": "integer", "minimum": 1 },
-            "seeds": { "type": "array", "items": { "type": "string" } },
+            "seeds": { "x-visibility": "narrator", "x-visible-when": "when a vignette fires", "type": "array", "items": { "type": "string" } },
             "subjects": { "type": "array", "items": { "enum": ["location", "character", "item"] } }
           },
           "patternProperties": { "^_": true },
@@ -932,8 +941,8 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "plant": { "type": "string" },
-        "detect": { "type": "string" },
+        "plant": { "x-assist": "fragment", "x-visibility": "narrator", "x-visible-when": "when steering is built", "type": "string" },
+        "detect": { "x-visibility": "judge", "x-visible-when": "state-update pass", "type": "string" },
         "done_when": { "$ref": "#/$defs/condition" }
       },
       "required": ["id", "plant"],
@@ -956,17 +965,17 @@
         },
         "ready_when": { "$ref": "#/$defs/condition" },
         "waypoints": { "type": "array", "items": { "$ref": "#/$defs/waypoint" } },
-        "hint": { "type": "string" },
-        "criteria": { "type": "string" },
+        "hint": { "x-assist": "fragment", "x-visibility": "narrator", "x-visible-when": "when steering is built", "type": "string" },
+        "criteria": { "x-secret": true, "x-visibility": "judge", "x-visible-when": "when the ending is ready", "type": "string" },
         "arc": {
           "type": "object",
-          "properties": { "title": { "type": "string" }, "description": { "type": "string" } },
+          "properties": { "title": { "x-visibility": "narrator", "x-visible-when": "once committed", "type": "string" }, "description": { "x-visibility": "narrator", "x-visible-when": "once committed", "type": "string" } },
           "patternProperties": { "^_": true },
           "additionalProperties": false
         },
-        "epilogue": { "type": "string" },
+        "epilogue": { "x-visibility": "author", "x-visible-when": "shown to the player after THE END", "type": "string" },
         "min_turn": { "type": "integer" },
-        "trigger": { "type": "string" }
+        "trigger": { "x-visibility": "judge", "x-visible-when": "every turn", "type": "string" }
       },
       "required": ["id", "kind"],
       "patternProperties": { "^_": true },
@@ -990,9 +999,9 @@
     "main_thread": {
       "type": "object",
       "properties": {
-        "title": { "type": "string" },
-        "description": { "type": "string" },
-        "plot_notes": { "type": "string" },
+        "title": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "description": { "x-visibility": "narrator", "x-visible-when": "every turn", "type": "string" },
+        "plot_notes": { "x-visibility": "author", "type": "string" },
         "max_acts": { "type": "integer" },
         "acts": {
           "type": "array",
@@ -1000,9 +1009,9 @@
             "type": "object",
             "properties": {
               "act_number": { "type": "integer" },
-              "title": { "type": "string" },
-              "description": { "type": "string" },
-              "completion_signals": { "type": "array", "items": { "type": "string" } },
+              "title": { "x-visibility": "narrator", "x-visible-when": "the current act", "type": "string" },
+              "description": { "x-visibility": "narrator", "x-visible-when": "the current act", "type": "string" },
+              "completion_signals": { "x-visibility": "judge", "x-visible-when": "act check", "type": "array", "items": { "type": "string" } },
               "requires": { "$ref": "#/$defs/condition" },
               "is_finale": { "type": "boolean" },
               "optional": { "type": "boolean" }
@@ -1021,8 +1030,8 @@
     "subplot": {
       "type": "object",
       "properties": {
-        "title": { "type": "string" },
-        "description": { "type": "string" },
+        "title": { "x-visibility": "narrator", "x-visible-when": "while active", "type": "string" },
+        "description": { "x-visibility": "narrator", "x-visible-when": "while active", "type": "string" },
         "priority": { "type": "string" },
         "completion_threshold": { "type": "integer" },
         "ties_to_main_plot": { "type": "string" },
@@ -1062,6 +1071,8 @@
               "type": "integer", "minimum": 1
             },
             "push_directive": {
+              "x-visibility": "narrator",
+              "x-visible-when": "one turn",
               "description": "Narrator-facing, one turn, when the free streak is used up: something in the world that moves, in the story's own voice. Optional: without it only the options lean forward.",
               "type": "string"
             }
@@ -1078,7 +1089,7 @@
 
     "initial_scene": {
       "type": "object",
-      "properties": { "location": { "type": "string" }, "summary": { "type": "string" } },
+      "properties": { "location": { "type": "string" }, "summary": { "x-visibility": "narrator", "x-visible-when": "the opening scene", "type": "string" } },
       "required": ["location", "summary"],
       "patternProperties": { "^_": true },
       "additionalProperties": false
@@ -1089,8 +1100,8 @@
         {
           "type": "object",
           "properties": {
-            "narration_before_name": { "type": "string" },
-            "narration_after_name": { "type": "string" }
+            "narration_before_name": { "x-visibility": "narrator", "x-visible-when": "the opening turn", "type": "string" },
+            "narration_after_name": { "x-visibility": "narrator", "x-visible-when": "the opening turn", "type": "string" }
           },
           "required": ["narration_before_name", "narration_after_name"],
           "patternProperties": { "^_": true },
@@ -1098,7 +1109,7 @@
         },
         {
           "type": "object",
-          "properties": { "narration": { "type": "string" } },
+          "properties": { "narration": { "x-visibility": "narrator", "x-visible-when": "the opening turn", "type": "string" } },
           "required": ["narration"],
           "patternProperties": { "^_": true },
           "additionalProperties": false

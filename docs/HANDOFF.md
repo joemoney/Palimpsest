@@ -22,7 +22,7 @@ storyboard).
 The overhaul follows CLAUDE.md's build order: **the storyboard leads, the engine follows**.
 Authoring surfaces are built ahead of the engines, and a story that uses an unbuilt one fails
 loudly. The board now has an editor for every change request that has been designed, CR-01
-to CR-14, except CR-07/08/09 (not designed yet). Engine work (Phase S5) is demand-driven:
+to CR-14, except CR-09 (deferred pending measurement; not a storyboard feature). Engine work (Phase S5) is demand-driven:
 build the piece real authoring needs next.
 
 **Board tabs:** Diagram (lanes view), Matrix, Cast, Fragments, World, Side threads, Forms.
@@ -65,27 +65,46 @@ built, whether the board would rewrite anything, and canonical formatting.
 
 ---
 
-## 2. Decisions waiting on the author
+## 2. Decisions from the author (answered 2026-09-26; item 6 is new and open)
 
-Each was flagged in the session and not yet answered. Don't resolve them silently.
+1. **CR-11 `start_after_beats` has no default: required.** Done as far as it can be before the
+   engine exists: the schema gives it `minItems: 1`, lint errors on an absent or empty list
+   (the old warning is gone), the board says it is required, and the docs no longer say
+   `respite`. The engine's loader must refuse it too when `episodic_threads` is built (nothing
+   can refuse it at load today: the block already refuses to load for want of an engine).
+2. **The server-side leak check: done, and it was mostly there already.** The character check
+   was server-side all along (`author_lint.cast_issues` → `_canon_leaks`); the board's
+   `canonLeaks()` is only its instant-feedback mirror, so D3 needs no recorded exception. The
+   real gap was recipe premises and vignette seeds, now covered by the general
+   `visibility.leak_issues` (L03/L04), which reads the schema's `x-visibility` / `x-secret`
+   annotations; the CR-03 leak test is `test/test_visibility.py`.
+3. **CR-11 decisions confirmed:** recipe `eligible_when` is fail-**closed**; callback outcomes
+   are `resolved` / `failed` / `expired` / `finale` / `abandoned`.
+4. **CR-13: idle turns still count for the pacing nudge (decided).** The nudge stays on
+   `turn_count`, as the two-clocks table says: a player stuck asking questions is who needs it,
+   and the pacing loop's lull rules read the same clock. If playtests show nudges landing on
+   questions, the cheaper fix is to slide the nudge to the first non-idle turn, not to move it
+   to the story clock.
+5. **S5 decisions confirmed** (marked as such in AUTHORING_TOOL_PHASES.md): activation ignores
+   `max_parallel_subplots`; nothing activates after endgame; failure runs before activation;
+   waypoint keys are qualified; a blank budget boundary means that phase never begins; the
+   carrier prune is the conservative reading; both judges are Tier C.
 
-1. **CR-11 `start_after_beats` defaults to `respite`.** That encodes a creative decision in an
-   engine constant, which CLAUDE.md rules out, and `example` has no `respite` beat. Lint
-   warns for now. The proposal is to make it required when `episodic_threads` is built.
-2. **The server-side leak check (D3).** The canon-leak check (L03) exists only as the board's
-   client-side JS. D3 says checks run server-side. The recommendation is to move it into
-   `author_lint` as part of S4, where the CR-03 leak test needs it anyway. The alternative is
-   to accept it as a recorded exception.
-3. **CR-11 decisions made in passing** (confirm or change):
-   - recipe `eligible_when` is fail-**closed**;
-   - callback outcomes are named `resolved` / `failed` / `expired` / `finale` / `abandoned`
-     (`expired` is new).
-4. **CR-13 open question.** Should idle turns also be free for the pacing nudge? It currently
-   counts every turn, on purpose.
-5. **Earlier S5 decisions recorded in AUTHORING_TOOL_PHASES.md** ("flag if wrong"): activation
-   ignores `max_parallel_subplots`; nothing activates after endgame; failure runs before
-   activation; waypoint keys are qualified; a blank budget boundary means that phase never
-   begins; the carrier prune is the conservative reading; both judges are Tier C.
+6. **New, from S4 - waiting on the author.**
+   - **L03/L04 (general leak check) are warnings.** The spec says errors, but an error hides a
+     story from players and the check found two shared 40-character phrases in
+     `the_missing_core` (an act description, and a plant, each repeating canon wording). Promote
+     with `visibility.LEAK_SEVERITY` once you have read them; expect `the_missing_core` to leave
+     the stories page until they are reworded.
+   - **Only `x-secret` text is a leak source** (canon, hidden background, an ending's `criteria`).
+     `role`, `plot_notes` and a judge's `trigger` / `detect` are not, because their wording is
+     ordinarily echoed. Say if `role` should count.
+   - **L05 is a warning** (an error only for a gated opening location).
+   - **Lore keys match as whole words, ignoring case** in the sample-state highlighting. The spec
+     only says "key match"; the engine should do the same, or the spec be amended.
+   - **`new_babel` leaks a secret:** the tracked entity's description repeats its `canon`
+     `dialogue_style`, and reaches the narrator every turn. Pinned in `test_visibility.py`
+     (`KNOWN_LEAKS`); fix it in the story and delete the entry.
 
 ---
 
@@ -117,9 +136,12 @@ Each was flagged in the session and not yet answered. Don't resolve them silentl
 
 ### 3.2 Storyboard design still to do (lock the design before the engine rework)
 
-- **CR-07** (thread completion rewards: `on_complete.stat_events` exists on the thread panel),
-  **CR-08** (one-shot directives on relationship tier transitions) and **CR-09**
-  (tier-scoped narration exemplars). All three need design before they can be authored.
+- **CR-07** (thread completion rewards) and **CR-08** (relationship transitions) are on the
+  board (commit `8495bd3`): schema, Forms/thread-panel editors, lint, load warning, *not built*
+  chips. Their engines wait on demand. CR-08 settled three points the spec left open (flat
+  `when`; `{id}` is the first name; `{name}`/`{id}` are engine-filled placeholders in
+  `derived.BUILTIN`); see AUTHORING_TOOL_PHASES.md. **CR-09** (tier-scoped narration exemplars)
+  stays out of the board until A/B measurement justifies its per-turn tokens.
 - **Phase S4, not started:**
   - `x-visibility` annotations in the schema (the board's visibility badges are hard-coded
     in JS);

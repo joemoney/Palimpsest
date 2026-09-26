@@ -229,7 +229,8 @@ boundaries, sent every turn).
 ### 6.3 `narration`
 
 `pov` (required, e.g. `"second-person"`), `option_pov` (the voice of the choices offered to the
-player, e.g. `"first-person"`), `scene_length` (`{"min": 250, "max": 350}`, in words), `style`
+player, e.g. `"first-person"`), `option_count` (how many numbered options end each scene; an
+integer of at least 2, default 3), `scene_length` (`{"min": 250, "max": 350}`, in words), `style`
 (list of short instructions).
 
 Optional `scene_length_by_moment` (CR-14, not built) sets word ranges per moment:
@@ -601,7 +602,7 @@ can never affect an ending.
   "vignettes": {"every": 4, "seeds": ["the depot at shift change"], "subjects": ["location", "character"]}}
 ```
 
-- **`start_after_beats`** takes beat names from your pacing loop. Always write it.
+- **`start_after_beats`** takes beat names from your pacing loop. **Required**, with at least one beat: there is no default, and lint errors on an absent or empty list.
 - **`cast` slots.** A slot is a character by default: `{"from": "any" | "authored" |
   "generated" | "<name>" | "followed", "slot": "<followed slot>"}`. It can also be a place,
   `{"kind": "location", "id": "<location id>"}`, or an item,
@@ -1003,11 +1004,18 @@ Things to notice:
 | Id | What it checks |
 |---|---|
 | `L01` | The schema. The message names the path (e.g. `mechanics.stats.ceiling`) and often a hint. A key the schema doesn't know is an error, so check the spelling and that it's in the right section. |
+| `L02` | A fragment (an ending `hint`, a waypoint `plant`, a gate `refusal_hint`) written as a finished sentence: capital letter and full stop, or several sentences. Warning. Write a lower-case clause, e.g. `the ship is quieter with Lark aboard`. |
+| `L03` / `L04` | A 40+ character run of secret text (`canon`, `protagonist.background`, a tracked entity's `canon`; an ending's `criteria` for L04) that reappears in a narrator-visible field (or, for L03, a judge-visible one). The message names both paths. Warning for now (see below). Rephrase the narrator-visible text. |
+| `L05` | With every gate shut, a location reachable only through a gated one (warning: often intended); the opening location itself behind a gate (error). |
 | `L06` / `L07` | Stat tiers. L06 (warning): an axis with no tiers, or whose lowest tier sits above the floor. L07 (error): tiers out of order, or two at the same `at`. |
 | `L08` | No catch-all ending. |
 | `L09` | A waypoint with neither `done_when` nor `detect`. |
-| `L10` | A name that doesn't exist: an undeclared flag, a stat axis the save won't have, a fragment, character, tier, creation step or option, thread, location, recipe, beat, tag or leverage kind. Also an unresolved `{name}`. |
+| `L10` | A name that doesn't exist: an undeclared flag, a stat axis the save won't have, a fragment, character, tier, creation step or option, thread, location, recipe, beat, tag or leverage kind. |
+| `L11` | An unresolved `{name}` in narrator-visible text: no derived value sets it and the engine doesn't fill it. |
+| `L12` | `world.rules` text naming a stat event (`lattice.relit`) that no axis's `costs` prices (only names in a namespace a real event uses are checked). Warning. |
 | `L13` | A lore key that's too generic or shared. |
+| `L14` | The always-on narrator prompt (rules, style, tracked entity) is over about 2,500 tokens. Warning: it is paid every turn, so move what only matters sometimes to lore or a tier. |
+| `L15` | The opening scene has an `OPTIONS` heading but its numbered `label \|\| what happens` lines don't parse to `option_count` options. Error. |
 | `L16` | A dangling id: a `connected_to`, a gate target, the opening location, a fragment's `after`, a thread `cast`. |
 | `structural` | Endings nothing leads to, uncarried waypoints, threads that never activate, a spine thread that carries nothing. |
 | `arc` | An ending with no `arc`. |

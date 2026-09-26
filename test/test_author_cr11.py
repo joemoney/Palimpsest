@@ -136,6 +136,18 @@ for needle in ("beat lull", "protect Ghost", "names Lark, who is protected", "lo
 nb = copy.deepcopy(RAW)
 del nb["mechanics"]["bonds"]
 assert any("built-in recipe casts the pair" in i["message"] for i in author_lint.side_thread_issues(nb))
+for blank in (None, []):
+    nb2 = copy.deepcopy(RAW)
+    if blank is None:
+        del nb2["mechanics"]["side_threads"]["start_after_beats"]
+    else:
+        nb2["mechanics"]["side_threads"]["start_after_beats"] = blank
+    got = [(i["severity"], i["message"]) for i in author_lint.side_thread_issues(nb2)]
+    assert ("error", "Start after beats is empty. Pick the pacing-loop beats after which a side thread may start; "
+                     "there is no default.") in got, got
+assert any("start_after_beats" in e["message"] for e in author_lint.schema_errors(
+    {**RAW, "mechanics": {**RAW["mechanics"], "side_threads": {**RAW["mechanics"]["side_threads"], "start_after_beats": []}}}))
+print("OK: start_after_beats is required (absent or empty is an error; no respite default)")
 np_ = copy.deepcopy(RAW)
 del np_["mechanics"]["pacing_loop"]
 assert any("no mechanics.pacing_loop" in i["message"] for i in author_lint.side_thread_issues(np_))
@@ -144,6 +156,21 @@ schema_bad["mechanics"]["bonds"]["tiers"][0]["narration"] = "they glow"
 assert any("bonds" in e["message"] for e in author_lint.schema_errors(schema_bad)), \
     "a bond tier carries a label only (CR-11 decision 2)"
 assert not [e for e in author_lint.schema_errors(RAW) if "bonds" in e["message"] or "side_threads" in e["message"]]
+# --- L03 on recipe premises and vignette seeds -----------------------------------------------
+SECRET = "she sold the depot's night codes to the Company for a berth on the outbound"
+leaks = lambda raw: [i for i in author_lint.lint(raw, author_model.to_board_model(raw)) if i.get("id") == "L03"]  # noqa: E731
+assert leaks(RAW) == []
+lk = copy.deepcopy(RAW)
+lk["world"]["characters"]["Lark"]["canon"] = {"betrayal": SECRET}
+assert leaks(lk) == [], "canon nobody repeats is not a leak"
+lk["mechanics"]["side_threads"]["recipes"][0]["premise"] = f"A rumour goes round that {SECRET}."
+lk["mechanics"]["side_threads"]["vignettes"] = {"seeds": ["the depot at shift change", f"Overheard: {SECRET}"]}
+got = leaks(lk)
+assert [i["severity"] for i in got] == [author_lint.visibility.LEAK_SEVERITY] * 2, got
+assert "mechanics.side_threads.recipes[0].premise" in got[0]["message"] and "world.characters.Lark.canon.betrayal" in got[0]["message"], got
+assert "mechanics.side_threads.vignettes.seeds[1]" in got[1]["message"], got
+print("OK: L03 covers recipe premises and vignette seeds, against every character's canon")
+
 print("OK: lint catches dangling names, protected casting, unknown beats/tags/stats/recipes, and inert blocks")
 
 # --- the sample state answers bond conditions while the engine is unbuilt ------------------------

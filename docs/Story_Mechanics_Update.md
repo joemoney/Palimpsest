@@ -580,7 +580,7 @@ The story needs a life of its own between the planned beats, driven by numbers t
 A slot never binds a `protected` character. A recipe that names one explicitly is a load-time error.
  
 **Lifecycle**
-1. **Start.** Considered after any turn whose classified beat is in `start_after_beats` (default `respite`). All of these must hold:
+1. **Start.** Considered after any turn whose classified beat is in `start_after_beats` (required, at least one beat; there is no default, since which beat is the story's breathing room is a creative decision). All of these must hold:
    - fewer than `max_active` threads are live;
    - `cooldown_turns` have passed since the last start;
    - no ending is committed (CR-05).
@@ -888,7 +888,7 @@ No new observation field and no new LLM call: it is a function of the observatio
 - **Two clocks:** each consumer in the table reads the clock its column names.
 - **Budget:** no new observation field, no new LLM call; the push line is covered by the narration prompt budget.
 
-**Open question.** Should an idle turn be free for the pacing nudge as well? Leaving the nudge on `turn_count` means a curious player is nudged sooner in story-clock terms, which is the intent. Revisit if nudges feel pushy in play.
+**Decided (author, 2026-09-26).** An idle turn is *not* free for the pacing nudge: it stays on `turn_count`, so a curious player is nudged sooner in story-clock terms, which is the intent, and the pacing loop's lull rules read the same clock. If nudges feel pushy in play, slide the nudge to the first non-idle turn rather than moving it to the story clock.
 
 
 ---

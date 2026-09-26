@@ -281,6 +281,8 @@ The health panel (§4.6) is the live linter on the canvas. The Lint tab in the i
 | L16 | Dangling `x-ref` ids (subplot, fragment or location ids that don't exist) | error |
  
 L03 and L04 share their implementation with the CR-03 leak test.
+
+*As built (2026-09-26):* L03 and L04 are `visibility.leak_issues`, sourced only from text the schema marks `x-secret` (canon, a protagonist's hidden background, an ending's `criteria`) and reported as warnings for now, since an error hides a story from players; L05 is a warning except for a gated opening location; L11 is the unresolved-`{var}` check; L14 sums the rules, style and tracked-entity sections of the real narrator prompt. See `AUTHORING_TOOL_PHASES.md` S4.
  
 The health panel (§4.6) runs a subset: L08, L09, L10, L16 and the structural flow checks. The Lint tab runs all of them, filterable by severity and by section.
  

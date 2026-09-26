@@ -752,6 +752,7 @@ loudly until S5 builds them (D1).
   L10 with their slot names legal.
 
 **Decisions made in passing - flag if wrong:**
+- **Confirmed by the author, 2026-09-26:** the next two decisions.
 - **`eligible_when` is CLOSED.** An unknown referent must not start an episode on a casting it
   was never written for; failing closed costs a side thread that never starts.
 - **Callback outcomes are `resolved`, `failed`, `expired` (reached `max_turns`) and `finale`.**
@@ -759,12 +760,18 @@ loudly until S5 builds them (D1).
 - **Recipe conditions are left out of the sample-state table**: they name slots, and there is no
   single answer until the engine enumerates castings. Listing eligible bindings is engine logic,
   so it waits for `episodic_threads`.
-- **`start_after_beats` defaulting to `respite` (CR-11) encodes a creative decision in an engine
-  constant**, which CLAUDE.md rules out, and `example` has no beat by that name. For now lint
-  warns when it is blank and the story has no `respite` beat. **Open:** make it required when
-  the engine is built.
-- **The leak check does not cover recipe premises or vignette seeds yet.** L03 exists only as the
-  board's client-side character check; the server-side leak test is S4 work.
+- **`start_after_beats` has no default (decided by the author, 2026-09-26).** CR-11 said
+  `respite`, which encodes a creative decision in an engine constant (CLAUDE.md rules that out)
+  and `example` has no such beat. It is now required: the schema gives it `minItems: 1` and
+  lint errors on an absent or empty list. The engine's loader will refuse it too, once
+  `episodic_threads` is built; nothing can refuse it at load today, because the block already
+  refuses to load for want of an engine.
+- **The server-side leak check covers recipe premises and vignette seeds (2026-09-26).** The
+  character check was already server-side (`cast_issues`; the board's `canonLeaks()` is only its
+  instant-feedback mirror). A recipe's `premise` and each vignette seed are checked against
+  every character's canon too - first by a side-thread-only check, then by the general
+  `visibility.leak_issues` that replaced it later the same day (see S4), as L03 warnings.
+  Decision D3 needs no recorded exception.
 
 **CR-12 on the board (2026-09-26).** `mechanics.side_threads.player_threads` (`max_active`,
 `confirm.reports`/`within_turns`, `abandon_after_offers`, `may_move`) in the schema and as a
@@ -865,8 +872,8 @@ reads it.
   final path with `engine: keyed_lore` (D1) - not registered yet, so a story authoring lore fails
   `load_template()` until S5 builds it. Lore `also_when`/`unlock` are read CLOSED (an unknown
   referent must never inject staged knowledge early). L13 (generic or shared keys) is in, plus
-  L16 for dangling location ids (connections, opening scene, gate targets). Still S4: the
-  sample-state highlighting of which entries would inject.
+  L16 for dangling location ids (connections, opening scene, gate targets). Sample-state highlighting
+  of which entries would inject landed later (below).
 - **Full linter** L01–L16, with a CLI twin at `scripts/lint_template.py`. The repository has
   `scripts/`, not the `tools/` package that §6 names.
 
@@ -878,6 +885,53 @@ reads it.
 
 **Risk.** A preview that approximates the prompt. Once the author trusts it, an approximation
 is worse than no preview.
+
+**Landed (2026-09-26).** Everything above except the CR-11 eligible-castings preview, which
+needs the engine's binding enumeration and waits for `episodic_threads`.
+
+- **`x-visibility` in the schema** (`backend/visibility.py` reads it; the board's `VIS` table is
+  gone and every badge is a schema lookup, on the Forms tab too). Values `narrator` / `judge` /
+  `author`, an optional `x-visible-when` badge text, and `x-secret` for text the narrator must not
+  learn. A field with no annotation reaches no model and is not a secret (a synopsis is `author`
+  but not secret; `role` and `plot_notes` likewise, since a working note may restate public
+  wording). About 70 prose fields are annotated. `test/test_visibility.py` checks them against the
+  real prompts in both directions over the three stories: no secret reaches a prompt, and every
+  `narrator` / `every turn` field the stories author does. It found a real leak in `new_babel`
+  (the tracked entity's description repeats its secret `dialogue_style`), pinned as a known leak in
+  the test until the story is fixed. Annotations that describe an unbuilt reader (an ending's
+  `plant` and `hint`, until steering is built) follow the design, not today's engine.
+- **Preview tab** (`backend/author_preview.py`, `POST /author/<slug>/api/preview`). The narrator
+  prompt is built section by section from `story_engine.SECTIONS`, with a check that the sections
+  rejoin into exactly `build_system_prompt` (the S4 gate; also tested byte for byte against a fresh
+  save for all three fixtures). The state-update prompt is *captured* from
+  `update_progress_from_turn` with its model call swapped for a recorder, because the engine
+  assembles it inline beside the call; a lock keeps two previews from seeing each other's recorder.
+  `derived` is dropped and named (its substitution is not built, so a raw `{var}` would otherwise
+  show). Not shown: the act-generator prompt, which has no single text for a sample state. Token
+  counts are characters over four.
+- **Lore highlighting** (`author_evaluate.lore_injection`): key match (case-insensitive, whole word
+  or phrase), `also_when` and `unlock` read CLOSED through the real condition code, priority
+  ranking and the `max_active` cutoff (the spec's 3 when unset). The sample bar gained **Text on
+  the page**; the result rides an `author-lore-injection` HX-Trigger to light the World tab's
+  cards, and a table joins the Evaluate result. It evaluates the *design* (keyed_lore is unbuilt),
+  so the whole-word rule is this tool's reading of the spec's "key match"; the engine should match
+  it or the spec be amended. `sticky_turns` is not simulated.
+- **Linter.** L02 (`x-assist: fragment` on hint, plant, refusal hint), L05, L11 (the unresolved
+  `{var}` check that already existed, relabelled from L10), L12, L14, L15, and L03/L04 as one
+  implementation (`visibility.leak_issues`, which also replaced the recipe/vignette check written
+  earlier the same day; the character-only `cast_issues` check stays as the board's own).
+- **Decisions made in passing - flag if wrong:**
+  - **L03/L04 (general) are warnings, not errors.** A lint error takes a story off the player-facing
+    list, and the check found two shared 40-character phrases in `the_missing_core` on day one
+    (an act description and a plant repeating canon wording). `visibility.LEAK_SEVERITY` is the one
+    word to change once the author has read them. The character-only check is still an error.
+  - **Only `x-secret` text is a leak source.** L04 as specced ("judge text in a narrator field")
+    fired on ordinary `trigger` / `detect` wording a scene may echo, so only an ending's `criteria`
+    is a judge secret.
+  - **L05 is a warning** (an error only for a gated opening location): a room behind a locked door
+    is ordinary design.
+  - **`narration.option_count`** is in the schema, an integer of at least 2 (the engine already read
+    it, defaulting to 3).
 
 ---
 
@@ -905,7 +959,7 @@ to land out of order and partially, tracked here after the fact rather than plan
   (`_CLOSED_THREAD_STATUSES`), and the Subplot Manager shows it as ✗. The pacing nudge's
   "SUBPLOT OPPORTUNITY" no longer offers a thread gated by `activate_when`. Covered by
   `test/test_thread_conditions.py`.
-  **Decisions made in passing - flag if wrong:**
+  **Decisions made in passing - confirmed by the author, 2026-09-26:**
   - Activation ignores `max_parallel_subplots`, like `starts_active` and a manual Subplot
     Manager activation. The cap governs how many threads the engine invents; an authored
     unlock the story has earned should not wait on a generated thread finishing.
@@ -932,7 +986,7 @@ to land out of order and partially, tracked here after the fact rather than plan
   hook on the engine base class that `validate()` calls), and `validate()` warns for endings
   authored with no engine. The board's timeline "not built" chip is gone. Covered by
   `test/test_ending_funnel.py`.
-  **Decisions made in passing - flag if wrong:**
+  **Decisions made in passing - confirmed by the author, 2026-09-26:**
   - **Waypoint ledger keys are qualified**, `"<ending id>.<waypoint id>"`, as `delivers`
     spells them, since a waypoint id is only unique within its ending; `conditions.
     waypoints_done` now reads the engine's bucket (`mechanics.endings`) rather than the

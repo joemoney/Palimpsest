@@ -51,4 +51,30 @@
   <div style="color:var(--muted); font-size:0.85rem; margin-top:8px;">This story has no conditions to evaluate yet.</div>
   {% endif %}
 </div>
+{% if lore %}
+<div class="card" style="margin-top:10px;">
+  <div style="font-weight:700;">Lore against the sample state</div>
+  <div style="color:var(--muted); font-size:0.85rem; margin-top:4px;">
+    {{ lore|selectattr('state', 'equalto', 'injected')|list|length }} of {{ lore|length }} entries would be injected for the text typed in the sample bar.
+    Highest priority wins when more are triggered than the maximum active. Stickiness is not simulated.
+  </div>
+  <table style="width:100%; border-collapse:collapse; margin-top:10px; font-size:0.85rem;">
+    <thead><tr style="text-align:left; color:var(--muted); font-size:0.75rem;">
+      <th style="padding:4px 6px;">Entry</th><th style="padding:4px 6px;">Priority</th><th style="padding:4px 6px;">Result</th><th style="padding:4px 6px;">Why</th>
+    </tr></thead>
+    <tbody>
+      {% for r in lore %}
+      <tr style="border-top:1px solid var(--line);">
+        <td style="padding:4px 6px;"><code style="font-size:0.75rem;">{{ r.id }}</code></td>
+        <td style="padding:4px 6px;">{{ r.priority }}</td>
+        <td style="padding:4px 6px; font-weight:700; color:{{ 'var(--ok)' if r.state == 'injected' else ('var(--warn)' if r.state in ('cut', 'dormant') else 'var(--muted)') }};">
+          {{ {'injected': 'injected', 'cut': 'cut: over the maximum', 'dormant': 'dormant', 'idle': 'not triggered'}[r.state] }}
+        </td>
+        <td style="padding:4px 6px; color:var(--muted);">{{ r.why|join('; ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 {% endif %}

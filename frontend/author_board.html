@@ -293,7 +293,8 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .fcardh b{font:600 13.5px var(--display)}
 .fjson{font-family:var(--mono);font-size:12px}
 .fkv{display:grid;grid-template-columns:minmax(0,1fr) 120px auto;gap:6px;align-items:center}
-#castView,#fragView,#worldView,#sideView,#formsView{display:none;overflow:auto;min-height:0;background:var(--ground)}
+#castView,#fragView,#worldView,#sideView,#formsView,#previewView{display:none;overflow:auto;min-height:0;background:var(--ground)}
+#previewView{padding:14px 18px}
 .wsec{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px 14px;display:grid;gap:8px}
 .wsec h3{font:600 15px/1.2 var(--display);margin:0}
 .wsec textarea{width:100%}
@@ -425,6 +426,7 @@ main.app{max-width:none}
         <button class="tab" id="tabWorld" type="button" role="tab" aria-selected="false">World</button>
         <button class="tab" id="tabSide" type="button" role="tab" aria-selected="false">Side threads</button>
         <button class="tab" id="tabForms" type="button" role="tab" aria-selected="false">Forms</button>
+        <button class="tab" id="tabPreview" type="button" role="tab" aria-selected="false">Preview</button>
       </div>
       <span class="sep" aria-hidden="true"></span>
       <label class="toggle" title="The original drag-and-pan canvas. Lanes is the default view."><input type="checkbox" id="tCanvas"> Free canvas</label>
@@ -490,6 +492,18 @@ main.app{max-width:none}
     <div id="worldView" aria-label="World building"></div>
     <div id="sideView" aria-label="Side threads"></div>
     <div id="formsView" aria-label="Template sections"></div>
+    <div id="previewView" aria-label="Narrator preview">
+      <h2>Preview</h2>
+      <p class="note">The real prompts the model would be sent for this story as it stands on the board, under the sample state. Set the sample state first (the Sample state button), then render. Nothing is sent to a model and nothing is saved.</p>
+      <div style="display:flex; gap:8px; margin:8px 0 12px;">
+        <button class="btn primary" type="button"
+                hx-post="{{ url_for('author_preview_route', story_slug=story_slug) }}"
+                hx-vals="js:{model: JSON.stringify(getBoardModel()), sample: JSON.stringify(getSample())}"
+                hx-target="#previewResult" hx-swap="innerHTML">Render preview</button>
+        <button class="btn" type="button" onclick="document.getElementById('sampleBtn').click()">Sample state&hellip;</button>
+      </div>
+      <div id="previewResult"></div>
+    </div>
     <aside class="inspector" id="inspector" aria-live="polite"></aside>
   </div>
   <div id="matrixView" aria-label="Thread by waypoint matrix"></div>
@@ -876,15 +890,28 @@ function fit(){
 /* ---------- inspector ---------- */
 // vis: [class, text] for a visibility badge - narrator (prompted), stored (kept, never prompted), author (engine never reads).
 function field(label,input,vis,hint){const f=el('div','field');const l=el('label',null,label);const id='f_'+label.toLowerCase().replace(/\W+/g,'_');input.id=id;l.htmlFor=id;
-  if(vis)l.appendChild(el('span','vis '+vis[0],vis[1]));f.appendChild(l);f.appendChild(input);if(hint)f.appendChild(hint);return f}
-const VIS={
-  every:['narrator','narrator · every turn'],
-  nudge:['narrator','narrator · until introduced'],
-  scored:['narrator','narrator · until scored'],
-  author:['author','author only'],
-  observed:['stored','state-update pass · until revealed'],
-  revealed:['narrator','narrator · once revealed']
-};
+  vis=visBadge(vis);if(vis)l.appendChild(el('span','vis '+vis[0],vis[1]));f.appendChild(l);f.appendChild(input);if(hint)f.appendChild(hint);return f}
+/* Who sees a field. Read from the schema's x-visibility annotations (visibility.py is the same
+   reading, server-side), never written here: a badge is a claim about what the engine sends, so it
+   lives in one place. A badge argument is a dotted schema path ("world.characters.*.hook", "*" for a
+   keyed map, "[]" for a list item), an already-made [class, text] pair, or null. */
+function visNode(path){
+  let n={properties:SCHEMA.properties},found=null;
+  for(const tok of path.replace(/\[\]/g,'.[]').split('.').filter(Boolean)){
+    n=resolveSchema(n);if(!n)return found;
+    n=tok==='*'?n.additionalProperties:tok==='[]'?n.items:(n.properties||{})[tok];
+    if(n&&n['x-visibility'])found=n;
+    if(!n)return found;
+  }
+  return found;
+}
+function visBadge(v){return typeof v==='string'?badgeOf(visNode(v)):(v||null)}
+function badgeOf(n){
+  if(!n||!n['x-visibility'])return null;
+  const when=n['x-visible-when'];
+  return n['x-visibility']==='narrator'?['narrator','narrator'+(when?' \u00b7 '+when:'')]
+    :n['x-visibility']==='judge'?['stored','judge'+(when?' \u00b7 '+when:'')]:['author','author only'];
+}
 function textInput(val,on,ph){const i=el('input');i.type='text';i.value=val||'';if(ph)i.placeholder=ph;i.addEventListener('input',()=>{on(i.value);save();renderCanvas();renderHealth()});return i}
 function area(val,on){const t=el('textarea');t.value=val||'';t.addEventListener('input',()=>{on(t.value);save();renderCanvas()});return t}
 function selectInput(val,choices,on){const s=el('select');choices.forEach(([v,l])=>{const o=el('option',null,l);o.value=v;if(v===val)o.selected=true;s.appendChild(o)});s.addEventListener('change',()=>{on(s.value);save();render()});return s}
@@ -1262,12 +1289,12 @@ function renderInspector(){
       insp.appendChild(el('p','note','Checked every turn - the engine\'s own trigger, e.g. a stat reaching zero.'));
       insp.appendChild(jsonConditionField(n.ready_when,v=>{if(v===undefined)delete n.ready_when;else{n.ready_when=v;promote()}},
         'ready_when (JSON), e.g. {"stat": "frame", "lte": 0}'));
-      insp.appendChild(field('Criteria',area(n.criteria,v=>{if(v.trim()){n.criteria=v;promote()}else delete n.criteria}),VIS.author,
+      insp.appendChild(field('Criteria',area(n.criteria,v=>{if(v.trim()){n.criteria=v;promote()}else delete n.criteria}),'mechanics.endings.entries[].criteria',
         el('div','fieldnote','JUDGE-ONLY confirmation once ready_when trips, e.g. "the scene just narrated was lethal, not merely damaging."')));
       insp.appendChild(el('h4',null,'Arc (narrator-facing once committed)'));
       insp.appendChild(field('Arc title',textInput((n.arc&&n.arc.title)||'',v=>{n.arc=n.arc||{};if(v.trim()){n.arc.title=v;promote()}else delete n.arc.title})));
       insp.appendChild(field('Arc description',area((n.arc&&n.arc.description)||'',v=>{n.arc=n.arc||{};if(v.trim()){n.arc.description=v;promote()}else delete n.arc.description})));
-      insp.appendChild(field('Epilogue',area(n.epilogue,v=>{if(v.trim()){n.epilogue=v;promote()}else delete n.epilogue}),VIS.author,
+      insp.appendChild(field('Epilogue',area(n.epilogue,v=>{if(v.trim()){n.epilogue=v;promote()}else delete n.epilogue}),'mechanics.endings.entries[].epilogue',
         el('div','fieldnote','UI-only, shown after THE END. Never reaches the narrator.')));
     }else{
       const cb=el('label','toggle');const c=el('input');c.type='checkbox';c.checked=!!n.catchAll;c.id='f_catchall';
@@ -1323,14 +1350,14 @@ function renderInspector(){
       insp.appendChild(el('p','note','The condition that actually commits the story to this ending, e.g. a relationship score plus every waypoint done.'));
       insp.appendChild(jsonConditionField(n.ready_when,v=>{if(v===undefined)delete n.ready_when;else n.ready_when=v},
         'ready_when (JSON), e.g. {"all": [{"stat": "quorum", "gte": 65}, {"waypoints_done": "all"}]}'));
-      insp.appendChild(field('Hint',textInput(n.hint,v=>{if(v.trim())n.hint=v;else delete n.hint},'a diegetic fragment that may join a pacing nudge, e.g. "the ship is quieter with Lark aboard"'),VIS.every,
+      insp.appendChild(field('Hint',textInput(n.hint,v=>{if(v.trim())n.hint=v;else delete n.hint},'a diegetic fragment that may join a pacing nudge, e.g. "the ship is quieter with Lark aboard"'),'mechanics.endings.entries[].hint',
         el('div','fieldnote','May join a pacing nudge at most once per cycle while this ending is steered toward. Never shown in the UI.')));
-      insp.appendChild(field('Criteria',area(n.criteria,v=>{if(v.trim())n.criteria=v;else delete n.criteria}),VIS.author,
+      insp.appendChild(field('Criteria',area(n.criteria,v=>{if(v.trim())n.criteria=v;else delete n.criteria}),'mechanics.endings.entries[].criteria',
         el('div','fieldnote','JUDGE-ONLY confirmation at commit. Anywhere the narrator can see it, it is the twist on turn one.')));
       insp.appendChild(el('h4',null,'Arc (narrator-facing once committed)'));
       insp.appendChild(field('Arc title',textInput((n.arc&&n.arc.title)||'',v=>{n.arc=n.arc||{};if(v.trim())n.arc.title=v;else delete n.arc.title})));
       insp.appendChild(field('Arc description',area((n.arc&&n.arc.description)||'',v=>{n.arc=n.arc||{};if(v.trim())n.arc.description=v;else delete n.arc.description})));
-      insp.appendChild(field('Epilogue',area(n.epilogue,v=>{if(v.trim())n.epilogue=v;else delete n.epilogue}),VIS.author,
+      insp.appendChild(field('Epilogue',area(n.epilogue,v=>{if(v.trim())n.epilogue=v;else delete n.epilogue}),'mechanics.endings.entries[].epilogue',
         el('div','fieldnote','UI-only, shown after THE END. Never reaches the narrator.')));
     }
   }
@@ -1358,24 +1385,24 @@ function renderCharInspector(){
   nm.addEventListener('change',()=>{const v=nm.value.trim();
     if(!v||(v!==c.name&&chr(v))){say(v?`${v} is already in the cast.`:'A character needs a name.');nm.value=c.name;return}
     const old=c.name;c.name=v;sel.name=v;renameCharEverywhere(old,v);h2.textContent=v;save();renderCast();renderHealth();refresh()});
-  insp.appendChild(field('Name',nm,VIS.every,el('div','fieldnote','The key in world.characters. Relationship scores attach to this exact name, so renaming mid-story orphans a live save’s score.')));
+  insp.appendChild(field('Name',nm,'world.characters.*.name',el('div','fieldnote','The key in world.characters. Relationship scores attach to this exact name, so renaming mid-story orphans a live save’s score.')));
 
   const leakHint=f=>()=>{const l=canonLeaks(c).find(l=>l.field===f);return l?['err',`Repeats canon “${l.key}” — this reaches the narrator.`]:null};
   const ta=(key,on)=>{const t=el('textarea');t.value=c[key]||'';t.addEventListener('input',()=>{c[key]=t.value;on&&on();after()});return t};
 
-  insp.appendChild(field('Description',ta('description'),VIS.every,hint(()=>leakHint('description')()||['',`${words(c.description)} words, on every narrator turn as “${c.name}: …” in KNOWN CHARACTERS.`])));
-  insp.appendChild(field('First contact',ta('first_contact'),VIS.scored,hint(()=>{
+  insp.appendChild(field('Description',ta('description'),'world.characters.*.description',hint(()=>leakHint('description')()||['',`${words(c.description)} words, on every narrator turn as “${c.name}: …” in KNOWN CHARACTERS.`])));
+  insp.appendChild(field('First contact',ta('first_contact'),'world.characters.*.first_contact',hint(()=>{
     const l=leakHint('first_contact')();if(l)return l;
     if(!(c.first_contact||'').trim())return ['','No stance. Until the first scored interaction, the narrator has only the description to decide how they meet the protagonist.'];
     return ['',`Until they have a relationship score, the roster line reads “${c.name} (not yet met — ${c.first_contact.trim().slice(0,60)}${c.first_contact.trim().length>60?'…':''}): …”. After that, the relationship tiers speak instead.`];
   })));
-  insp.appendChild(field('Hook',ta('hook'),VIS.nudge,hint(()=>{
+  insp.appendChild(field('Hook',ta('hook'),'world.characters.*.hook',hint(()=>{
     const l=leakHint('hook')();if(l)return l;
     if(!(c.hook||'').trim())return ['','No hook. The pacing nudge never brings them on stage, so they appear only if the scene already calls for them. Right for a constant companion.'];
     return nudged().includes(c.name)?['','A concrete way on stage. Offered in the pacing nudge until they are introduced.']:['warn','Queued: only the last two characters with hooks are nudged in. Move this character later, or wait for one to be introduced.'];
   })));
   const ri=el('input');ri.type='text';ri.value=c.role||'';ri.addEventListener('input',()=>{c.role=ri.value;after()});
-  insp.appendChild(field('Role',ri,VIS.author,el('div','fieldnote','The card subtitle and the Plot Manager label. Never prompted: a role often says where the arc is going, and the narrator would steer there from the first scene.')));
+  insp.appendChild(field('Role',ri,'world.characters.*.role',el('div','fieldnote','The card subtitle and the Plot Manager label. Never prompted: a role often says where the arc is going, and the narrator would steer there from the first scene.')));
 
   insp.appendChild(el('h4',null,'Canon'));
   insp.appendChild(el('p','note','Author-only truth about this character. The engine never reads it, and the leak check flags any of it that turns up in the description or hook.'));
@@ -1827,11 +1854,11 @@ function renderFragInspector(){
   insp.appendChild(field('Id',idIn,null,el('div','fieldnote','What conditions name. Renaming updates every condition on this board that uses it.')));
 
   const ti=textInput(f.title,v=>{f.title=v;h2.textContent=v.trim()||f.id||'Untitled fragment';renderFrags();relabelEdges()},'a short name for you, e.g. "the bloodline record"');
-  insp.appendChild(field('Title',ti,VIS.author,el('div','fieldnote','Shown wherever a condition names this fragment. Never prompted.')));
+  insp.appendChild(field('Title',ti,'mechanics.revelations.entries[].title',el('div','fieldnote','Shown wherever a condition names this fragment. Never prompted.')));
   const ta=(key,ph)=>{const t=el('textarea');t.value=f[key]||'';if(ph)t.placeholder=ph;t.addEventListener('input',()=>{f[key]=t.value;after();if(key==='trigger'&&!(f.title||'').trim())renderCanvas()});return t};
-  insp.appendChild(field('Trigger',ta('trigger','the event on the page that reveals this, e.g. "the protagonist loses time mid-task"'),VIS.observed,
+  insp.appendChild(field('Trigger',ta('trigger','the event on the page that reveals this, e.g. "the protagonist loses time mid-task"'),'mechanics.revelations.entries[].trigger',
     el('div','fieldnote','Checked by the state-update pass every turn until it happens. Write an event the scene can show, not what it means.')));
-  insp.appendChild(field('Content',ta('content'),VIS.revealed,
+  insp.appendChild(field('Content',ta('content'),'mechanics.revelations.entries[].content',
     el('div','fieldnote','What the narrator is given once this is revealed. Until then it reaches no prompt. The narrator is only told these are things already revealed, so write each as what it is: something remembered, something learned about the world, something someone let slip.')));
 
   insp.appendChild(el('h4',null,'Revealed only after'));
@@ -1873,7 +1900,7 @@ function listEditor(arr,ph,onchange){
     const add=el('button','btn small','+ Add');add.type='button';add.onclick=()=>{arr.push('');onchange();draw();const ts=box.querySelectorAll('textarea');ts.length&&ts[ts.length-1].focus()};box.appendChild(add)};
   draw();return box;
 }
-function wsection(title,vis,note){const s=el('section','wsec');const h=el('h3',null,title);if(vis)h.appendChild(el('span','vis '+vis[0],vis[1]));s.appendChild(h);if(note)s.appendChild(el('p','note',note));return s}
+function wsection(title,vis,note){const s=el('section','wsec');const h=el('h3',null,title);vis=visBadge(vis);if(vis)h.appendChild(el('span','vis '+vis[0],vis[1]));s.appendChild(h);if(note)s.appendChild(el('p','note',note));return s}
 function locName(id){const l=(model.world.locations||[]).find(x=>x.id===id);return l?(l.name||l.id):id}
 function renderWorld(){
   const wv=$('#worldView');const top=wv.scrollTop;wv.innerHTML='';
@@ -1887,17 +1914,17 @@ function renderWorld(){
   const ti=textInput(M.title,v=>{M.title=v;model.story=v;const s=node('start');if(s)s.title=v;$('#storyTitle').textContent=v||'Untitled story';t.querySelector('h2').textContent=v||'Untitled story'},'the story’s title');
   st.appendChild(field('Title',ti,null,el('div','fieldnote','Shown in the story list and on this board.')));
   const syn=area(M.synopsis,v=>{M.synopsis=v;const s=node('start');if(s)s.theme=v});syn.placeholder='the pitch, a paragraph or two';
-  st.appendChild(field('Synopsis',syn,VIS.author,el('div','fieldnote','The story’s pitch. Saved into the README’s Synopsis section; never prompted.')));
-  const g=textInput(M.genre,v=>{M.genre=v},'e.g. salvage science fiction');st.appendChild(field('Genre',g,VIS.every));
-  const tn=textInput(M.tone,v=>{M.tone=v},'e.g. quiet, wry, uneasy');st.appendChild(field('Tone',tn,VIS.every));
-  st.appendChild(field('Content rules',listEditor(M.content_rules,'e.g. no graphic violence against children',changed),VIS.every,el('div','fieldnote','Hard content boundaries, sent with every narration.')));
+  st.appendChild(field('Synopsis',syn,'meta.synopsis',el('div','fieldnote','The story’s pitch. Saved into the README’s Synopsis section; never prompted.')));
+  const g=textInput(M.genre,v=>{M.genre=v},'e.g. salvage science fiction');st.appendChild(field('Genre',g,'meta.genre'));
+  const tn=textInput(M.tone,v=>{M.tone=v},'e.g. quiet, wry, uneasy');st.appendChild(field('Tone',tn,'meta.tone'));
+  st.appendChild(field('Content rules',listEditor(M.content_rules,'e.g. no graphic violence against children',changed),'meta.content_rules',el('div','fieldnote','Hard content boundaries, sent with every narration.')));
   wrap.appendChild(st);
 
   // Setting + rules
-  const se=wsection('Setting',VIS.every,'The world in a paragraph. Sent with every narration, ahead of the story so far.');
+  const se=wsection('Setting','world.setting_summary','The world in a paragraph. Sent with every narration, ahead of the story so far.');
   const ss=area(W.setting_summary,v=>{W.setting_summary=v;wc.textContent=`${words(v)} words, every turn.`});ss.rows=6;se.appendChild(ss);
   const wc=el('div','fieldnote',`${words(W.setting_summary)} words, every turn.`);se.appendChild(wc);wrap.appendChild(se);
-  const ru=wsection('World rules',VIS.every,'Strict, non-negotiable facts about how this world works. Every rule reaches every narration and every generated act or subplot, so keep each one short; a rule that only matters when a particular character or place is on the page belongs in lore instead.');
+  const ru=wsection('World rules','world.rules','Strict, non-negotiable facts about how this world works. Every rule reaches every narration and every generated act or subplot, so keep each one short; a rule that only matters when a particular character or place is on the page belongs in lore instead.');
   const rw=el('div','fieldnote');const rwc=()=>{rw.textContent=`${W.rules.length} rule${W.rules.length===1?'':'s'}, ${W.rules.reduce((a,r)=>a+words(r),0)} words every turn.`};rwc();
   ru.appendChild(listEditor(W.rules,'a rule the story must never break',()=>{rwc();changed()}));ru.appendChild(rw);wrap.appendChild(ru);
 
@@ -1916,7 +1943,7 @@ function renderWorld(){
   wrap.appendChild(lo);
 
   // Factions
-  const fa=wsection('Factions',VIS.every,'Powers with their own agenda. Every faction’s name, goals and stance toward the player reach every narration.');
+  const fa=wsection('Factions','world.factions.*.goals','Powers with their own agenda. Every faction’s name, goals and stance toward the player reach every narration.');
   const fg=el('div','castGrid');
   W.factions.forEach((f,i)=>{const b=el('button','ccard'+(sel&&sel.type==='faction'&&sel.idx===i?' sel':''));b.type='button';b.style.setProperty('--k','var(--e1)');
     const h=el('div','head');h.appendChild(el('span',null,`Faction · ${f.id||'no id'}`));b.appendChild(h);
@@ -1933,7 +1960,12 @@ function renderWorld(){
   const lgr=el('div','castGrid');
   const order=L.entries.map((e,i)=>[e,i]).sort((a,b)=>(b[0].priority??0)-(a[0].priority??0));
   order.forEach(([e,i],rank)=>{const b=el('button','ccard'+(sel&&sel.type==='lore'&&sel.idx===i?' sel':''));b.type='button';b.style.setProperty('--k','var(--e4, var(--focus))');
-    const h=el('div','head');h.appendChild(el('span',null,`Lore · ${e.id||'no id'}`));h.appendChild(el('span','chip',`priority ${e.priority??0}`));b.appendChild(h);
+    const h=el('div','head');h.appendChild(el('span',null,`Lore · ${e.id||'no id'}`));h.appendChild(el('span','chip',`priority ${e.priority??0}`));
+    const ls=loreSample[e.id];
+    if(ls){const label={injected:'\u2713 injected',cut:'cut: over the maximum',dormant:'dormant',idle:'not triggered'}[ls.state];
+      const c=el('span','chip'+(ls.state==='injected'?'':' warn'),label);c.title=(ls.why||[]).join('; ')||'Nothing triggers it in the sample state.';h.appendChild(c);
+      if(ls.state!=='injected')b.style.opacity='0.55'}
+    b.appendChild(h);
     b.appendChild(el('div','trig',(e.keys||[]).length?'Keys: '+e.keys.join(', '):'No keys'+(e.also_when?'':' and no condition: never injected')));
     if(e.also_when)b.appendChild(el('div','trig','Also when: '+condLabel(e.also_when)));
     if(e.unlock)b.appendChild(el('div','trig','Unlocks when: '+condLabel(e.unlock)));
@@ -1963,7 +1995,7 @@ function renderLocInspector(){
       if(W.start_location===o)W.start_location=v}),null,
     el('div','fieldnote','The id the scene moves between. Renaming updates connections, the opening location and any gate that guards it.')));
   const after=()=>{save();renderWorld();renderHealth()};
-  insp.appendChild(field('Name',textInput(l.name,v=>{l.name=v;h2.textContent=v||'Unnamed place';renderWorld()}),VIS.every.slice(0,1).concat(['narrator · here and adjacent'])));
+  insp.appendChild(field('Name',textInput(l.name,v=>{l.name=v;h2.textContent=v||'Unnamed place';renderWorld()}),'world.locations.*.name'));
   const d=area(l.description,v=>{l.description=v;renderWorld()});d.rows=5;
   insp.appendChild(field('Description',d,['narrator','narrator · while here']));
   insp.appendChild(el('h4',null,'Connected to'));
@@ -1986,9 +2018,9 @@ function renderFactionInspector(){
   insp.appendChild(eyebrow(`Faction · world.factions.${f.id}`));
   const h2=el('h2',null,f.name||'Unnamed faction');insp.appendChild(h2);
   insp.appendChild(field('Id',idField(f,W.factions,'faction'),null,el('div','fieldnote','A key for you; nothing else names factions by id.')));
-  insp.appendChild(field('Name',textInput(f.name,v=>{f.name=v;h2.textContent=v||'Unnamed faction';renderWorld()}),VIS.every));
-  const g=area(f.goals,v=>{f.goals=v;renderWorld()});g.rows=3;insp.appendChild(field('Goals',g,VIS.every,el('div','fieldnote','What this faction wants, in a sentence or two.')));
-  insp.appendChild(field('Stance toward the player',textInput(f.relationship_to_player,v=>{f.relationship_to_player=v;renderWorld()},'e.g. your creditor - tolerable while you are unremarkable'),VIS.every,
+  insp.appendChild(field('Name',textInput(f.name,v=>{f.name=v;h2.textContent=v||'Unnamed faction';renderWorld()}),'world.factions.*.name'));
+  const g=area(f.goals,v=>{f.goals=v;renderWorld()});g.rows=3;insp.appendChild(field('Goals',g,'world.factions.*.goals',el('div','fieldnote','What this faction wants, in a sentence or two.')));
+  insp.appendChild(field('Stance toward the player',textInput(f.relationship_to_player,v=>{f.relationship_to_player=v;renderWorld()},'e.g. your creditor - tolerable while you are unremarkable'),'world.factions.*.relationship_to_player',
     el('div','fieldnote','Sent every turn as "toward the player: …". Unlike a character’s first contact, it never gives way to a score.')));
   const del=el('button','btn danger','Delete faction');del.type='button';del.style.marginTop='22px';
   del.onclick=()=>{W.factions.splice(i,1);sel=null;save();render();say('Deleted '+(f.name||f.id))};insp.appendChild(del);
@@ -2262,9 +2294,9 @@ function renderMainThreadInspector(){
   const MT=model.main_thread;
   insp.appendChild(eyebrow('Main thread · plot.main_thread'));
   const h2=el('h2',null,MT.title||'Untitled main thread');insp.appendChild(h2);
-  insp.appendChild(field('Title',textInput(MT.title,v=>{MT.title=v;h2.textContent=v||'Untitled main thread'}),VIS.every));
+  insp.appendChild(field('Title',textInput(MT.title,v=>{MT.title=v;h2.textContent=v||'Untitled main thread'}),'plot.main_thread.title'));
   const pn=area(MT.plot_notes,v=>{MT.plot_notes=v});
-  const d=area(MT.description,v=>{MT.description=v});insp.appendChild(field('Description',d,VIS.every,el('div','fieldnote','The story’s through-line: what the whole playthrough is about. Every generated act works toward it.')));
+  const d=area(MT.description,v=>{MT.description=v});insp.appendChild(field('Description',d,'plot.main_thread.description',el('div','fieldnote','The story’s through-line: what the whole playthrough is about. Every generated act works toward it.')));
   insp.appendChild(field('Plot notes',pn,null,el('div','fieldnote','Guidance on how the main plot may evolve, e.g. that acts are generated one at a time.')));
   const m=el('input');m.type='number';m.min='1';m.value=MT.max_acts??'';m.placeholder='e.g. 6';
   m.addEventListener('input',()=>{const v=m.value.trim();MT.max_acts=v===''?null:Number(v);save();renderLanes()});
@@ -2377,6 +2409,7 @@ function renderFormField(holder,key,sch,ctx){
   if(owned)return el('div','fieldnote',`${label}: ${owned}`);
   const wrap=el('div','ffield');
   const head=el('div','fhead');head.appendChild(el('label',null,label));
+  {const vb=badgeOf(raw['x-visibility']?raw:sch);if(vb){const b=el('span','vis '+vb[0],vb[1]);b.style.marginLeft='6px';head.appendChild(b)}}
   if(raw['x-not-built']||sch['x-not-built']){const nb=el('span','vis notbuilt','not built');nb.title='Authored ahead of its engine: the story loads with a warning and this has no effect in play yet.';head.appendChild(nb)}
   const note=schemaNote(raw.$comment?raw:sch);
   const val=holder[key];
@@ -2623,7 +2656,7 @@ function renderProtagonistInspector(){
   cb.onchange=()=>{setPlayerNames(cb.checked);renderInspector();renderLanes()};tg.appendChild(cb);tg.appendChild(document.createTextNode(' The player names the protagonist'));insp.appendChild(tg);
   insp.appendChild(el('p','note',playerNames()?'The opening narration stops to ask for a name, then continues. The name below is used if the player leaves it blank.':'The story never asks. The protagonist is always the name below.'));
   const nm=textInput(P.default_name,v=>{P.default_name=v;h2.textContent=v||'Unnamed';formsChanged();renderLanes()},playerNames()?'fallback name':'the protagonist’s name');
-  insp.appendChild(field(playerNames()?'Fallback name':'Name',nm,VIS.every,el('div','fieldnote','Available as {player_name} in the opening narration.')));
+  insp.appendChild(field(playerNames()?'Fallback name':'Name',nm,'protagonist.default_name',el('div','fieldnote','Available as {player_name} in the opening narration.')));
   const body=el('div','fbody');
   renderObjectBody(P,schemaAt('protagonist'),body,{section:'protagonist',rel:'',skip:['default_name'],onStructure:()=>{renderInspector();renderLanes()}});
   insp.appendChild(body);
@@ -2821,14 +2854,14 @@ function renderSide(){
   when.appendChild(el('h4',null,'Start after these beats'));
   const beats=beatNames();
   if(!beats.length)when.appendChild(el('p','note warn','This story has no pacing-loop beats (Forms › Pacing loop), so no turn is ever classified and no side thread can start.'));
-  else{when.appendChild(el('p','note',S.start_after_beats?'A side thread may start after a turn classified as one of these.':'None ticked means respite'+(beats.includes('respite')?'.':', and this story has no beat called respite, so tick the ones that should start a side thread.')));
+  else{when.appendChild(el('p','note'+(S.start_after_beats?'':' warn'),S.start_after_beats?'A side thread may start after a turn classified as one of these.':'Required: tick at least one. There is no default, because which beat is your story\u2019s breathing room is your call.'));
     const bl=el('div','afterlist');beats.forEach(b=>bl.appendChild(checkRow(b,(S.start_after_beats||[]).includes(b),on=>{const l=(S.start_after_beats||[]).filter(x=>x!==b);if(on)l.push(b);if(l.length)S.start_after_beats=l;else delete S.start_after_beats;changed();renderSide()})));when.appendChild(bl)}
   when.appendChild(el('h4',null,'Built-in recipe'));
   when.appendChild(checkRow('When no recipe of yours is eligible, cast the two characters seen recently with the strongest bond',S.default_recipe!==false,on=>{if(on)delete S.default_recipe;else S.default_recipe=false;changed()}));
   if(!model.bonds&&S.default_recipe!==false)when.appendChild(el('div','fieldnote warn','The built-in recipe chooses by bond strength, and this story has no bonds yet (Cast tab).'));
   wrap.appendChild(when);
 
-  const pr=wsection('Protected characters',VIS.author,'Characters no side thread may cast: someone whose arc the story needs to keep for itself. The same switch is on each character in the Cast tab.');
+  const pr=wsection('Protected characters','mechanics.side_threads.protected','Characters no side thread may cast: someone whose arc the story needs to keep for itself. The same switch is on each character in the Cast tab.');
   const names=model.characters.map(c=>c.name).filter(Boolean);
   if(!names.length)pr.appendChild(el('p','note','No authored characters yet.'));
   else{const pl=el('div','afterlist');names.forEach(n=>pl.appendChild(checkRow(n,isProtected(n),on=>{setProtected(n,on);changed()})));pr.appendChild(pl)}
@@ -2850,12 +2883,12 @@ function renderSide(){
   renderPlayerThreads(wrap,S,changed);
 
   const V=S.vignettes;
-  const vg=wsection('Vignettes',V?VIS.every:null,'A single scene of texture now and then: no thread, no end, no extra model call. The narrator gets one optional line naming a subject, taken in turn from your seeds and from places, characters and items the story hasn’t featured lately. Never while a pacing rule is armed, and a side thread’s line always wins.');
+  const vg=wsection('Vignettes',V?'mechanics.side_threads.vignettes.seeds':null,'A single scene of texture now and then: no thread, no end, no extra model call. The narrator gets one optional line naming a subject, taken in turn from your seeds and from places, characters and items the story hasn’t featured lately. Never while a pacing rule is armed, and a side thread’s line always wins.');
   if(!V)vg.appendChild(btn('+ Add vignettes',()=>{S.vignettes={};changed();renderSide()},'btn small'));
   else{
     vg.appendChild(field('At least every',numIn(V.every,v=>putOrDel(V,'every',v),'turns, e.g. 4',1)));
     V.seeds=V.seeds||[];
-    vg.appendChild(field('Seeds',listEditor(V.seeds,'e.g. the hold at shift change',changed),VIS.every,el('div','fieldnote','Subjects you write. They reach the narrator, so keep canon out of them.')));
+    vg.appendChild(field('Seeds',listEditor(V.seeds,'e.g. the hold at shift change',changed),'mechanics.side_threads.vignettes.seeds',el('div','fieldnote','Subjects you write. They reach the narrator, so keep canon out of them.')));
     vg.appendChild(el('h4',null,'Also feature'));
     const sl=el('div','afterlist');
     [['location','places'],['character','characters (never a protected one)'],['item','held items']].forEach(([k,l])=>sl.appendChild(checkRow(l,(V.subjects||[]).includes(k),on=>{const x=(V.subjects||[]).filter(y=>y!==k);if(on)x.push(k);if(x.length)V.subjects=x;else delete V.subjects;changed()})));
@@ -2922,7 +2955,7 @@ function renderRecipeInspector(){
   const h2=el('h2',null,r.id||'Untitled recipe');insp.appendChild(h2);
   const after=()=>{save();renderSide();renderHealth()};
   const repaint=()=>{const y=insp.scrollTop;renderInspector();insp.scrollTop=y};
-  insp.appendChild(field('Id',idField(r,S.recipes,'recipe',(old,v)=>{for(const x of S.recipes)if(x.follows&&x.follows.recipe===old)x.follows.recipe=v}),VIS.author,el('div','fieldnote','Names the recipe for callbacks and on this board.')));
+  insp.appendChild(field('Id',idField(r,S.recipes,'recipe',(old,v)=>{for(const x of S.recipes)if(x.follows&&x.follows.recipe===old)x.follows.recipe=v}),'mechanics.side_threads.recipes[].id',el('div','fieldnote','Names the recipe for callbacks and on this board.')));
   const pm=el('textarea');pm.value=r.premise||'';pm.placeholder='e.g. one of them has started to care, and the other hasn’t noticed';
   pm.addEventListener('input',()=>{r.premise=pm.value;after()});
   insp.appendChild(field('Premise',pm,['narrator','generator, then narrator'],el('div','fieldnote','What the episode is about, written about the slots rather than named people. The generator turns it into a title, a premise of its own and a few beats for these particular characters; that reaches the narrator, so keep canon out of it.')));
@@ -2980,7 +3013,7 @@ function renderRecipeInspector(){
 }
 function setView(v){
   viewMode=v;
-  for(const [id,name] of [['#tabDiagram','diagram'],['#tabMatrix','matrix'],['#tabCast','cast'],['#tabFrags','frags'],['#tabWorld','world'],['#tabSide','side'],['#tabForms','forms']]){$(id).classList.toggle('active',v===name);$(id).setAttribute('aria-selected',v===name)}
+  for(const [id,name] of [['#tabDiagram','diagram'],['#tabMatrix','matrix'],['#tabCast','cast'],['#tabFrags','frags'],['#tabWorld','world'],['#tabSide','side'],['#tabForms','forms'],['#tabPreview','preview']]){$(id).classList.toggle('active',v===name);$(id).setAttribute('aria-selected',v===name)}
   document.querySelector('.main').style.display=v==='matrix'?'none':'grid';
   canvas.style.display=v==='diagram'&&diagramMode==='canvas'?'':'none';
   $('#lanesView').style.display=v==='diagram'&&diagramMode==='lanes'?'grid':'none';
@@ -2989,6 +3022,7 @@ function setView(v){
   $('#worldView').style.display=v==='world'?'block':'none';
   $('#sideView').style.display=v==='side'?'block':'none';
   $('#formsView').style.display=v==='forms'?'block':'none';
+  $('#previewView').style.display=v==='preview'?'block':'none';
   $('#matrixView').style.display=v==='matrix'?'block':'none';
   // Leaving the cast drops a character selection; entering it drops a node or edge one.
   if(sel&&(sel.type==='char')!==(v==='cast')){sel=null;renderInspector()}
@@ -3010,6 +3044,7 @@ $('#tabFrags').onclick=()=>setView('frags');
 $('#tabWorld').onclick=()=>setView('world');
 $('#tabSide').onclick=()=>setView('side');
 $('#tabForms').onclick=()=>setView('forms');
+$('#tabPreview').onclick=()=>setView('preview');
 $('#healthBtn').onclick=()=>{sel=null;render();insp.scrollTop=0;if(window.matchMedia('(max-width:900px)').matches)insp.scrollIntoView({behavior:'smooth'})};
 function spot(){const r=canvas.getBoundingClientRect();const p=toWorld(r.left+r.width/2,r.top+r.height/2);return {x:Math.round(p.x-118),y:Math.round(p.y-70)}}
 $('#addThread').onclick=()=>{if(diagramMode==='lanes'&&viewMode==='diagram')return newThread('spine');let i=1;while(node('subplot_'+String(i).padStart(3,'0')))i++;const id='subplot_'+String(i).padStart(3,'0');const p=spot();
@@ -3054,6 +3089,8 @@ function renderStatBar(){
 }
 // The stat sidebar sits under the timeline when both are showing.
 function placeOverlays(){const tl=$('#timeline'),sb=$('#statBar');sb.style.top=(tl.hidden?12:tl.offsetHeight+24)+'px'}
+let loreSample={};          // last Evaluate's {entry id: {state, why, priority}}; empty until one has run
+document.body.addEventListener('author-lore-injection',ev=>{loreSample=ev.detail||{};if(viewMode==='world')renderWorld()});
 document.body.addEventListener('author-stat-tiers',ev=>{statTiers=ev.detail||{};renderStatBar();if(sel&&sel.type==='axis')renderInspector()});
 
 function renderAxisInspector(){
@@ -3114,7 +3151,7 @@ function renderAxisInspector(){
     const idr=el('div','id');idr.appendChild(el('span',null,`tier ${i+1}`));
     const rm=el('button','btn small','Remove');rm.type='button';rm.onclick=()=>{ax.tiers.splice(i,1);after();render()};idr.appendChild(rm);li.appendChild(idr);
     li.appendChild(field('Starts at',num(t.at,v=>{if(v!=='')t.at=v})));
-    li.appendChild(field('Label',textInput(t.label,v=>setOrDrop(t,'label',v.trim()?v:''),'e.g. surfacing'),VIS.every,
+    li.appendChild(field('Label',textInput(t.label,v=>setOrDrop(t,'label',v.trim()?v:''),'e.g. surfacing'),'mechanics.stats.axes.*.tiers[].label',
       el('div','fieldnote','Shown beside the axis in the tier line, e.g. "'+ax.label+' ('+(t.label||'label')+')".')));
     li.appendChild(field('Narration',area(t.narration,v=>{setOrDrop(t,'narration',v.trim()?v:'');paintLadder()}),['narrator','narrator · while current'],
       el('div','fieldnote','The whole tier line while the value sits here. A tier with narration needs a label.')));
@@ -3248,6 +3285,10 @@ function renderSample(){
       sel_.addEventListener('change',()=>sampleSetMap('subplots',t.id,sel_.value));g.appendChild(sampleRow(t.title||t.id,sel_))});box.appendChild(g)}
   const wps=[];model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='destination').forEach(e=>(e.waypoints||[]).forEach(w=>{if(w.id)wps.push(w.id)}));
   checkGroup('Waypoints planted',wps,'waypoints_done');
+  if(((model.lore||{}).entries||[]).length){const lg=sampleGroup('Text on the page (lore keys)');
+    const ta=el('textarea');ta.rows=3;ta.placeholder='The player\u2019s action and the last scene, e.g. \u201cI ask Lark about the dive\u201d';ta.value=sample.lore_text||'';
+    ta.style.cssText='background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:12px;width:100%;resize:vertical';
+    ta.addEventListener('input',()=>{if(ta.value.trim())sample.lore_text=ta.value;else delete sample.lore_text});lg.appendChild(ta);box.appendChild(lg)}
   const g=sampleGroup('Progress');
   [['turn','Turn'],['act','Act']].forEach(([k,label])=>g.appendChild(sampleRow(label,sampleInput('number',sample[k],i=>{if(i.value==='')delete sample[k];else sample[k]=Number(i.value)},'72px'))));
   box.appendChild(g);

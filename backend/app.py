@@ -12,6 +12,7 @@ import author_assist
 import author_evaluate
 import author_lint
 import author_model
+import author_preview
 import derived
 import label_sheet
 import readme_sync
@@ -888,13 +889,35 @@ def author_evaluate_route(story_slug):
     except (ValueError, FileNotFoundError, json.JSONDecodeError, TypeError) as e:
         return render_template("_author_evaluate_result.html", error=f"Could not read the board state: {e}")
     rows, left_out = author_evaluate.evaluate_all(written, sample)
-    response = make_response(render_template("_author_evaluate_result.html", rows=rows,
+    lore = author_evaluate.lore_injection(written, sample)
+    response = make_response(render_template("_author_evaluate_result.html", rows=rows, lore=lore,
                                              left_out=left_out, error=None))
-    # D4: the canvas (the S3 stat sidebar) needs data, not a fragment, so it rides an HX-Trigger
-    # payload. ASCII-only JSON, since it is a header.
+    # D4: the canvas (the S3 stat sidebar, the World tab's lore cards) needs data, not a
+    # fragment, so it rides an HX-Trigger payload. ASCII-only JSON, since it is a header.
     response.headers["HX-Trigger"] = json.dumps(
-        {"author-stat-tiers": author_evaluate.stat_tiers(written, sample)})
+        {"author-stat-tiers": author_evaluate.stat_tiers(written, sample),
+         "author-lore-injection": {r["id"]: r for r in lore}})
     return response
+
+
+@app.route("/author/<story_slug>/api/preview", methods=["POST"])
+@login_required
+def author_preview_route(story_slug):
+    """S4 Preview tab: the narrator and state-update prompts the real builders assemble for the
+    board's current model under an author-typed sample state (`author_preview`). Static - no LLM
+    call, no disk write. As with evaluate, the template is the on-disk one patched with the posted
+    model, i.e. what Save would write."""
+    if _author_enabled_or_404():
+        return ("Not found.", 404)
+    try:
+        model = json.loads(request.form.get("model", ""))
+        sample = json.loads(request.form.get("sample", "") or "{}")
+        written = author_model.from_board_model(state_store.load_template_raw(story_slug), model)
+    except (ValueError, FileNotFoundError, json.JSONDecodeError, TypeError) as e:
+        return render_template("_author_preview_result.html", error=f"Could not read the board state: {e}")
+    result = author_preview.preview(written, sample)
+    return render_template("_author_preview_result.html", error=result.get("error"), **{
+        k: v for k, v in result.items() if k != "error"})
 
 
 @app.route("/author/<story_slug>/derived", methods=["POST"])

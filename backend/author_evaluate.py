@@ -21,6 +21,7 @@ Sample shape (every key optional; anything omitted keeps the story's seeded valu
      "inventory_tags": ["writ"], "turn": 40, "act": 2}
 """
 import copy
+import re
 
 import author_model
 import conditions
@@ -122,13 +123,9 @@ def _bond_ledger(story: dict, sample: dict) -> dict:
     return ledger
 
 
-def evaluate_all(story: dict, sample: dict) -> tuple:
-    """`(rows, left_out)`. One row per condition field in `story`: `{path, polarity, satisfied,
-    proximity, unknown, label}`, in template order; `label` is `conditions.describe`. `left_out`
-    is the `(slot, engine)` pairs the projection dropped because this build does not have them.
-
-    Conditions are read from the *un*-projected story (the author wrote them all, including the
-    ones under an unbuilt engine); only the ctx they are evaluated against is projected."""
+def _eval_ctx(story: dict, sample: dict) -> tuple:
+    """`(ctx, left_out)`: the projected story with `sample` laid over a seeded state, the ctx
+    every condition here is evaluated against."""
     projected, left_out = author_model.playable_projection(story, set(mechanics.registered_engines()))
     ctx = build_ctx(projected, sample)
     # CR-11 bonds are read by the `bond` leaf straight from config (tiers) and state (scores),
@@ -139,6 +136,66 @@ def evaluate_all(story: dict, sample: dict) -> tuple:
     bonds = _bond_ledger(story, sample)
     if bonds:
         ctx["state"].setdefault("mechanics", {})["bonds"] = bonds
+    return ctx, left_out
+
+
+# CR-06: "at most 3 active at once". The engine that injects lore is not built, so this is the
+# spec's number, used only to show the cutoff; the engine will own it.
+LORE_DEFAULT_MAX_ACTIVE = 3
+
+
+def lore_injection(story: dict, sample: dict) -> list:
+    """CR-06 for the sample bar: which lore entries would be injected for the sample state and the
+    text on the page. `[{id, priority, state, why}]` in authored order, `state` one of
+    `injected`, `cut` (triggered but past `max_active`), `dormant` (its `unlock` does not hold) or
+    `idle` (nothing triggered it); `why` names each trigger. Empty when the story authors no lore.
+
+    The keyed_lore engine is not built, so this is the *design* (Story_Mechanics_Update.md CR-06)
+    evaluated with the real condition code, not a copy of a runtime rule: a key matches
+    case-insensitively as a whole word or phrase in `sample["lore_text"]` (the player's action
+    plus the last scene), `also_when` and `unlock` are read CLOSED, entries rank by priority
+    (ties by authored order) and the top `max_active` win. `sticky_turns` needs history a sample
+    does not have, so it is not simulated."""
+    block = (story.get("mechanics") or {}).get("lore")
+    entries = [e for e in (block.get("entries") or []) if isinstance(e, dict) and e.get("id")] \
+        if isinstance(block, dict) else []
+    if not entries:
+        return []
+    ctx, _ = _eval_ctx(story, sample)
+    text = _map(sample).get("lore_text")
+    text = text if isinstance(text, str) else ""
+    limit = block.get("max_active") if isinstance(block.get("max_active"), int) and block["max_active"] > 0 \
+        else LORE_DEFAULT_MAX_ACTIVE
+    holds = lambda cond: conditions.evaluate(cond, ctx, conditions.CLOSED, None).satisfied  # noqa: E731
+    rows, triggered = [], []
+    for index, e in enumerate(entries):
+        priority = e.get("priority") if isinstance(e.get("priority"), (int, float)) else 0
+        row = {"id": e["id"], "priority": priority, "state": "idle", "why": []}
+        rows.append(row)
+        if e.get("unlock") is not None and not holds(e["unlock"]):
+            row["state"], row["why"] = "dormant", ["its unlock condition does not hold"]
+            continue
+        for key in e.get("keys") or []:
+            if isinstance(key, str) and key.strip() and re.search(
+                    rf"(?<!\w){re.escape(key.strip())}(?!\w)", text, re.IGNORECASE):
+                row["why"].append(f"key \u201c{key.strip()}\u201d is on the page")
+        if e.get("also_when") is not None and holds(e["also_when"]):
+            row["why"].append("its also-when condition holds")
+        if row["why"]:
+            triggered.append((-priority, index, row))
+    for rank, (_, _, row) in enumerate(sorted(triggered, key=lambda t: t[:2])):
+        row["state"] = "injected" if rank < limit else "cut"
+    return rows
+
+
+def evaluate_all(story: dict, sample: dict) -> tuple:
+    """`(rows, left_out)`. One row per condition field in `story`: `{path, polarity, satisfied,
+    proximity, unknown, label}`, in template order; `label` is `conditions.describe`. `left_out`
+    is the `(slot, engine)` pairs the projection dropped because this build does not have them.
+
+    Conditions are read from the *un*-projected story (the author wrote them all, including the
+    ones under an unbuilt engine); only the ctx they are evaluated against is projected."""
+    ctx, left_out = _eval_ctx(story, sample)
     rows = []
     names = conditions.display_names(story)
     for path, cond, polarity, ending in conditions.iter_conditions(story):
