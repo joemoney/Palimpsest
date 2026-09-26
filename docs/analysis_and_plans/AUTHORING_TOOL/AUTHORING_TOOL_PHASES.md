@@ -602,9 +602,9 @@ hold - that is the prune. The gate's wording adds a SYNC 85 clause; the authored
 and the sample run set both. Same mechanism, no SYNC clause to test.
 
 **Deferred, and not blocking:**
-- **All the CR-11 surfaces:** the `bond` leaf, the directed bond grid and `protected` toggles,
-  `mechanics.side_threads` recipe cards, location/item cast slots, the vignette seed list, and
-  `player_threads` settings.
+- ~~All the CR-11 surfaces~~ **Landed 2026-09-26** (see "CR-11 on the board", after the diagram
+  rework note below), except CR-12's `player_threads` settings and the sample bar's list of
+  eligible (recipe, cast) bindings.
 - The loader does not yet pass declared flags' `detect` text to the state-update pass, so a
   declared flag cannot be *set* in play - engine work (S5), demand-driven.
 - Rewriting stored gate `requires` from the legacy spellings into the canonical grammar. The
@@ -727,6 +727,44 @@ carrying a waypoint (`delivers`). Activation moved off drawn links onto the thre
 single edge from Start, which is how `author_model` already reads it. The free canvas stays
 behind a toggle. Lint now reports an explicit `starts_active: false` with no condition as a
 warning ("started by hand"), not the "never becomes active" error.
+
+**CR-11 on the board (2026-09-26).** Board surfaces only; `scored_bonds` and
+`episodic_threads` are not built, so a story authoring either block fails `load_template()`
+loudly until S5 builds them (D1).
+- **Schema:** `engine_bonds` (`axis`, `registers`, label-only `tiers`, `seed`,
+  `max_generated_bonds`, `cap_per_window`) and `engine_side_threads` (settings, `protected`,
+  `default_recipe`, `recipes` with `side_cast_slot`s of kind character/location/item,
+  `eligible_when`, `premise`, `may_move`, `may_create_npc`, `follows`, and `vignettes`). The
+  `bond` leaf is typed as `[from, to]`.
+- **Board:** a Bonds section at the foot of the Cast tab (registers, tiers, a directed seed grid,
+  limits); a Protected switch on each character; a Side threads tab (settings, protected list,
+  recipe cards, vignettes) with a recipe inspector (slots, a slot-aware condition builder,
+  `may_move` offered from the story's slots, stats, tags and leverage kinds, callbacks). A
+  character rename carries into seeds, the protected list, recipe slots that name them and every
+  bond leaf; a slot rename carries into its recipe's condition and `may_move`. Both blocks are
+  carried whole and written back only when changed, blanks pruned.
+- **Conditions:** the `bond` leaf evaluates for real (a pair with no entry reads 0, per CR-11),
+  reading `state.mechanics.bonds[from][to].score` and the block's tiers. `bind_slots()`
+  substitutes a casting into a recipe condition. The sample bar sets bond scores; seeds apply.
+- **Lint:** `bond_issues` and `side_thread_issues` (L10 for every dangling name, id, beat, tag,
+  stat or leverage kind; errors for a protected character named in a recipe and a bond block with
+  no registers; warnings for setups that can never start anything). Recipe conditions go through
+  L10 with their slot names legal.
+
+**Decisions made in passing - flag if wrong:**
+- **`eligible_when` is CLOSED.** An unknown referent must not start an episode on a casting it
+  was never written for; failing closed costs a side thread that never starts.
+- **Callback outcomes are `resolved`, `failed`, `expired` (reached `max_turns`) and `finale`.**
+  CR-11 names `resolved` and `finale` and implies the others; `expired` is a new name.
+- **Recipe conditions are left out of the sample-state table**: they name slots, and there is no
+  single answer until the engine enumerates castings. Listing eligible bindings is engine logic,
+  so it waits for `episodic_threads`.
+- **`start_after_beats` defaulting to `respite` (CR-11) encodes a creative decision in an engine
+  constant**, which CLAUDE.md rules out, and `example` has no beat by that name. For now lint
+  warns when it is blank and the story has no `respite` beat. **Open:** make it required when
+  the engine is built.
+- **The leak check does not cover recipe premises or vignette seeds yet.** L03 exists only as the
+  board's client-side character check; the server-side leak test is S4 work.
 
 ---
 

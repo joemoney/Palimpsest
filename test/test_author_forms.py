@@ -23,10 +23,12 @@ FORM_PATHS = [p for p, _ in author_model.FORM_SECTIONS]
 # Dedicated editors, by the template path they own: the World tab (meta, world.*), the Cast tab
 # (world.characters), the Diagram tab (plot.main_thread acts strip, plot.subplots lanes, endings,
 # terminals from legacy failure_conditions, the stat tier ladder), the Fragments tab
-# (mechanics.revelations), the Story health panel (mechanics.flags), lore in the World tab.
+# (mechanics.revelations), the Story health panel (mechanics.flags), lore in the World tab, bonds
+# in the Cast tab and the Side threads tab (CR-11).
 DEDICATED = {
     "meta", "world", "plot.main_thread", "plot.subplots", "mechanics.revelations",
     "mechanics.endings", "mechanics.failure_conditions", "mechanics.flags", "mechanics.lore",
+    "mechanics.bonds", "mechanics.side_threads",
 }
 schema = author_lint.template_schema()
 defs = schema["$defs"]

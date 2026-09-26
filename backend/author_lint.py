@@ -245,8 +245,8 @@ def condition_issues(raw: dict) -> list:
     about what is unknown. Save-blocking for every field, not just the fail-closed ones: a typo
     in `ready_when` would silently never fire, and one in a gate silently opens it."""
     out = []
-    for path, cond, _polarity, _ending in conditions.iter_conditions(raw):
-        for problem in conditions.check(cond, raw):
+    for path, cond, _polarity, scope in conditions.iter_conditions(raw):
+        for problem in conditions.check(cond, raw, scope):
             out.append({"id": "L10", "severity": "error", "message": f"{path}: {problem}"})
     return out
 
@@ -356,6 +356,180 @@ def thread_cast_issues(raw: dict) -> list:
     return out
 
 
+def bond_issues(raw: dict) -> list:
+    """CR-11 `mechanics.bonds`. L10 for a seed naming someone who is not an authored character
+    (a character's name is its only identity); errors for a block nothing can move, a seed
+    pairing a character with themselves or authored twice, and a tier label used twice."""
+    block = (raw.get("mechanics") or {}).get("bonds")
+    if not isinstance(block, dict):
+        return []
+    known = set(((raw.get("world") or {}).get("characters") or {}))
+    out = []
+    registers = block.get("registers") or {}
+    if not registers:
+        out.append({"id": "bonds", "severity": "error",
+                    "message": "Bonds have no registers, so nothing a character does can ever move one."})
+    for name, delta in registers.items() if isinstance(registers, dict) else []:
+        if delta == 0:
+            out.append({"id": "bonds", "severity": "warning",
+                        "message": f"Bond register {name} moves a bond by 0, so naming it changes nothing."})
+    labels = [t.get("label") for t in block.get("tiers") or [] if isinstance(t, dict)]
+    for label in sorted({x for x in labels if labels.count(x) > 1 and x}):
+        out.append({"id": "bonds", "severity": "error",
+                    "message": f"Bond tier {label} is used twice, so a condition naming it can only ever mean the first."})
+    seen = set()
+    for seed in block.get("seed") or []:
+        if not isinstance(seed, dict):
+            continue
+        a, b = seed.get("from"), seed.get("to")
+        for name in (a, b):
+            if name not in known:
+                out.append({"id": "L10", "severity": "error",
+                            "message": f"Bond seed {a} \u2192 {b} names {name}, who is not a character in this story."})
+        if a == b:
+            out.append({"id": "bonds", "severity": "error", "message": f"Bond seed {a} \u2192 {b} pairs a character with themselves."})
+        if (a, b) in seen:
+            out.append({"id": "bonds", "severity": "error", "message": f"Bond seed {a} \u2192 {b} is authored twice."})
+        seen.add((a, b))
+    return out
+
+
+_CAST_FROM = ("any", "authored", "generated", "followed")
+
+
+def _may_move_problem(entry: str, recipe: dict, raw: dict) -> str:
+    """Why `entry` (one `may_move` value) names something this story or recipe lacks, or ''."""
+    mech = raw.get("mechanics") or {}
+    slots = conditions.recipe_character_slots({**recipe, "_scope": "side_recipe"})
+    known = set(((raw.get("world") or {}).get("characters") or {}))
+    kind, _, rest = entry.partition(":")
+    if kind == "bond":
+        pair = rest.split(",")
+        if not isinstance(mech.get("bonds"), dict):
+            return "names a bond, but the story authors no mechanics.bonds"
+        bad = [x for x in pair if x not in slots]
+        return f"names {', '.join(bad)}, which is not a character slot of this recipe" if bad else ""
+    if kind == "relationship":
+        return "" if rest in slots or rest in known else f"names {rest}, which is not a character slot of this recipe"
+    if kind == "stat":
+        return "" if rest in conditions._stat_axes(raw) else f"names stat {rest}, which this story does not have"
+    if kind == "item":
+        return _item_tag_problem(rest, raw)
+    if kind == "leverage":
+        prog = mech.get("progression") if isinstance(mech.get("progression"), dict) else None
+        kinds = {k if isinstance(k, str) else (k or {}).get("id") for k in (prog or {}).get("kinds") or []}
+        if prog is None:
+            return "names leverage, but the story authors no mechanics.progression"
+        return "" if rest in kinds else f"names leverage kind {rest}, which mechanics.progression.kinds does not list"
+    return f"is not one of bond:, relationship:, stat:, item:, leverage:"
+
+
+def _item_tag_problem(tag: str, raw: dict) -> str:
+    inv = (raw.get("mechanics") or {}).get("inventory")
+    if not isinstance(inv, dict):
+        return "names an item tag, but the story authors no mechanics.inventory"
+    tags = inv.get("tags") or []
+    # An inventory with no tag vocabulary leaves tags open (items.tag_vocabulary), so any tag is legal.
+    return f"names item tag {tag}, which mechanics.inventory.tags does not list" if tags and tag not in tags else ""
+
+
+def side_thread_issues(raw: dict) -> list:
+    """CR-11 `mechanics.side_threads` (and r5's wider casts, vignettes and callbacks). L10 for
+    every reference that names something the story lacks - a character, location, item tag,
+    stat, leverage kind, beat or recipe - plus the ways a block can be authored and never start
+    anything, as warnings."""
+    mech = raw.get("mechanics") or {}
+    block = mech.get("side_threads")
+    if not isinstance(block, dict):
+        return []
+    out = []
+    err = lambda msg, i="L10": out.append({"id": i, "severity": "error", "message": msg})  # noqa: E731
+    warn = lambda msg, i="side_threads": out.append({"id": i, "severity": "warning", "message": msg})  # noqa: E731
+    chars = list(((raw.get("world") or {}).get("characters") or {}))
+    protected = [p for p in block.get("protected") or [] if isinstance(p, str)]
+    for name in protected:
+        if name not in chars:
+            err(f"Side threads protect {name}, who is not a character in this story.")
+    locations = set((raw.get("world") or {}).get("locations") or {})
+    recipes = [r for r in block.get("recipes") or [] if isinstance(r, dict)]
+    ids = [r.get("id") for r in recipes]
+    for rid in sorted({i for i in ids if ids.count(i) > 1 and i}):
+        err(f"Side-thread recipe {rid} is authored twice.", "side_threads")
+
+    for r in recipes:
+        rid = r.get("id") or "a recipe"
+        cast = r.get("cast") or {}
+        if not cast:
+            err(f"Recipe {rid} has no cast, so there is nobody for the episode to be about.", "side_threads")
+        drawing_authored = 0
+        for slot, spec in cast.items():
+            spec = spec if isinstance(spec, dict) else {}
+            kind = spec.get("kind", "character")
+            where = f"Recipe {rid}, slot {slot}"
+            if kind == "character":
+                src = spec.get("from", "any")
+                if src == "followed":
+                    if not isinstance(r.get("follows"), dict):
+                        err(f"{where} draws from a followed thread, but the recipe follows nothing.", "side_threads")
+                    if not spec.get("slot"):
+                        err(f"{where} draws from a followed thread but doesn't say which of its slots.", "side_threads")
+                elif src not in _CAST_FROM:
+                    if src not in chars:
+                        err(f"{where} names {src}, who is not a character in this story.")
+                    elif src in protected:
+                        err(f"{where} names {src}, who is protected: side threads never cast them.", "side_threads")
+                    drawing_authored += 1
+                elif src == "authored":
+                    drawing_authored += 1
+            elif kind == "location":
+                if spec.get("id") not in locations:
+                    err(f"{where} names location {spec.get('id') or '(none)'}, which is not in world.locations.")
+            elif kind == "item":
+                problem = _item_tag_problem(spec.get("tag") or "", raw) if spec.get("tag") else "names no item tag"
+                if problem:
+                    err(f"{where} {problem}.")
+        free = len([c for c in chars if c not in protected])
+        if drawing_authored > free:
+            warn(f"Recipe {rid} needs {drawing_authored} authored characters, but only {free} can be cast, so it can never bind.")
+        for entry in r.get("may_move") or []:
+            problem = _may_move_problem(entry, r, raw) if isinstance(entry, str) else "is not text"
+            if problem:
+                err(f"Recipe {rid}: may_move {entry} {problem}.")
+        follows = r.get("follows")
+        if isinstance(follows, dict):
+            target = follows.get("recipe", "any")
+            if target != "any" and target not in ids:
+                err(f"Recipe {rid} follows recipe {target}, which is not a recipe in this story.")
+        if not (r.get("premise") or "").strip():
+            warn(f"Recipe {rid} has no premise, so the generator has nothing to write an episode from.")
+
+    if block.get("default_recipe") is False and not recipes:
+        warn("Side threads have no recipes and the built-in recipe is off, so no side thread can ever start.")
+    if block.get("default_recipe") is not False and not isinstance(mech.get("bonds"), dict):
+        warn("The built-in recipe casts the pair with the strongest bond, and this story authors no bonds, "
+             "so it has nothing to choose by. Author bonds, or turn the built-in recipe off.")
+
+    pacing = mech.get("pacing_loop") if isinstance(mech.get("pacing_loop"), dict) else None
+    beats = set((pacing or {}).get("beats") or {})
+    starts = block.get("start_after_beats")
+    if pacing is None:
+        warn("Side threads start after a pacing-loop beat, and this story has no mechanics.pacing_loop, "
+             "so no beat is ever classified and none can start.")
+    elif starts is None:
+        if "respite" not in beats:
+            warn("Start after beats is blank, which means respite, and this story has no beat called respite. "
+                 "Pick the beats after which a side thread may start.")
+    else:
+        for b in starts:
+            if b not in beats:
+                err(f"Side threads start after beat {b}, which mechanics.pacing_loop.beats does not define.")
+
+    vign = block.get("vignettes")
+    if isinstance(vign, dict) and not (vign.get("seeds") or vign.get("subjects")):
+        warn("Vignettes have no seeds and no subjects, so there is nothing to feature.")
+    return out
+
+
 def world_issues(raw: dict) -> list:
     """World-tab hygiene, under L16 (dangling ids) where an id is involved: a `connected_to`, an
     opening location or a gate `target` naming a location the story doesn't author. Only
@@ -459,7 +633,7 @@ def lint(raw: dict, model: dict) -> list:
     in two vocabularies is noise."""
     schema = schema_errors(raw)
     return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw) + revelation_issues(raw) + world_issues(raw) + thread_cast_issues(raw)
-            + ending_arc_issues(raw)
+            + ending_arc_issues(raw) + bond_issues(raw) + side_thread_issues(raw)
             + stat_tier_issues(raw) + structural_issues(model) + cast_issues(model))
 
 

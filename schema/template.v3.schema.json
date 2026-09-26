@@ -193,7 +193,10 @@
           "oneOf": [{ "const": "all" }, { "type": "integer" }, { "type": "array", "items": { "type": "string" } }]
         },
         "subplot_status": { "type": "object", "additionalProperties": { "type": "string" } },
-        "bond": { "type": "object" },
+        "bond": {
+          "$comment": "CR-11: a directed bond, [from, to], compared with gte/lte/between (score) or tier_gte/tier_lte (mechanics.bonds.tiers labels). A bond that has not opened yet reads as 0. Inside a side-thread recipe's eligible_when, from/to may be the recipe's cast slot names.",
+          "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 2
+        },
         "stat": {
           "oneOf": [
             { "type": "string" },
@@ -296,6 +299,8 @@
         "gate": { "$ref": "#/$defs/engine_gate" },
         "endings": { "$ref": "#/$defs/engine_endings" },
         "lore": { "$ref": "#/$defs/engine_lore" },
+        "bonds": { "$ref": "#/$defs/engine_bonds" },
+        "side_threads": { "$ref": "#/$defs/engine_side_threads" },
         "tracked_entity": { "$ref": "#/$defs/tracked_entity" },
         "flags": { "$ref": "#/$defs/flags" }
       },
@@ -633,6 +638,148 @@
       "patternProperties": { "^_": true },
       "additionalProperties": false
     },
+    "engine_bonds": {
+      "$comment": "CR-11 NPC-to-NPC bonds. One-way scores: A->B and B->A are separate, so unrequited feeling is representable. Written by the board at its final path (D1); the scored_bonds engine is not built yet, so a story authoring this block fails load_template() loudly until it is.",
+      "type": "object",
+      "properties": {
+        "engine": { "const": "scored_bonds" },
+        "axis": {
+          "description": "What the two ends of a bond mean, e.g. hostile and devoted.",
+          "type": "object",
+          "properties": { "negative": { "type": "string" }, "positive": { "type": "string" } },
+          "additionalProperties": false
+        },
+        "registers": {
+          "description": "The closed vocabulary of things one character does to or for another, each with the amount it moves the bond, e.g. covered_for_them: 8, betrayed_them: -15. The state-update pass may only name these.",
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        "tiers": {
+          "description": "Labels for score bands, highest first by convention. Labels only: the narrator sees a tier label, never a number. A narration key is refused until a measurement shows labels are not enough (CR-11 decision 2).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": { "at": { "type": "number" }, "label": { "type": "string" } },
+            "required": ["at", "label"],
+            "additionalProperties": false
+          }
+        },
+        "seed": {
+          "description": "Starting scores between authored characters. A pair with no seed opens at 0 on its first event.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": { "type": "string" }, "to": { "type": "string" }, "score": { "type": "number" }
+            },
+            "required": ["from", "to", "score"],
+            "patternProperties": { "^_": true },
+            "additionalProperties": false
+          }
+        },
+        "max_generated_bonds": {
+          "description": "How many bonds involving a generated character are kept. Past this, the one closest to neutral is evicted. Bonds between authored characters are never evicted.",
+          "type": "integer", "minimum": 0
+        },
+        "cap_per_window": {
+          "description": "The most one bond may move in either direction within a window of turns.",
+          "type": "object",
+          "properties": { "delta": { "type": "integer", "minimum": 1 }, "turns": { "type": "integer", "minimum": 1 } },
+          "required": ["delta", "turns"],
+          "additionalProperties": false
+        }
+      },
+      "if": { "required": ["engine"] },
+      "then": { "required": ["registers"] },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "side_cast_slot": {
+      "$comment": "CR-11 (r5 A): one role in a side-thread recipe. kind defaults to character. A character slot draws from any / authored / generated / followed (the character a followed thread had in `slot`) / an authored character's name; it never binds a protected character. A location slot names a world.locations id; an item slot names an inventory tag.",
+      "type": "object",
+      "properties": {
+        "kind": { "enum": ["character", "location", "item"] },
+        "from": { "type": "string" },
+        "slot": { "type": "string" },
+        "id": { "type": "string" },
+        "tag": { "type": "string" }
+      },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "side_recipe": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "cast": {
+          "description": "The recipe's roles, keyed by slot name (e.g. a, b, place). Conditions and may_move name slots, not people.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/side_cast_slot" }
+        },
+        "eligible_when": { "$ref": "#/$defs/condition" },
+        "premise": {
+          "description": "The situation the generator writes an episode from. Narrator-facing through the generated premise, so it goes through the leak check.",
+          "type": "string"
+        },
+        "may_move": {
+          "description": "The only values this episode's premise and end conditions may involve: bond:<slot>,<slot>, relationship:<slot>, stat:<axis>, item:<tag>, leverage:<kind>.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^(bond:[^,]+,[^,]+|relationship:.+|stat:.+|item:.+|leverage:.+)$" }
+        },
+        "may_create_npc": { "type": "boolean" },
+        "follows": {
+          "$comment": "CR-11 (r5 C) callback: this recipe follows a concluded side thread, at most once per thread. Local to recipes on purpose - not a condition leaf, so no ending can read a side thread's outcome. Outcomes: resolved (its end condition or detect hit), failed (its fails_when), expired (reached max_turns), finale (concluded when the story's finale began).",
+          "type": "object",
+          "properties": {
+            "recipe": { "type": "string" },
+            "outcome": { "type": "array", "items": { "enum": ["resolved", "failed", "expired", "finale"] } },
+            "min_turns_since": { "type": "integer", "minimum": 0 }
+          },
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        }
+      },
+      "required": ["id", "cast", "premise"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "engine_side_threads": {
+      "$comment": "CR-11 side threads: a separate track of short AI-written episodes, started and ended by state, never by the story's structure. Not subplots: no delivers, never counted toward act advancement. Written by the board at its final path (D1); the episodic_threads engine is not built yet, so a story authoring this block fails load_template() loudly until it is.",
+      "type": "object",
+      "properties": {
+        "engine": { "const": "episodic_threads" },
+        "max_active": { "description": "How many side threads can run at once. Their own pool: a side thread never takes an authored thread's slot.", "type": "integer", "minimum": 1 },
+        "cooldown_turns": { "description": "Turns to wait after one side thread starts before another may.", "type": "integer", "minimum": 0 },
+        "start_after_beats": {
+          "description": "The pacing-loop beats after which a side thread may start. Names from mechanics.pacing_loop.beats.",
+          "type": "array", "items": { "type": "string" }
+        },
+        "max_turns": { "description": "Every side thread ends by this many turns after it starts; the engine closes it if nothing else does.", "type": "integer", "minimum": 1 },
+        "protected": {
+          "description": "Authored characters no side thread may cast: someone whose arc the story needs to keep for itself.",
+          "type": "array", "items": { "type": "string" }
+        },
+        "default_recipe": { "description": "When nothing authored is eligible, fall back to the built-in recipe: the pair with the strongest bond among characters seen recently. On unless set to false.", "type": "boolean" },
+        "recipes": { "type": "array", "items": { "$ref": "#/$defs/side_recipe" } },
+        "vignettes": {
+          "$comment": "CR-11 (r5 B): single scenes of texture, no thread and no generation call. Seeds are narrator-visible.",
+          "type": "object",
+          "properties": {
+            "every": { "description": "At least this many turns between vignettes.", "type": "integer", "minimum": 1 },
+            "seeds": { "type": "array", "items": { "type": "string" } },
+            "subjects": { "type": "array", "items": { "enum": ["location", "character", "item"] } }
+          },
+          "patternProperties": { "^_": true },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
     "engine_endings": {
       "type": "object",
       "properties": {

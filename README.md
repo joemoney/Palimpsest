@@ -345,7 +345,7 @@ board rewrites its `## Synopsis` section from `meta.synopsis`.
 > synopsis, setting, rules, locations and factions are in the **World** tab
 > (Step 4). The protagonist, character creation and the opening are the
 > **Start** cards on the Diagram tab (Step 3). Narration, pacing and every
-> mechanic's settings are in the **Forms** tab (Step 16). So the starter file
+> mechanic's settings are in the **Forms** tab (Step 17). So the starter file
 > only needs enough to load.
 
 #### Step 3 - Open the board and find your way around
@@ -491,7 +491,7 @@ fix that in Step 8.
      destination is removed.
    - **On complete: stat events**: comma-separated cost keys applied when
      the thread completes, e.g. `lattice.rejoined`. These only mean something
-     in a story that prices its stats (see Step 12).
+     in a story that prices its stats (see Step 13).
 4. Under **Characters in this thread**, tick who the thread involves. The
    list comes from the Cast tab, and a character whose name already appears
    in the thread's text is marked so you can spot them. Ticked characters
@@ -577,7 +577,71 @@ text match and not a link. Renaming a character updates every thread that
 casts them and every relationship condition that names them. Deleting a
 character removes them from every thread.
 
-#### Step 11 - Write fragments (optional)
+#### Step 11 - Add bonds and side threads (optional)
+These two go together, and both are marked **not built**: the storyboard
+saves them, but the engines that play them don't exist yet, so a story that
+authors either one won't load for play until they do.
+
+**Bonds** are how characters feel about each other, one way at a time. Mira
+toward Salome and Salome toward Mira are separate scores, so unrequited
+feeling can exist. At the bottom of the **Cast** tab, click **+ Add bonds**,
+then fill in:
+
+| Part | Who sees it | What to write |
+|---|---|---|
+| **Low end / High end** | You only | What the two ends of a bond mean, e.g. *hostile* and *devoted*. |
+| **Registers** | The state-update pass | The closed list of things one character does to or for another, each with how far it moves the bond, e.g. `covered_for_them` 8, `betrayed_them` -15. Nothing else can move a bond. |
+| **Tiers** | The narrator, as labels | Score bands, e.g. *warm* at 25, *wary* at -25. The narrator sees only the label, never a number, and only when both characters are in the scene. |
+| **Starting bonds** | The engine | A grid: read across, the row is who feels it and the column is who it's about. Leave a cell blank and the pair starts at 0 the first time something happens between them. |
+| **Limits** | The engine | How many bonds with characters the model invented are kept, and the most a bond can move within a few turns. |
+
+A **Bond** condition tests one direction, e.g. *Salome → Mira at least warm*,
+so a bond can start a thread or feed an ending like any other condition.
+
+**Side threads** are short episodes the story runs on its own between the
+planned beats. They aren't threads: they carry no waypoints, never count
+toward an act, and can never be part of an ending. The engine decides when one
+starts and who it's about; the model writes what happens. Open the **Side
+threads** tab and click **+ Add side threads**:
+
+1. **When they start and end.** How many can run at once, how many turns to
+   wait between starts, and the turn limit after which the engine closes one.
+   Tick the pacing-loop beats after which one may start (none ticked means
+   *respite*).
+2. **Built-in recipe.** When none of your recipes applies, the engine casts
+   the two characters seen recently with the strongest bond. Untick it to turn
+   that off.
+3. **Protected characters.** Anyone whose arc the story needs to keep for
+   itself. No side thread will cast them. The same switch is on each
+   character in the Cast tab.
+4. **Recipes.** Click **+ Recipe** for each situation the story can start an
+   episode from:
+   - **Premise**: what the episode is about, written about the slots rather
+     than named people, e.g. *one of them has started to care, and the other
+     hasn't noticed*.
+   - **Cast**: the roles it needs. A slot is a character (anyone, an authored
+     character, one the model invented, or a named character), a place, or
+     an item with a given tag.
+   - **Eligible when**: a condition that can name the slots, e.g. *slot a →
+     slot b at least warm*. The engine checks it for every way of filling the
+     slots. A typo means the recipe never starts, never that it starts on the
+     wrong people.
+   - **May move**: the only values the episode's premise and end conditions
+     may involve, such as a bond between two slots, a slot's relationship
+     with the protagonist, a stat, items with a tag, or a kind of leverage.
+   - **Callback** (optional): make the recipe follow an episode that already
+     ended, e.g. the favour repaid. Each ended episode is followed at most once.
+5. **Vignettes** (optional). Single scenes of texture with no thread and no
+   extra model call. Set how often, write seeds of your own, and tick which
+   places, characters or held items may also be featured.
+
+**Validate** flags a slot or seed naming someone who isn't in the cast, a
+protected character named in a recipe, a beat, item tag, stat or leverage
+kind the story doesn't have, and a setup that could never start anything.
+Renaming a character updates their starting bonds, the protected list, recipe
+slots that name them, and every Bond condition.
+
+#### Step 12 - Write fragments (optional)
 A fragment is information the story holds back until something specific
 happens on the page. It doesn't have to be a memory: it can be backstory, a
 piece of lore, a secret, or a clue. Once revealed, it does two jobs:
@@ -610,7 +674,7 @@ labelled by the start of its trigger, never by its content. The health panel
 flags a duplicate id, an *after* naming a fragment that doesn't exist or
 forming a loop, and a missing trigger or content.
 
-#### Step 12 - Set stat tiers
+#### Step 13 - Set stat tiers
 If the template has a `mechanics.stats` block (Step 2), the stat sidebar lists
 each axis. Click an axis to open its **tier ladder**, a strip from floor to
 ceiling:
@@ -631,7 +695,7 @@ an error (L07). **Sort tiers by where they start** fixes the ordering. New
 axes, costs and drift (`per_turn`) aren't edited on the board yet; set them in
 Raw JSON. Adding `costs` to any axis switches the whole story to priced stats.
 
-#### Step 13 - Add failure endings (optional)
+#### Step 14 - Add failure endings (optional)
 A failure ending is a loss the story can hit at any time, such as running out
 of NERVE. Click **+ Ending** and set **Kind** to *Failure: reached through
 stats*. Then fill in:
@@ -644,7 +708,7 @@ stats*. Then fill in:
 
 Failure endings carry no waypoints, and threads can't connect to them.
 
-#### Step 14 - Set the ending timeline (optional)
+#### Step 15 - Set the ending timeline (optional)
 Tick **Timeline** in the toolbar. It shows the story's ending-funnel timing
 as four phases:
 
@@ -663,10 +727,13 @@ example, the story is never forced to an ending, so it ends only when an
 ending becomes ready. The failure-ending row shows a tick at each failure
 ending's min turn.
 
-#### Step 15 - Test your conditions with Sample state
+#### Step 16 - Test your conditions with Sample state
 Click **Sample state** to describe a moment of play. You can set stat values,
-relationship scores and peaks, set flags, revealed fragments, thread status,
+relationship scores and peaks, bond scores (for every starting bond and every
+pair a Bond condition names), set flags, revealed fragments, thread status,
 planted waypoints, and the turn and act. Then click **Evaluate conditions**.
+A side-thread recipe's condition isn't in the table: it names slots, which
+only get filled when the engine picks a cast.
 
 You get a table of every condition in the story, showing whether it holds,
 how close it is, and whether an unknown name reads as true or false in that
@@ -677,7 +744,7 @@ play would do. Nothing is saved.
 A good check for each ending that can be lost: set up the state that should
 rule it out, and confirm its *Viable while* no longer holds.
 
-#### Step 16 - Fill in everything else in the Forms tab
+#### Step 17 - Fill in everything else in the Forms tab
 The **Forms** tab covers every part of the template that has no dedicated
 editor: narration, pacing, and the settings of every mechanic (stats,
 relationships, inventory, thread progress, the pacing loop, progression,
@@ -700,7 +767,7 @@ Only the sections you change are written on Save. A thread's priority, span,
 completion threshold and "ties to the main plot" are in its own panel on the
 Diagram tab, and an act's **Requires** condition is in the act's panel.
 
-#### Step 17 - Validate and save
+#### Step 18 - Validate and save
 - **The health badge** (top right) counts open issues and reads
   **Story holds** when there are none. Click an issue to jump to the box,
   link or character it's about. *Fix* marks an error and *Check* marks a

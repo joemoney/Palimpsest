@@ -293,7 +293,7 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .fcardh b{font:600 13.5px var(--display)}
 .fjson{font-family:var(--mono);font-size:12px}
 .fkv{display:grid;grid-template-columns:minmax(0,1fr) 120px auto;gap:6px;align-items:center}
-#castView,#fragView,#worldView,#formsView{display:none;overflow:auto;min-height:0;background:var(--ground)}
+#castView,#fragView,#worldView,#sideView,#formsView{display:none;overflow:auto;min-height:0;background:var(--ground)}
 .wsec{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px 14px;display:grid;gap:8px}
 .wsec h3{font:600 15px/1.2 var(--display);margin:0}
 .wsec textarea{width:100%}
@@ -301,7 +301,14 @@ kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 .wrow{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:start}
 .ccard .trig{margin:0 12px 6px;font-size:12px;color:var(--muted)}
 .afterlist{display:grid;gap:4px}
-.afterlist label{display:flex;gap:6px;align-items:flex-start;font-size:12.5px}
+.checkrow{display:flex;gap:6px;align-items:flex-start;font-size:12.5px;text-transform:none;letter-spacing:normal;color:var(--ink);margin:0}
+.bondgrid{border-collapse:collapse;font-size:12.5px;color:var(--ink)}
+.bondgrid th,.bondgrid td{border:1px solid var(--line);padding:3px 5px;text-align:center;white-space:nowrap}
+.bondgrid th{background:var(--raised);font-weight:600}
+.bondgrid tr th:first-child{text-align:left}
+.bondgrid td.self{color:var(--muted);background:var(--raised)}
+.board-app .bondgrid input{width:64px;height:26px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);padding:0 5px;text-align:right}
+.afterlist label{display:flex;gap:6px;align-items:flex-start;font-size:12.5px;text-transform:none;letter-spacing:normal;color:var(--ink);margin:0}
 .castWrap{padding:18px 16px 28px;display:grid;gap:14px;align-content:start}
 .castHead{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:end;justify-content:space-between}
 .castHead h2{font:700 19px/1.15 var(--display);margin:3px 0 0}
@@ -416,6 +423,7 @@ main.app{max-width:none}
         <button class="tab" id="tabCast" type="button" role="tab" aria-selected="false">Cast</button>
         <button class="tab" id="tabFrags" type="button" role="tab" aria-selected="false">Fragments</button>
         <button class="tab" id="tabWorld" type="button" role="tab" aria-selected="false">World</button>
+        <button class="tab" id="tabSide" type="button" role="tab" aria-selected="false">Side threads</button>
         <button class="tab" id="tabForms" type="button" role="tab" aria-selected="false">Forms</button>
       </div>
       <span class="sep" aria-hidden="true"></span>
@@ -480,6 +488,7 @@ main.app{max-width:none}
     <div id="castView" aria-label="Authored cast"></div>
     <div id="fragView" aria-label="Fragments"></div>
     <div id="worldView" aria-label="World building"></div>
+    <div id="sideView" aria-label="Side threads"></div>
     <div id="formsView" aria-label="Template sections"></div>
     <aside class="inspector" id="inspector" aria-live="polite"></aside>
   </div>
@@ -590,6 +599,7 @@ function allConditions(){
     for(const k of ['fail_when','viable_while','ready_when'])if(n[k])out.push({cond:n[k],set:v=>{n[k]=v},where:`${n.title||n.id} \u00b7 ${k}`,open:openN});
     for(const w of n.waypoints||[])if(w.done_when)out.push({cond:w.done_when,set:v=>{w.done_when=v},where:`${n.title||n.id} \u00b7 waypoint ${w.id} done_when`,open:openN});
   }
+  recipes().forEach((r,i)=>{if(r.eligible_when)out.push({cond:r.eligible_when,set:v=>{r.eligible_when=v},where:`Side-thread recipe ${r.id} \u00b7 eligible when`,open:()=>openRecipe(i)})});
   for(const e of model.edges)if(e.cond_raw)out.push({cond:e.cond_raw,set:v=>setUnlockCond(e,v),where:`${(node(e.from)||{}).title||e.from} \u2192 ${(node(e.to)||{}).title||e.to} \u00b7 unlocks when`,open:()=>{sel={type:'edge',key:gkey(e)};if(viewMode!=='diagram')setView('diagram');render()}});
   return out;
 }
@@ -620,11 +630,17 @@ function threadsOf(name){return model.nodes.filter(n=>n.kind==='subplot'&&(n.cas
 function setInCast(n,name,on){n.cast=(n.cast||[]).filter(x=>x!==name);if(on)n.cast.push(name);if(!n.cast.length)delete n.cast}
 // A character rename or delete follows through into every thread's cast and every condition
 // that names them (relationship leaves) - a name is a character's only identity.
+// CR-11 adds bond leaves, bond seeds, the protected list and recipe casts that name someone.
 function renameCharEverywhere(old,v){
   for(const n of model.nodes)if(n.cast)n.cast=n.cast.map(x=>x===old?v:x);
-  for(const x of allConditions()){const before=JSON.stringify(x.cond);const c=condRename(x.cond,'relationship',old,v);if(JSON.stringify(c)!==before)x.set(c)}
+  for(const x of allConditions()){const before=JSON.stringify(x.cond);const c=bondCondRename(condRename(x.cond,'relationship',old,v),old,v);if(JSON.stringify(c)!==before)x.set(c)}
+  if(model.bonds&&model.bonds.seed)for(const sd of model.bonds.seed){if(sd.from===old)sd.from=v;if(sd.to===old)sd.to=v}
+  if(model.side_threads){const S=model.side_threads;if(S.protected)S.protected=S.protected.map(x=>x===old?v:x);
+    for(const r of recipes())for(const sp of Object.values(r.cast||{}))if(sp&&sp.from===old)sp.from=v}
 }
-function dropCharEverywhere(name){for(const n of model.nodes)if(n.cast){n.cast=n.cast.filter(x=>x!==name);if(!n.cast.length)delete n.cast}}
+function dropCharEverywhere(name){for(const n of model.nodes)if(n.cast){n.cast=n.cast.filter(x=>x!==name);if(!n.cast.length)delete n.cast}
+  if(model.bonds&&model.bonds.seed){model.bonds.seed=model.bonds.seed.filter(sd=>sd.from!==name&&sd.to!==name);if(!model.bonds.seed.length)delete model.bonds.seed}
+  if(model.side_threads&&model.side_threads.protected){setProtected(name,false)}}
 // L03 canon leak: a 40+ character run of author-only canon appearing in a prompted field.
 // Client-side copy for instant highlighting only - the authoritative check is
 // backend/author_lint.py, run server-side on Validate/Save (decision D3).
@@ -700,7 +716,7 @@ function issues(){
 
 /* ---------- render ---------- */
 // The canvas measures nodes as it draws, so it only renders while visible; setView redraws it on return.
-function render(){if(viewMode==='diagram'){renderCanvas();renderTimeline();renderStatBar()}renderInspector();renderHealth();if(viewMode==='matrix')renderMatrix();if(viewMode==='cast')renderCast();if(viewMode==='frags')renderFrags();if(viewMode==='world')renderWorld();if(viewMode==='forms')renderForms()}
+function render(){if(viewMode==='diagram'){renderCanvas();renderTimeline();renderStatBar()}renderInspector();renderHealth();if(viewMode==='matrix')renderMatrix();if(viewMode==='cast')renderCast();if(viewMode==='frags')renderFrags();if(viewMode==='world')renderWorld();if(viewMode==='side')renderSide();if(viewMode==='forms')renderForms()}
 function renderHealth(){
   const n=issues().length,b=$('#healthBtn');
   b.textContent=n?`${n} issue${n>1?'s':''}`:'Story holds';
@@ -870,6 +886,9 @@ function condLabel(c){
       if(k in c.stat)return `${String(c.stat.axis||'').toUpperCase()} ${op} ${c.stat[k]}`;
   }
   if(typeof c.relationship==='string')for(const k of ['tier_gte','tier_lte','peak_gte'])if(k in c)return `${c.relationship} ${k} ${c[k]}`;
+  if(Array.isArray(c.bond)&&c.bond.length===2){const w=`${c.bond[0]} \u2192 ${c.bond[1]}`;
+    if('tier_gte' in c)return `${w} at least ${c.tier_gte}`;if('tier_lte' in c)return `${w} at most ${c.tier_lte}`;
+    if('gte' in c)return `${w} >= ${c.gte}`;if('lte' in c)return `${w} <= ${c.lte}`;return w}
   if(c.subplot_status&&typeof c.subplot_status==='object')return Object.entries(c.subplot_status).map(([k,v])=>{const t=node(k);return `${t&&t.title?`\u201c${t.title}\u201d`:'thread '+k} ${v}`}).join(', ');
   for(const k of ['revealed','revelation'])if(k in c)return frag(c[k])?`revealed: \u201c${fragLabel(c[k])}\u201d`:`revealed: ${c[k]}`;
   for(const k of ['flag','item_tag'])if(k in c)return `${k}: ${c[k]}`;
@@ -907,9 +926,12 @@ function rawConditionField(current,on,placeholder){
    name something that doesn't exist. Inputs commit on `change`, not `input`, because a commit
    repaints the whole builder and would steal focus mid-keystroke. */
 const MAX_COND_DEPTH=3;
-const LEAF_KINDS=[['stat','Stat'],['relationship','Relationship'],['flag','Flag'],['revealed','Revelation revealed'],['subplot_status','Thread status'],['turn_gte','Turn at least'],['act_gte','Act at least'],['waypoints_done','Waypoints done'],['tier_reached','Tier reached']];
+const LEAF_KINDS=[['stat','Stat'],['relationship','Relationship'],['bond','Bond (one character to another)'],['flag','Flag'],['revealed','Revelation revealed'],['subplot_status','Thread status'],['turn_gte','Turn at least'],['act_gte','Act at least'],['waypoints_done','Waypoints done'],['tier_reached','Tier reached']];
 const THREAD_STATUSES=['active','progressed','completed','failed'];
 let cbUid=0;
+// The scope of the builder being painted: {slots} for a side-thread recipe, whose conditions may
+// name its cast slots wherever a character goes.
+let cbScope={};
 function condKind(c){
   if(!c||typeof c!=='object'||Array.isArray(c))return 'raw';
   const ks=Object.keys(c);
@@ -926,6 +948,7 @@ function condKind(c){
   }
   if(ks.length===2&&typeof c.stat==='string'&&('gte' in c||'lte' in c||'between' in c))return 'stat';
   if(ks.length===2&&typeof c.relationship==='string'&&['tier_gte','tier_lte','peak_gte'].some(k=>k in c))return 'relationship';
+  if(ks.length===2&&Array.isArray(c.bond)&&c.bond.length===2&&['tier_gte','tier_lte','gte','lte'].some(k=>k in c))return 'bond';
   return 'raw';
 }
 function defaultLeaf(kind){
@@ -934,6 +957,8 @@ function defaultLeaf(kind){
   switch(kind){
     case 'stat':return {stat:(R.stats||[])[0]||'',gte:0};
     case 'relationship':return {relationship:(model.characters[0]||{}).name||'',peak_gte:0};
+    case 'bond':{const who=[...(cbScope.slots||[]),...model.characters.map(x=>x.name)];const t=bondTiers();
+      return {bond:[who[0]||'',who[1]||''],...(t.length?{tier_gte:t[0]}:{gte:0})}}
     case 'flag':return {flag:(R.flags||[])[0]||''};
     case 'revealed':return {revealed:fragIds()[0]||''};
     case 'subplot_status':return {subplot_status:{[thread?thread.id:'']:'progressed'}};
@@ -993,6 +1018,15 @@ function cbLeaf(c,kind,set){
     row.appendChild(cbSelect([['peak_gte','peak score at least'],['tier_gte','tier at least'],['tier_lte','tier at most']],cmp,v=>{
       cmp=v;val=cmp==='peak_gte'?0:'';set(build())}));
     row.appendChild(cmp==='peak_gte'?cbNumber(val,v=>{val=v;set(build())}):cbText(val,v=>{val=v;set(build())}));
+  }else if(kind==='bond'){
+    const who=[...(cbScope.slots||[]).map(x=>[x,`slot ${x}`]),...model.characters.map(x=>[x.name,x.name])];
+    let [a,b]=c.bond,cmp=['tier_gte','tier_lte','gte','lte'].find(k=>k in c),val=c[cmp];
+    const build=()=>({bond:[a,b],[cmp]:cmp.startsWith('tier')?String(val??''):(Number(val)||0)});
+    row.appendChild(cbSelect(who,a,v=>{a=v;set(build())}));row.appendChild(el('span',null,'\u2192'));row.appendChild(cbSelect(who,b,v=>{b=v;set(build())}));
+    row.appendChild(cbSelect([['tier_gte','tier at least'],['tier_lte','tier at most'],['gte','score at least'],['lte','score at most']],cmp,v=>{cmp=v;val=cmp.startsWith('tier')?(bondTiers()[0]||''):0;set(build())}));
+    const tiers=bondTiers();
+    row.appendChild(cmp.startsWith('tier')?(tiers.length?cbSelect(tiers,val,v=>{val=v;set(build())}):cbText(val,v=>{val=v;set(build())})):cbNumber(val,v=>{val=v;set(build())}));
+    if(!model.bonds)row.appendChild(el('span','fieldnote warn','No bonds authored yet - add them in the Cast tab.'));
   }else if(kind==='flag'){
     const declared=R.flags||[];
     if(declared.length)row.appendChild(cbSelect(declared,c.flag,v=>set({flag:v})));
@@ -1070,12 +1104,13 @@ function cbNode(c,depth,set){
   if(kind==='raw'){row.appendChild(cbRawNode(c,set))}else{row.appendChild(cbLeaf(c,kind,set))}
   row.appendChild(x);return row;
 }
-function conditionBuilder(current,on){
+function conditionBuilder(current,on,scope){
   const wrap=el('div','cb');
   let value=current===undefined||current===null?undefined:clone(current);
   let rawMode=false;
   const commit=v=>{value=v;on(v);save();renderCanvas();renderHealth();paint()};
   function paint(){
+    cbScope=scope||{};
     wrap.innerHTML='';
     const top=el('div','cb-leaf');top.style.justifyContent='space-between';
     top.appendChild(el('span','fieldnote',rawMode?'Editing the condition as JSON':'Build the condition'));
@@ -1113,6 +1148,7 @@ function renderInspector(){
   if(sel.type==='loc')return renderLocInspector();
   if(sel.type==='faction')return renderFactionInspector();
   if(sel.type==='lore')return renderLoreInspector();
+  if(sel.type==='recipe')return renderRecipeInspector();
   if(sel.type==='axis')return renderAxisInspector();
   const n=node(sel.id);if(!n){sel=null;return renderOverview()}
   insp.appendChild(eyebrow(n.kind==='start'?'Start':n.kind==='subplot'?`Thread · ${n.id}`:n.ekind==='terminal'?`Failure ending · ${n.id}`:`Ending · ${n.id}`));
@@ -1329,6 +1365,10 @@ function renderCharInspector(){
     const tw=el('div','linkchips');tw.style.marginTop='6px';
     threadsOf(c.name).forEach(n=>{const b=el('button','linkchip',n.title||n.id);b.type='button';b.style.setProperty('--k',kcol(n));b.title='Open this thread';b.onclick=()=>openNode(n.id);tw.appendChild(b)});
     if(threadsOf(c.name).length)insp.appendChild(tw)}
+  insp.appendChild(el('h4',null,'Side threads'));
+  if(model.side_threads){insp.appendChild(checkRow('Protected: no side thread may cast this character',isProtected(c.name),on=>{setProtected(c.name,on);save();renderCast();renderHealth()}));
+    insp.appendChild(el('div','fieldnote','For someone whose arc the story needs to keep for itself. A single vignette may still name them.'))}
+  else insp.appendChild(el('p','note','This story has no side threads. Add them in the Side threads tab to protect characters from them.'));
   const m=mentions(c);
   insp.appendChild(el('h4',null,'Named on the board'));
   insp.appendChild(el('p','note',m.length?'Threads and endings whose prose names this character. A text match, not a schema link.':'No thread or ending names this character yet.'));
@@ -1636,7 +1676,7 @@ function renderCast(){
   const every=model.characters.reduce((s,c)=>s+words(c.name)+words(c.description),0);
   const n=nudged();
   wrap.appendChild(el('p','note',`${every} words of name and description reach the narrator every turn. `+(n.length?`At the start the pacing nudge offers ${n.join(' and ')}.`:'No character has a hook, so the pacing nudge introduces nobody.')));
-  if(!model.characters.length){wrap.appendChild(el('p','note','No authored characters. The story still runs: the model introduces its own, and the roster fills from play.'));cv.appendChild(wrap);return}
+  if(!model.characters.length){wrap.appendChild(el('p','note','No authored characters. The story still runs: the model introduces its own, and the roster fills from play.'));renderBondsSection(wrap);cv.appendChild(wrap);return}
   const grid=el('div','castGrid');
   const broken=new Set(issues().filter(i=>i.lvl==='error'&&i.char!=null).map(i=>i.char));
   model.characters.forEach(c=>{
@@ -1652,12 +1692,13 @@ function renderCast(){
     if((c.canon||[]).length)f.appendChild(el('span',null,`· ${c.canon.length} canon`));
     const th=threadsOf(c.name).length;if(th)f.appendChild(el('span',null,`· in ${th} thread${th===1?'':'s'}`));
     const m=mentions(c).length;if(m)f.appendChild(el('span',null,`· named in ${m}`));
+    if(isProtected(c.name))f.appendChild(el('span',null,'\u00b7 protected'));
     if(broken.has(c.name))f.appendChild(el('span','chip err','fix'));
     b.appendChild(f);
     b.onclick=()=>openChar(c.name);
     grid.appendChild(b);
   });
-  wrap.appendChild(grid);cv.appendChild(wrap);
+  wrap.appendChild(grid);renderBondsSection(wrap);cv.appendChild(wrap);
 }
 function addChar(){
   let name='New character',i=2;while(chr(name))name='New character '+i++;
@@ -2501,26 +2542,288 @@ function renderOpeningInspector(){
   if(playerNames()){ta('narration_before_name','Before the name','Ends with someone asking the protagonist’s name.');ta('narration_after_name','After the name','Carries on with the name the player gave.')}
   else ta('narration','Narration');
 }
+/* ---------- CR-11: bonds (Cast tab) and side threads (Side threads tab) ----------
+   model.bonds and model.side_threads are mechanics.bonds / mechanics.side_threads exactly as the
+   template holds them (null when absent). author_model writes each back only when it changed,
+   blanks pruned, so rendering must never mutate them - containers are created in handlers only.
+   Neither engine is built yet: a story authoring either block fails load_template() loudly until
+   it is (D1). Every check is server lint (Validate); nothing here re-implements an engine rule. */
+const NOT_BUILT=['notbuilt','not built'];
+function putOrDel(o,k,v){if(v===undefined||v===null||v===''||(typeof v==='number'&&Number.isNaN(v)))delete o[k];else o[k]=v}
+function btn(label,on,cls){const b=el('button',cls||'btn',label);b.type='button';b.onclick=on;return b}
+function numIn(val,on,ph,min){const i=el('input');i.type='number';if(min!=null)i.min=String(min);i.value=val??'';if(ph)i.placeholder=ph;i.style.width='96px';
+  i.addEventListener('input',()=>{const v=i.value.trim();on(v===''?undefined:Number(v));save();renderHealth()});return i}
+function checkRow(label,checked,on,title){const l=el('label','checkrow');const c=el('input');c.type='checkbox';c.checked=checked;c.onchange=()=>on(c.checked);l.appendChild(c);l.appendChild(el('span',null,label));if(title)l.title=title;return l}
+function bondTiers(){return (((model.bonds||{}).tiers)||[]).filter(t=>t&&t.label).map(t=>t.label)}
+function formAt(path){const f=model.forms&&model.forms[path];return f&&typeof f==='object'?f:{}}
+function beatNames(){const b=formAt('mechanics.pacing_loop').beats;return b&&typeof b==='object'?Object.keys(b):[]}
+function itemTags(){return (formAt('mechanics.inventory').tags||[]).filter(t=>typeof t==='string')}
+function leverageKinds(){return (formAt('mechanics.progression').kinds||[]).map(k=>typeof k==='string'?k:(k&&k.id)).filter(Boolean)}
+function isProtected(name){return !!(model.side_threads&&(model.side_threads.protected||[]).includes(name))}
+function setProtected(name,on){const S=model.side_threads;S.protected=(S.protected||[]).filter(x=>x!==name);if(on)S.protected.push(name);if(!S.protected.length)delete S.protected}
+function recipes(){return (model.side_threads&&model.side_threads.recipes)||[]}
+function charSlots(r){return Object.entries(r.cast||{}).filter(([,s])=>!s||!s.kind||s.kind==='character').map(([k])=>k)}
+// A bond leaf's pair is an array, which condRename (string values) doesn't reach.
+function bondCondRename(c,from,to){if(!c||typeof c!=='object')return c;if(Array.isArray(c))return c.map(x=>bondCondRename(x,from,to));
+  const o={};for(const [k,v] of Object.entries(c))o[k]=(k==='bond'&&Array.isArray(v))?v.map(x=>x===from?to:x):(v&&typeof v==='object'?bondCondRename(v,from,to):v);return o}
+function bondPairsIn(c,acc){acc=acc||[];if(!c||typeof c!=='object')return acc;if(Array.isArray(c)){c.forEach(x=>bondPairsIn(x,acc));return acc}
+  for(const [k,v] of Object.entries(c)){if(k==='bond'&&Array.isArray(v)&&v.length===2)acc.push(v);else if(v&&typeof v==='object')bondPairsIn(v,acc)}return acc}
+function usesBonds(){return allConditions().some(x=>bondPairsIn(x.cond).length)||recipes().some(r=>(r.may_move||[]).some(m=>String(m).startsWith('bond:')))}
+
+// --- bonds, on the Cast tab --------------------------------------------------------------
+function renderBondsSection(wrap){
+  const B=model.bonds;
+  const sec=wsection('Bonds between characters',NOT_BUILT,'How characters feel about each other, one way at a time: Mira → Salome and Salome → Mira are separate scores, so unrequited feeling can exist. The state-update pass moves a bond only by naming one of the registers below. The narrator sees tier labels, never numbers, and only for two characters in the same scene. Conditions can test a bond (a Bond condition), and side threads use bonds to pick who an episode is about.');
+  wrap.appendChild(sec);
+  if(!B){sec.appendChild(btn('+ Add bonds',()=>{model.bonds={engine:'scored_bonds'};save();renderCast();renderHealth();say('Bonds added. Give them registers: the things characters do that move a bond.')}));return}
+  const changed=()=>{save();renderHealth()};
+  const ax=B.axis||{};
+  const axRow=el('div','row');axRow.style.cssText='gap:10px;flex-wrap:wrap';
+  for(const [k,label,ph] of [['negative','Low end','e.g. hostile'],['positive','High end','e.g. devoted']]){
+    axRow.appendChild(field(label,textInput(ax[k],v=>{B.axis=B.axis||{};putOrDel(B.axis,k,v.trim()?v:undefined);if(!Object.keys(B.axis).length)delete B.axis},ph)))}
+  sec.appendChild(axRow);
+  sec.appendChild(el('div','fieldnote','What the two ends of a bond mean. For you and the tier labels; the scores themselves run negative to positive.'));
+
+  // Registers: an object in the template; edited as rows so a rename keeps its place.
+  sec.appendChild(el('h4',null,'Registers'));
+  sec.appendChild(el('p','note','The closed list of things one character can do to or for another, and how far each moves the bond. The state-update pass may only name these; anything else is dropped.'));
+  const regs=Object.entries(B.registers||{});
+  const writeRegs=rows=>{if(rows.length)B.registers=Object.fromEntries(rows);else delete B.registers;changed()};
+  const rl=el('div','list');
+  regs.forEach(([name,delta],i)=>{const r=el('div','row');r.style.gap='6px';
+    const n=el('input');n.type='text';n.value=name;n.placeholder='e.g. covered_for_them';n.style.flex='1';n.setAttribute('aria-label','Register name');
+    n.addEventListener('change',()=>{const v=n.value.trim().replace(/\s+/g,'_');if(!v||(v!==name&&regs.some(([x])=>x===v))){say(v?`${v} is already a register.`:'A register needs a name.');n.value=name;return}regs[i]=[v,regs[i][1]];writeRegs(regs);renderCast()});
+    const d=el('input');d.type='number';d.value=delta;d.style.width='80px';d.setAttribute('aria-label',`How far ${name} moves a bond`);
+    d.addEventListener('input',()=>{regs[i]=[regs[i][0],d.value.trim()===''?0:Number(d.value)];writeRegs(regs)});
+    r.appendChild(n);r.appendChild(d);r.appendChild(btn('Remove',()=>{regs.splice(i,1);writeRegs(regs);renderCast()},'btn small'));rl.appendChild(r)});
+  sec.appendChild(rl);
+  sec.appendChild(btn('+ Register',()=>{let k=regs.length+1,id;do{id='register_'+k++}while(regs.some(([x])=>x===id));regs.push([id,0]);writeRegs(regs);renderCast();const ins=sec.querySelectorAll('.list input[type=text]');ins.length&&ins[ins.length-1].select()},'btn small'));
+
+  // Tiers: labels only (CR-11 decision 2).
+  sec.appendChild(el('h4',null,'Tiers'));
+  sec.appendChild(el('p','note','Labels for score bands, e.g. devoted at 55, warm at 25, wary at -25, hostile at -55. The narrator sees only the label, and a Bond condition can compare against one. Labels only: a tier carries no narration.'));
+  const tl=el('div','list');const tiers=B.tiers||[];
+  tiers.forEach((t,i)=>{const r=el('div','row');r.style.gap='6px';
+    const a=el('input');a.type='number';a.value=t.at??'';a.style.width='80px';a.setAttribute('aria-label','At score');a.addEventListener('input',()=>{t.at=a.value.trim()===''?0:Number(a.value);changed()});
+    const l=el('input');l.type='text';l.value=t.label||'';l.placeholder='label, e.g. warm';l.style.flex='1';l.setAttribute('aria-label','Tier label');l.addEventListener('input',()=>{t.label=l.value;changed()});
+    r.appendChild(el('span','fieldnote','at'));r.appendChild(a);r.appendChild(l);r.appendChild(btn('Remove',()=>{tiers.splice(i,1);if(!tiers.length)delete B.tiers;changed();renderCast()},'btn small'));tl.appendChild(r)});
+  sec.appendChild(tl);
+  sec.appendChild(btn('+ Tier',()=>{B.tiers=B.tiers||[];B.tiers.push({at:0,label:''});changed();renderCast()},'btn small'));
+
+  // Seeds: a directed grid, rows are `from`, columns `to`.
+  sec.appendChild(el('h4',null,'Starting bonds'));
+  const names=model.characters.map(c=>c.name).filter(Boolean);
+  if(names.length<2){sec.appendChild(el('p','note','Add at least two characters to seed a bond between them.'))}
+  else{
+    sec.appendChild(el('p','note','Where a bond starts. Read across: the row is who feels it, the column who it is about. Blank means the pair opens at 0 the first time something happens between them. Bonds between authored characters are never forgotten.'));
+    const seeds=B.seed||[];
+    const find=(a,b)=>seeds.find(s=>s.from===a&&s.to===b);
+    const tw=el('div');tw.style.cssText='overflow:auto;max-width:100%';
+    const tb=el('table','bondgrid');const hr=el('tr');hr.appendChild(el('th',null,'from ↓  to →'));names.forEach(n=>hr.appendChild(el('th',null,n)));tb.appendChild(hr);
+    names.forEach(a=>{const tr=el('tr');tr.appendChild(el('th',null,a));
+      names.forEach(b=>{const td=el('td');
+        if(a===b){td.textContent='—';td.className='self'}
+        else{const s=find(a,b);const i=el('input');i.type='number';i.value=s?s.score:'';i.setAttribute('aria-label',`${a} → ${b}`);i.title=`${a} → ${b}`;
+          i.addEventListener('input',()=>{const v=i.value.trim();const cur=find(a,b);
+            if(v===''){if(cur){seeds.splice(seeds.indexOf(cur),1);if(!seeds.length)delete B.seed}}
+            else if(cur)cur.score=Number(v);else{B.seed=B.seed||seeds;seeds.push({from:a,to:b,score:Number(v)})}
+            changed()});
+          td.appendChild(i)}
+        tr.appendChild(td)});
+      tb.appendChild(tr)});
+    tw.appendChild(tb);sec.appendChild(tw);
+    const stray=seeds.filter(s=>!names.includes(s.from)||!names.includes(s.to));
+    if(stray.length)sec.appendChild(el('div','fieldnote err',`${stray.length} starting bond${stray.length===1?' names':'s name'} someone not in the cast: ${stray.map(s=>`${s.from} → ${s.to}`).join(', ')}. Validate lists them; remove them in Raw JSON.`));
+  }
+
+  sec.appendChild(el('h4',null,'Limits'));
+  const lim=el('div','row');lim.style.cssText='gap:14px;flex-wrap:wrap;align-items:flex-end';
+  lim.appendChild(field('Generated bonds kept',numIn(B.max_generated_bonds,v=>putOrDel(B,'max_generated_bonds',v),'e.g. 12',0),null,el('div','fieldnote','Bonds involving a character the model invented. Past this, the one closest to neutral is forgotten.')));
+  const cap=B.cap_per_window||{};
+  const setCap=(k,v)=>{B.cap_per_window=B.cap_per_window||{};putOrDel(B.cap_per_window,k,v);if(!Object.keys(B.cap_per_window).length)delete B.cap_per_window};
+  lim.appendChild(field('Most a bond moves',numIn(cap.delta,v=>setCap('delta',v),'e.g. 12',1)));
+  lim.appendChild(field('Within turns',numIn(cap.turns,v=>setCap('turns',v),'e.g. 3',1),null,el('div','fieldnote','Both or neither: the cap is one amount per window of turns.')));
+  sec.appendChild(lim);
+  sec.appendChild(btn('Remove bonds',()=>{if(usesBonds()&&!confirm('Conditions or side-thread recipes use bonds. Remove bonds anyway? They will then name something the story lacks.'))return;model.bonds=null;save();renderCast();renderHealth();say('Bonds removed.')},'btn danger'));
+}
+
+// --- side threads tab ----------------------------------------------------------------------
+function openRecipe(i){sel={type:'recipe',idx:i};if(viewMode!=='side')setView('side');render()}
+function castSummary(r){return Object.entries(r.cast||{}).map(([k,s])=>{s=s||{};const kind=s.kind||'character';
+  if(kind==='location')return `${k}: ${locName(s.id||'')||'a place'}`;if(kind==='item')return `${k}: an item tagged ${s.tag||'?'}`;
+  return `${k}: ${s.from==='followed'?`from the followed thread’s ${s.slot||'?'}`:(s.from||'any')}`}).join(' · ')}
+function renderSide(){
+  const sv=$('#sideView');const top=sv.scrollTop;sv.innerHTML='';
+  const S=model.side_threads;
+  const wrap=el('div','castWrap');const head=el('div','castHead');const t=el('div');
+  t.appendChild(eyebrow('Side threads · mechanics.side_threads'));
+  const h=el('h2',null,S?`${recipes().length} recipe${recipes().length===1?'':'s'}`:'Side threads');h.appendChild(el('span','vis '+NOT_BUILT[0],NOT_BUILT[1]));t.appendChild(h);head.appendChild(t);
+  if(S)head.appendChild(btn('+ Recipe',addRecipe));
+  wrap.appendChild(head);
+  wrap.appendChild(el('p','note','Short episodes the story runs on its own between the planned beats: two characters the protagonist keeps throwing together, someone at the dock asking about the paperwork. They are not threads. They carry no waypoints, never count toward an act, and can never be part of an ending. The engine decides when one starts and who it is about, from the story’s numbers; the model writes what happens. Every one ends by its turn limit.'));
+  if(!S){wrap.appendChild(btn('+ Add side threads',()=>{model.side_threads={engine:'episodic_threads'};save();renderSide();renderHealth();say('Side threads added. Pick the beats they start after, then add recipes.')}));sv.appendChild(wrap);return}
+  const changed=()=>{save();renderHealth()};
+
+  const when=wsection('When they start and end');
+  const nums=el('div','row');nums.style.cssText='gap:14px;flex-wrap:wrap;align-items:flex-end';
+  nums.appendChild(field('At once',numIn(S.max_active,v=>putOrDel(S,'max_active',v),'e.g. 2',1),null,el('div','fieldnote','Their own pool: a side thread never takes an authored thread’s place.')));
+  nums.appendChild(field('Cooldown turns',numIn(S.cooldown_turns,v=>putOrDel(S,'cooldown_turns',v),'e.g. 8',0),null,el('div','fieldnote','Between one starting and the next.')));
+  nums.appendChild(field('Turn limit',numIn(S.max_turns,v=>putOrDel(S,'max_turns',v),'e.g. 30',1),null,el('div','fieldnote','The engine closes a side thread this many turns after it starts, if nothing else has.')));
+  when.appendChild(nums);
+  when.appendChild(el('h4',null,'Start after these beats'));
+  const beats=beatNames();
+  if(!beats.length)when.appendChild(el('p','note warn','This story has no pacing-loop beats (Forms › Pacing loop), so no turn is ever classified and no side thread can start.'));
+  else{when.appendChild(el('p','note',S.start_after_beats?'A side thread may start after a turn classified as one of these.':'None ticked means respite'+(beats.includes('respite')?'.':', and this story has no beat called respite, so tick the ones that should start a side thread.')));
+    const bl=el('div','afterlist');beats.forEach(b=>bl.appendChild(checkRow(b,(S.start_after_beats||[]).includes(b),on=>{const l=(S.start_after_beats||[]).filter(x=>x!==b);if(on)l.push(b);if(l.length)S.start_after_beats=l;else delete S.start_after_beats;changed();renderSide()})));when.appendChild(bl)}
+  when.appendChild(el('h4',null,'Built-in recipe'));
+  when.appendChild(checkRow('When no recipe of yours is eligible, cast the two characters seen recently with the strongest bond',S.default_recipe!==false,on=>{if(on)delete S.default_recipe;else S.default_recipe=false;changed()}));
+  if(!model.bonds&&S.default_recipe!==false)when.appendChild(el('div','fieldnote warn','The built-in recipe chooses by bond strength, and this story has no bonds yet (Cast tab).'));
+  wrap.appendChild(when);
+
+  const pr=wsection('Protected characters',VIS.author,'Characters no side thread may cast: someone whose arc the story needs to keep for itself. The same switch is on each character in the Cast tab.');
+  const names=model.characters.map(c=>c.name).filter(Boolean);
+  if(!names.length)pr.appendChild(el('p','note','No authored characters yet.'));
+  else{const pl=el('div','afterlist');names.forEach(n=>pl.appendChild(checkRow(n,isProtected(n),on=>{setProtected(n,on);changed()})));pr.appendChild(pl)}
+  wrap.appendChild(pr);
+
+  const rc=wsection('Recipes',null,'Each recipe is a situation the story can start an episode from: who it needs (the cast), when it applies (eligible when), and what it may change (may move). When several could start, the engine prefers a cast no recent episode used, then the strongest bonds, then recipe order.');
+  const grid=el('div','castGrid');
+  recipes().forEach((r,i)=>{const b=el('button','ccard'+(sel&&sel.type==='recipe'&&sel.idx===i?' sel':''));b.type='button';b.style.setProperty('--k','var(--r-texture, var(--e2))');
+    const hd=el('div','head');hd.appendChild(el('span',null,`Recipe · ${r.id||'no id'}`));if(r.follows)hd.appendChild(el('span','chip','callback'));b.appendChild(hd);
+    b.appendChild(el('h3',null,r.id||'Untitled recipe'));
+    b.appendChild(el('div','trig',castSummary(r)||'No cast yet'));
+    if(r.eligible_when)b.appendChild(el('div','trig','Eligible when: '+condLabel(r.eligible_when)));
+    b.appendChild(el('p',null,r.premise||'Add a premise: the situation the episode is written from.'));
+    const ft=el('div','foot');ft.appendChild(el('span',null,(r.may_move||[]).length?`may move ${r.may_move.length}`:'moves nothing'));if(r.may_create_npc)ft.appendChild(el('span',null,'· may add a character'));b.appendChild(ft);
+    b.onclick=()=>openRecipe(i);grid.appendChild(b)});
+  rc.appendChild(grid);rc.appendChild(btn('+ Recipe',addRecipe));
+  wrap.appendChild(rc);
+
+  const V=S.vignettes;
+  const vg=wsection('Vignettes',V?VIS.every:null,'A single scene of texture now and then: no thread, no end, no extra model call. The narrator gets one optional line naming a subject, taken in turn from your seeds and from places, characters and items the story hasn’t featured lately. Never while a pacing rule is armed, and a side thread’s line always wins.');
+  if(!V)vg.appendChild(btn('+ Add vignettes',()=>{S.vignettes={};changed();renderSide()},'btn small'));
+  else{
+    vg.appendChild(field('At least every',numIn(V.every,v=>putOrDel(V,'every',v),'turns, e.g. 4',1)));
+    V.seeds=V.seeds||[];
+    vg.appendChild(field('Seeds',listEditor(V.seeds,'e.g. the hold at shift change',changed),VIS.every,el('div','fieldnote','Subjects you write. They reach the narrator, so keep canon out of them.')));
+    vg.appendChild(el('h4',null,'Also feature'));
+    const sl=el('div','afterlist');
+    [['location','places'],['character','characters (never a protected one)'],['item','held items']].forEach(([k,l])=>sl.appendChild(checkRow(l,(V.subjects||[]).includes(k),on=>{const x=(V.subjects||[]).filter(y=>y!==k);if(on)x.push(k);if(x.length)V.subjects=x;else delete V.subjects;changed()})));
+    vg.appendChild(sl);
+    vg.appendChild(btn('Remove vignettes',()=>{delete S.vignettes;changed();renderSide()},'btn small'));
+  }
+  wrap.appendChild(vg);
+  wrap.appendChild(btn('Remove side threads',()=>{if(!confirm('Remove side threads, with every recipe?'))return;model.side_threads=null;if(sel&&sel.type==='recipe')sel=null;save();render();say('Side threads removed.')},'btn danger'));
+  sv.appendChild(wrap);sv.scrollTop=top;
+}
+function addRecipe(){
+  const S=model.side_threads;S.recipes=S.recipes||[];
+  let k=S.recipes.length+1,id;do{id='recipe_'+k++}while(S.recipes.some(r=>r.id===id));
+  S.recipes.push({id,cast:{a:{from:'any'},b:{from:'any'}},premise:''});
+  save();openRecipe(S.recipes.length-1);say('Recipe added. Write its premise, then say who it needs and when it applies.');
+}
+// Renaming a slot follows through into the recipe's condition and may_move.
+function renameSlot(r,old,v){
+  r.cast=Object.fromEntries(Object.entries(r.cast).map(([k,s])=>[k===old?v:k,s]));
+  if(r.eligible_when)r.eligible_when=condRename(bondCondRename(r.eligible_when,old,v),'relationship',old,v);
+  if(r.may_move)r.may_move=r.may_move.map(m=>{const [kind,rest]=[m.split(':')[0],m.slice(m.indexOf(':')+1)];
+    if(kind==='bond')return 'bond:'+rest.split(',').map(x=>x===old?v:x).join(',');if(kind==='relationship'&&rest===old)return 'relationship:'+v;return m});
+}
+function moveOptions(r){
+  const out=[];const cs=charSlots(r);
+  if(model.bonds)for(const a of cs)for(const b of cs)if(a!==b)out.push([`bond:${a},${b}`,`bond ${a} → ${b}`]);
+  for(const a of cs)out.push([`relationship:${a}`,`the protagonist’s relationship with ${a}`]);
+  for(const ax of (model.refs||{}).stats||[])out.push([`stat:${ax}`,`stat ${ax.toUpperCase()}`]);
+  const tags=new Set(itemTags());Object.values(r.cast||{}).forEach(s=>{if(s&&s.kind==='item'&&s.tag)tags.add(s.tag)});
+  for(const t of tags)out.push([`item:${t}`,`items tagged ${t}`]);
+  for(const k of leverageKinds())out.push([`leverage:${k}`,`leverage of kind ${k}`]);
+  return out;
+}
+function renderRecipeInspector(){
+  const S=model.side_threads,i=sel.idx,r=S&&recipes()[i];if(!r){sel=null;return renderOverview()}
+  insp.appendChild(eyebrow(`Side-thread recipe · mechanics.side_threads.recipes[${i+1}]`));
+  const h2=el('h2',null,r.id||'Untitled recipe');insp.appendChild(h2);
+  const after=()=>{save();renderSide();renderHealth()};
+  const repaint=()=>{const y=insp.scrollTop;renderInspector();insp.scrollTop=y};
+  insp.appendChild(field('Id',idField(r,S.recipes,'recipe',(old,v)=>{for(const x of S.recipes)if(x.follows&&x.follows.recipe===old)x.follows.recipe=v}),VIS.author,el('div','fieldnote','Names the recipe for callbacks and on this board.')));
+  const pm=el('textarea');pm.value=r.premise||'';pm.placeholder='e.g. one of them has started to care, and the other hasn’t noticed';
+  pm.addEventListener('input',()=>{r.premise=pm.value;after()});
+  insp.appendChild(field('Premise',pm,['narrator','generator, then narrator'],el('div','fieldnote','What the episode is about, written about the slots rather than named people. The generator turns it into a title, a premise of its own and a few beats for these particular characters; that reaches the narrator, so keep canon out of it.')));
+
+  insp.appendChild(el('h4',null,'Cast'));
+  insp.appendChild(el('p','note','The roles this episode needs. A character slot never binds a protected character. Conditions and may move name the slot, not a person, so one recipe fits many pairs.'));
+  const cast=r.cast=r.cast||{};
+  const locs=(model.world.locations||[]).filter(l=>l.id);
+  Object.entries(cast).forEach(([slot,spec])=>{spec=spec||(cast[slot]={});
+    const box=el('div','cb-group');const top=el('div','cb-leaf');
+    const sn=el('input');sn.type='text';sn.value=slot;sn.style.width='80px';sn.setAttribute('aria-label','Slot name');
+    sn.addEventListener('change',()=>{const v=sn.value.trim().replace(/\s+/g,'_');if(!v||(v!==slot&&v in cast)){say(v?`${v} is already a slot.`:'A slot needs a name.');sn.value=slot;return}renameSlot(r,slot,v);after();repaint()});
+    top.appendChild(sn);
+    const kind=spec.kind||'character';
+    top.appendChild(cbSelect([['character','a character'],['location','a place'],['item','an item']],kind,v=>{for(const k of Object.keys(spec))delete spec[k];if(v==='location')Object.assign(spec,{kind:'location',id:(locs[0]||{}).id||''});else if(v==='item')Object.assign(spec,{kind:'item',tag:itemTags()[0]||''});else spec.from='any';after();repaint()}));
+    if(kind==='character'){
+      const from=['any','authored','generated','followed'].includes(spec.from||'any')?(spec.from||'any'):spec.from;
+      top.appendChild(cbSelect([['any','anyone'],['authored','an authored character'],['generated','a character the model invented'],['followed','from the thread this follows'],...model.characters.filter(c=>c.name).map(c=>[c.name,c.name+(isProtected(c.name)?' (protected)':'')])],from,v=>{spec.from=v;if(v!=='followed')delete spec.slot;after();repaint()}));
+      if(from==='followed'){const fs=el('input');fs.type='text';fs.value=spec.slot||'';fs.placeholder='its slot, e.g. a';fs.style.width='110px';fs.addEventListener('change',()=>{putOrDel(spec,'slot',fs.value.trim());after()});top.appendChild(fs)}
+    }else if(kind==='location'){
+      top.appendChild(cbSelect(locs.map(l=>[l.id,l.name||l.id]),spec.id||'',v=>{spec.id=v;after()}));
+    }else{
+      top.appendChild(cbText(spec.tag,v=>{putOrDel(spec,'tag',v);after()},itemTags()));
+    }
+    top.appendChild(btn('×',()=>{delete cast[slot];after();repaint()},'btn small'));
+    box.appendChild(top);insp.appendChild(box)});
+  insp.appendChild(btn('+ Slot',()=>{let n=0,id;do{id=String.fromCharCode(97+n++)}while(id in cast&&n<26);if(id in cast)id='slot_'+n;cast[id]={from:'any'};after();repaint()},'btn small'));
+
+  insp.appendChild(el('h4',null,'Eligible when'));
+  insp.appendChild(el('p','note','Checked in code whenever a side thread could start, once for every way of filling the slots. A Bond condition can name slots. Leave it empty for a recipe that applies to anyone. A typo here means the recipe never starts, never that it starts on the wrong people.'));
+  insp.appendChild(conditionBuilder(r.eligible_when,v=>{if(v===undefined)delete r.eligible_when;else r.eligible_when=v;save();renderSide()},{slots:charSlots(r)}));
+
+  insp.appendChild(el('h4',null,'May move'));
+  insp.appendChild(el('p','note','The only values this episode’s premise and its end conditions may involve. The generator is never told about endings or flags. A scene still goes through the normal state-update pass, so if it genuinely moves something else, that change is real.'));
+  const opts=moveOptions(r),mm=r.may_move||[];
+  const extra=mm.filter(m=>!opts.some(([v])=>v===m)).map(m=>[m,m+' (not found)']);
+  const ml=el('div','afterlist');
+  [...opts,...extra].forEach(([v,l])=>ml.appendChild(checkRow(l,mm.includes(v),on=>{const x=(r.may_move||[]).filter(y=>y!==v);if(on)x.push(v);if(x.length)r.may_move=x;else delete r.may_move;after()})));
+  if(!opts.length&&!extra.length)insp.appendChild(el('p','note','Nothing to offer yet: add character slots, stats, item tags or leverage kinds.'));
+  insp.appendChild(ml);
+  insp.appendChild(el('h4',null,'New characters'));
+  insp.appendChild(checkRow('The episode may introduce a new character',!!r.may_create_npc,on=>{if(on)r.may_create_npc=true;else delete r.may_create_npc;after()}));
+
+  insp.appendChild(el('h4',null,'Callback'));
+  insp.appendChild(el('p','note','A recipe can follow an episode that already ended: the favour repaid, the grudge returned. Each ended episode is followed at most once. No ending can see a side thread’s outcome; this is the only thing that can.'));
+  insp.appendChild(checkRow('Follows an earlier side thread',!!r.follows,on=>{if(on)r.follows={recipe:'any'};else delete r.follows;after();repaint()}));
+  if(r.follows){const F=r.follows;
+    insp.appendChild(field('Which recipe',cbSelect([['any','any recipe'],...S.recipes.filter(x=>x.id).map(x=>[x.id,x.id])],F.recipe||'any',v=>{F.recipe=v;after()})));
+    const ol=el('div','afterlist');
+    [['resolved','it resolved'],['failed','it failed'],['expired','it reached its turn limit'],['finale','the finale ended it']].forEach(([k,l])=>ol.appendChild(checkRow(l,(F.outcome||[]).includes(k),on=>{const x=(F.outcome||[]).filter(y=>y!==k);if(on)x.push(k);if(x.length)F.outcome=x;else delete F.outcome;after()})));
+    insp.appendChild(field('Only if',ol,null,el('div','fieldnote','None ticked means any outcome.')));
+    insp.appendChild(field('At least this many turns later',numIn(F.min_turns_since,v=>{putOrDel(F,'min_turns_since',v);renderSide()},'e.g. 20',0)));
+  }
+  insp.appendChild(btn('Delete recipe',()=>{S.recipes.splice(i,1);if(!S.recipes.length)delete S.recipes;sel=null;save();render();say('Recipe deleted.')},'btn danger'));
+}
 function setView(v){
   viewMode=v;
-  for(const [id,name] of [['#tabDiagram','diagram'],['#tabMatrix','matrix'],['#tabCast','cast'],['#tabFrags','frags'],['#tabWorld','world'],['#tabForms','forms']]){$(id).classList.toggle('active',v===name);$(id).setAttribute('aria-selected',v===name)}
+  for(const [id,name] of [['#tabDiagram','diagram'],['#tabMatrix','matrix'],['#tabCast','cast'],['#tabFrags','frags'],['#tabWorld','world'],['#tabSide','side'],['#tabForms','forms']]){$(id).classList.toggle('active',v===name);$(id).setAttribute('aria-selected',v===name)}
   document.querySelector('.main').style.display=v==='matrix'?'none':'grid';
   canvas.style.display=v==='diagram'&&diagramMode==='canvas'?'':'none';
   $('#lanesView').style.display=v==='diagram'&&diagramMode==='lanes'?'grid':'none';
   $('#castView').style.display=v==='cast'?'block':'none';
   $('#fragView').style.display=v==='frags'?'block':'none';
   $('#worldView').style.display=v==='world'?'block':'none';
+  $('#sideView').style.display=v==='side'?'block':'none';
   $('#formsView').style.display=v==='forms'?'block':'none';
   $('#matrixView').style.display=v==='matrix'?'block':'none';
   // Leaving the cast drops a character selection; entering it drops a node or edge one.
   if(sel&&(sel.type==='char')!==(v==='cast')){sel=null;renderInspector()}
   if(sel&&(sel.type==='frag')!==(v==='frags')){sel=null;renderInspector()}
   if(sel&&['loc','faction','lore'].includes(sel.type)!==(v==='world')){sel=null;renderInspector()}
+  if(sel&&(sel.type==='recipe')!==(v==='side')){sel=null;renderInspector()}
   if(v==='diagram')renderCanvas();
   if(v==='matrix')renderMatrix();
   if(v==='cast')renderCast();
   if(v==='frags')renderFrags();
   if(v==='world')renderWorld();
+  if(v==='side')renderSide();
   if(v==='forms')renderForms();
 }
 $('#tabDiagram').onclick=()=>setView('diagram');
@@ -2528,6 +2831,7 @@ $('#tabMatrix').onclick=()=>setView('matrix');
 $('#tabCast').onclick=()=>setView('cast');
 $('#tabFrags').onclick=()=>setView('frags');
 $('#tabWorld').onclick=()=>setView('world');
+$('#tabSide').onclick=()=>setView('side');
 $('#tabForms').onclick=()=>setView('forms');
 $('#healthBtn').onclick=()=>{sel=null;render();insp.scrollTop=0;if(window.matchMedia('(max-width:900px)').matches)insp.scrollIntoView({behavior:'smooth'})};
 function spot(){const r=canvas.getBoundingClientRect();const p=toWorld(r.left+r.width/2,r.top+r.height/2);return {x:Math.round(p.x-118),y:Math.round(p.y-70)}}
@@ -2750,6 +3054,14 @@ function renderSample(){
   numberGroup('Relationship peaks',model.characters.map(c=>c.name).filter(Boolean),'peaks');
   const checkGroup=(title,names,key,label)=>{if(!names.length)return;const g=sampleGroup(title);
     names.forEach(n=>{const c=el('input');c.type='checkbox';c.checked=(sample[key]||[]).includes(n);c.addEventListener('change',()=>sampleToggle(key,n,c.checked));g.appendChild(sampleRow(label?label(n):n,c))});box.appendChild(g)};
+  // CR-11: bond scores for every seeded pair and every pair a condition names (slot pairs in a
+  // recipe are bound per casting, so they have no single sample value).
+  const pairs=[];const seen=new Set();const addPair=([a,b])=>{const k=a+'\u2192'+b;if(a&&b&&!seen.has(k)&&model.characters.some(c=>c.name===a)&&model.characters.some(c=>c.name===b)){seen.add(k);pairs.push([a,b])}};
+  if(model.bonds){(model.bonds.seed||[]).forEach(sd=>addPair([sd.from,sd.to]));allConditions().forEach(x=>bondPairsIn(x.cond).forEach(addPair))}
+  if(pairs.length){const g=sampleGroup('Bond scores');
+    pairs.forEach(([a,b])=>{const cur=((sample.bonds||{})[a]||{})[b];g.appendChild(sampleRow(`${a} \u2192 ${b}`,sampleInput('number',cur,i=>{const v=i.value;sample.bonds=sample.bonds||{};sample.bonds[a]=sample.bonds[a]||{};
+      if(v==='')delete sample.bonds[a][b];else sample.bonds[a][b]=Number(v);if(!Object.keys(sample.bonds[a]).length)delete sample.bonds[a];if(!Object.keys(sample.bonds).length)delete sample.bonds},'72px')))});
+    box.appendChild(g)}
   checkGroup('Flags set',refs.flags||[],'flags');
   checkGroup('Fragments revealed',fragIds(),'revealed',id=>`${id} \u2014 ${fragLabel(id)}`);
   const threads=model.nodes.filter(n=>n.kind==='subplot');

@@ -28,8 +28,13 @@ fail-closed fields; it is OPEN here on the same test (which wrong answer cannot 
 list is CR-02's and nothing else: gate.py's original warning about becoming a general
 expression language moved here with the code.
 
-`bond` (CR-11) is in the grammar and reads as *unknown* - the engine that owns bond state does
-not exist yet (build order: the storyboard leads).
+`bond` (CR-11) is directional, `{"bond": [from, to], <comparator>}`, and reads the bond state the
+`scored_bonds` engine will keep at `state.mechanics.bonds[from][to].score`. That engine is not
+built yet, but a bond that has not opened reads as **0**, not unknown (CR-11: pairs open lazily),
+so the leaf already means something against a sample state. Inside a side-thread recipe's
+`eligible_when`, `from`/`to` (and a `relationship` name) may be the recipe's cast slot names;
+`bind_slots()` substitutes the characters a casting chose, and `check(..., scope=recipe)` accepts
+the slot names.
 
 **State this reads that the engine does not write yet**, each with a sound lower bound so a
 condition still means something meanwhile: `mechanics.stats.tier_log` (a tier reached and then
@@ -62,10 +67,11 @@ Result = namedtuple("Result", "satisfied proximity unknown")
 # Keys that start a leaf of their own; anything else is a modifier belonging to `stat` or
 # `relationship`. `_NUMERIC_MODS` attach to a stat, `_REL_MODS` to a relationship.
 _STANDALONE = ("revealed", "flag", "item_tag", "tier", "tier_reached", "creation",
-               "turn_gte", "act_gte", "subplot_status", "waypoints_done", "bond",
+               "turn_gte", "act_gte", "subplot_status", "waypoints_done",
                "leverage_kind", "leverage_label_matches")
 _NUMERIC_MODS = ("gte", "lte", "between")
 _REL_MODS = ("tier_gte", "tier_lte", "peak_gte", "gte", "lte", "between")
+_BOND_MODS = ("tier_gte", "tier_lte", "gte", "lte", "between")
 
 
 # --- normalisation -------------------------------------------------------------------------
@@ -128,6 +134,10 @@ def _parts(cond):
         mods = {m: cond[m] for m in _REL_MODS if m in cond}
         parts.append(("relationship", {"name": cond["relationship"], **mods}))
         leftovers -= {"relationship", *_REL_MODS}
+    if "bond" in cond:
+        mods = {m: cond[m] for m in _BOND_MODS if m in cond}
+        parts.append(("bond", {"pair": cond["bond"], **mods}))
+        leftovers -= {"bond", *_BOND_MODS}
     for key in _STANDALONE:
         if key in leftovers:
             parts.append(("leaf", key, cond[key]))
@@ -181,6 +191,8 @@ def _eval(cond, ctx, polarity, ending, depth) -> Result:
             results.append(_stat(part[1], ctx, polarity))
         elif part[0] == "relationship":
             results.append(_relationship(part[1], ctx, polarity))
+        elif part[0] == "bond":
+            results.append(_bond(part[1], ctx, polarity))
         elif part[0] == "leaf":
             results.append(_leaf(part[1], part[2], ctx, polarity, ending))
         else:
@@ -363,6 +375,70 @@ def _relationship(spec, ctx, polarity):
     return Result(ok, sum(p[1] for p in parts) / len(parts), [])
 
 
+def _bond_pair(value):
+    if isinstance(value, list) and len(value) == 2 and all(isinstance(v, str) and v for v in value):
+        return value
+    return None
+
+
+def _bond(spec, ctx, polarity):
+    story = ctx.get("story") or {}
+    # `authored_mechanics` is the authoring tool's sample ctx carrying the template's own
+    # mechanics beside a playable projection that had to drop the unbuilt scored_bonds block.
+    block = (story.get("mechanics") or {}).get("bonds") or (ctx.get("authored_mechanics") or {}).get("bonds")
+    pair = _bond_pair(spec["pair"])
+    if not isinstance(block, dict):
+        return _unknown(polarity, "bond (the story authors no mechanics.bonds)")
+    if pair is None:
+        return _unknown(polarity, "bond needs [from, to]")
+    world_chars = (story.get("world") or {}).get("characters") or {}
+    met = _state(ctx).get("characters") or {}
+    for name in pair:
+        if name not in world_chars and name not in met:
+            return _unknown(polarity, f"character {name!r}")
+    ledger = ((_state(ctx).get("mechanics") or {}).get("bonds") or {})
+    entry = (ledger.get(pair[0]) or {}).get(pair[1]) or {}
+    # CR-11: pairs open lazily, so a bond with no entry is a real 0, not an unknown.
+    score = entry.get("score") if _num(entry.get("score")) else 0
+    tiers = [t for t in block.get("tiers") or [] if isinstance(t, dict)]
+    parts = []
+    for mod in ("tier_gte", "tier_lte"):
+        if mod in spec:
+            tier = _tier_by_label(tiers, spec[mod])
+            if tier is None or not _num(tier.get("at")):
+                return _unknown(polarity, f"bond tier {spec[mod]!r}")
+            parts.append(_numeric(score, {"gte" if mod == "tier_gte" else "lte": tier["at"]}, 200.0))
+    plain = {m: spec[m] for m in _NUMERIC_MODS if m in spec}
+    if plain:
+        parts.append(_numeric(score, plain, 200.0))
+    parts = [p for p in parts if p is not None]
+    if not parts:
+        return _unknown(polarity, f"bond {pair[0]!r} -> {pair[1]!r} has no comparator")
+    ok = all(p[0] for p in parts)
+    return Result(ok, sum(p[1] for p in parts) / len(parts), [])
+
+
+def bind_slots(cond, cast: dict):
+    """`cond` with a side-thread recipe's slot names replaced by the characters a casting bound
+    them to (`{"a": "Mira Venn", ...}`): in `bond` pairs and `relationship` names. Anything not a
+    slot passes through, so an authored name written directly into a recipe still works."""
+    if isinstance(cond, list):
+        return [bind_slots(c, cast) for c in cond]
+    if not isinstance(cond, dict):
+        return cond
+    out = {}
+    for key, value in cond.items():
+        if key == "bond" and isinstance(value, list):
+            out[key] = [cast.get(v, v) if isinstance(v, str) else v for v in value]
+        elif key == "relationship" and isinstance(value, str):
+            out[key] = cast.get(value, value)
+        elif isinstance(value, (dict, list)):
+            out[key] = bind_slots(value, cast)
+        else:
+            out[key] = value
+    return out
+
+
 def _subplot_state(ctx, sid):
     return ((_state(ctx).get("plot") or {}).get("subplots") or {}).get(sid)
 
@@ -536,6 +612,8 @@ def describe(cond, top=True, names=None) -> str:
             bits.append(_describe_numeric(str(part[1]["axis"]).upper(), part[1]))
         elif tag == "relationship":
             bits.append(_describe_relationship(part[1]))
+        elif tag == "bond":
+            bits.append(_describe_bond(part[1]))
         elif tag == "leaf":
             bits.append(_describe_leaf(part[1], part[2], names))
         else:
@@ -567,6 +645,19 @@ def _describe_relationship(spec):
     if any(m in spec for m in _NUMERIC_MODS):
         out.append(plain)
     return ", ".join(out) or str(name)
+
+
+def _describe_bond(spec):
+    pair = _bond_pair(spec["pair"])
+    who = f"{pair[0]} \u2192 {pair[1]}" if pair else "bond"
+    out = []
+    if "tier_gte" in spec:
+        out.append(f"{who} at least {spec['tier_gte']}")
+    if "tier_lte" in spec:
+        out.append(f"{who} at most {spec['tier_lte']}")
+    if any(m in spec for m in _NUMERIC_MODS):
+        out.append(_describe_numeric(who, {m: spec[m] for m in _NUMERIC_MODS if m in spec}))
+    return ", ".join(out) or who
 
 
 def _describe_leaf(kind, value, names=None):
@@ -603,17 +694,29 @@ def _describe_leaf(kind, value, names=None):
 
 # --- authoring-side checks -----------------------------------------------------------------
 
-def check(cond, story) -> list:
+def check(cond, story, scope=None) -> list:
     """Problems with `cond` against the *template* `story`, no save state involved: malformed
     shapes, over-deep nesting, and every referent the story does not define (L10). Returns short
     strings, `[]` when clean. Static counterpart of `evaluate()`'s unknown-referent path, so the
-    two cannot disagree about what counts as unknown."""
+    two cannot disagree about what counts as unknown.
+
+    `scope` is the fourth element `iter_conditions` yields. For a side-thread recipe it makes
+    the recipe's character slot names legal wherever a character name is."""
     problems = []
-    _check(normalize(cond), story or {}, 1, problems)
+    _check(normalize(cond), story or {}, 1, problems, recipe_character_slots(scope))
     return problems
 
 
-def _check(cond, story, depth, problems):
+def recipe_character_slots(scope) -> set:
+    """The character slot names of a side-thread recipe (`scope` from `iter_conditions`), or an
+    empty set for any other scope. A slot is a character unless it says otherwise (r5 A)."""
+    if not (isinstance(scope, dict) and scope.get("_scope") == "side_recipe"):
+        return set()
+    return {k for k, v in (scope.get("cast") or {}).items()
+            if isinstance(v, dict) and v.get("kind", "character") == "character"}
+
+
+def _check(cond, story, depth, problems, slots=frozenset()):
     if not cond:
         return
     if not isinstance(cond, dict):
@@ -627,12 +730,12 @@ def _check(cond, story, depth, problems):
             if depth > MAX_DEPTH:
                 problems.append(f"nests groups more than {MAX_DEPTH} deep")
             elif kind == "not":
-                _check(value, story, depth + 1, problems)
+                _check(value, story, depth + 1, problems, slots)
             elif not isinstance(value, list):
                 problems.append(f"{kind!r} needs a list of conditions")
             else:
                 for c in value:
-                    _check(c, story, depth + 1, problems)
+                    _check(c, story, depth + 1, problems, slots)
         elif tag == "stat":
             axes = _stat_axes(story)
             axis = part[1]["axis"]
@@ -642,14 +745,39 @@ def _check(cond, story, depth, problems):
                 problems.append(f"stat {axis!r} needs gte, lte or between")
         elif tag == "relationship":
             spec = part[1]
-            if not _character_known(story, spec["name"]):
+            if not _character_known(story, spec["name"]) and spec["name"] not in slots:
                 problems.append(f"names unknown character {spec['name']!r}")
             if not any(m in spec for m in _REL_MODS):
                 problems.append(f"relationship {spec['name']!r} needs a comparator")
+        elif tag == "bond":
+            _check_bond(part[1], story, mech, slots, problems)
         elif tag == "leaf":
             _check_leaf(part[1], part[2], story, mech, problems)
         else:
             problems.append(part[1])
+
+
+def _check_bond(spec, story, mech, slots, problems):
+    block = mech.get("bonds")
+    if not isinstance(block, dict):
+        problems.append("uses `bond`, but the story authors no mechanics.bonds")
+        return
+    pair = _bond_pair(spec["pair"])
+    if pair is None:
+        problems.append("bond needs [from, to]: two character names")
+        return
+    for name in pair:
+        if not _character_known(story, name) and name not in slots:
+            problems.append(f"names unknown character {name!r}"
+                            + (" (not a character or a character slot of this recipe)" if slots else ""))
+    if pair[0] == pair[1]:
+        problems.append(f"bond {pair[0]!r} -> {pair[1]!r} is a character's bond with themselves")
+    labels = {t.get("label") for t in block.get("tiers") or [] if isinstance(t, dict)}
+    for mod in ("tier_gte", "tier_lte"):
+        if mod in spec and spec[mod] not in labels:
+            problems.append(f"names unknown bond tier {spec[mod]!r}")
+    if not any(m in spec for m in _BOND_MODS):
+        problems.append(f"bond {pair[0]!r} -> {pair[1]!r} needs a comparator")
 
 
 def _stat_axes(story):
@@ -700,8 +828,6 @@ def _check_leaf(kind, value, story, mech, problems):
         for sid in (value or {}) if isinstance(value, dict) else []:
             if sid not in subplots:
                 problems.append(f"names unknown subplot {sid!r}")
-    elif kind == "bond":
-        problems.append("uses `bond`, which no engine reads yet (CR-11)")
     # item_tag / turn_gte / act_gte / leverage_* / waypoints_done carry no template referent.
 
 
@@ -735,6 +861,14 @@ def iter_conditions(story):
         for field in ("also_when", "unlock"):
             if entry.get(field):
                 yield f"mechanics.lore.entries[{entry.get('id', '?')}].{field}", entry[field], CLOSED, None
+    # CR-11 side-thread recipes. CLOSED: an unknown referent must not start an episode on a
+    # casting it was never written for; failing closed costs a side thread that never starts.
+    # The scope is the recipe, tagged so `check` can accept its cast slot names.
+    side = mech.get("side_threads") if isinstance(mech.get("side_threads"), dict) else {}
+    for recipe in side.get("recipes") or []:
+        if isinstance(recipe, dict) and recipe.get("eligible_when"):
+            yield (f"mechanics.side_threads.recipes[{recipe.get('id', '?')}].eligible_when",
+                   recipe["eligible_when"], CLOSED, {**recipe, "_scope": "side_recipe"})
     endings = mech.get("endings") if isinstance(mech.get("endings"), dict) else {}
     for entry in endings.get("entries") or []:
         eid = entry.get("id", "?")

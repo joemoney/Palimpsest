@@ -161,6 +161,11 @@ def to_board_model(raw: dict) -> dict:
     result["world"] = _world_to_board(raw)
     result["lore"] = _lore_to_board(raw)
     result["main_thread"] = _main_thread_to_board(raw)
+    # CR-11: the Cast tab's bond grid and the Side threads tab edit these two blocks as they
+    # stand in the template (None when absent - P-2: the board creates one only when asked).
+    for key in CR11_BLOCKS:
+        block = (raw.get("mechanics") or {}).get(key)
+        result[key] = copy.deepcopy(block) if isinstance(block, dict) else None
     result["forms"] = _forms_to_board(raw)
     result["form_sections"] = [list(s) for s in FORM_SECTIONS]  # read-only: the tab's section list
     result["refs"] = _condition_refs(raw)
@@ -520,6 +525,9 @@ def from_board_model(raw: dict, model: dict) -> dict:
     _apply_world(out, raw, model.get("world"))
     _apply_lore(out, raw, model.get("lore"))
     _apply_main_thread(out, raw, model.get("main_thread"))
+    for key in CR11_BLOCKS:
+        if key in model:
+            _apply_cr11_block(out, raw, key, model[key])
     _apply_positions(out, nodes)
 
     return out
@@ -966,6 +974,46 @@ def _apply_main_thread(out: dict, raw: dict, mt) -> None:
         _set_or_drop(entry, "requires", row.get("requires") or None)
         acts.append(entry)
     target["acts"] = acts
+
+
+# `mechanics.<key>` -> the engine a new block declares (D1: final paths, even though neither
+# engine is built yet - a story authoring one fails load_template() loudly until it is).
+CR11_BLOCKS = {"bonds": "scored_bonds", "side_threads": "episodic_threads"}
+
+
+def _prune_blank(value):
+    """`value` with every None, blank string, empty list and empty dict removed, recursively -
+    so a field the author cleared is absent rather than stored empty (P-2). 0 and False stay:
+    a seed of 0 and `default_recipe: false` are both real choices."""
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            v = _prune_blank(v)
+            if v is None or v == "" or v == [] or v == {}:
+                continue
+            out[k] = v
+        return out
+    if isinstance(value, list):
+        return [x for x in (_prune_blank(v) for v in value) if not (x is None or x == "" or x == {})]
+    if isinstance(value, str):
+        return value if value.strip() else ""
+    return value
+
+
+def _apply_cr11_block(out: dict, raw: dict, key: str, block) -> None:
+    """`mechanics.bonds` / `mechanics.side_threads`. Untouched when the board hands back what
+    the template holds (byte-identical round trip); None removes the block; anything else is
+    written with blanks pruned and the engine declared first."""
+    current = (raw.get("mechanics") or {}).get(key)
+    if block == (copy.deepcopy(current) if isinstance(current, dict) else None):
+        return
+    mechanics = out.setdefault("mechanics", {})
+    if block is None:
+        mechanics.pop(key, None)
+        return
+    cleaned = _prune_blank(copy.deepcopy(block))
+    cleaned.pop("engine", None)
+    mechanics[key] = {"engine": CR11_BLOCKS[key], **cleaned}
 
 
 def _lore_to_board_entries(raw: dict) -> list:

@@ -105,6 +105,23 @@ def build_ctx(story: dict, sample: dict) -> dict:
     return {"story": story, "state": state}
 
 
+def _bond_ledger(story: dict, sample: dict) -> dict:
+    """CR-11 bond state, `{from: {to: {"score": n}}}`: the story's authored `seed` scores, then
+    the sample's `bonds` (same nested shape) over them. A pair in neither is simply absent, which
+    a `bond` leaf reads as 0 - the engine opens pairs lazily."""
+    sample = _map(sample)
+    block = (story.get("mechanics") or {}).get("bonds")
+    ledger = {}
+    for s in (block.get("seed") or []) if isinstance(block, dict) else []:
+        if isinstance(s, dict) and isinstance(s.get("score"), (int, float)):
+            ledger.setdefault(s.get("from"), {})[s.get("to")] = {"score": s["score"]}
+    for a, row in _map(sample.get("bonds")).items():
+        for b, score in _map(row).items():
+            if isinstance(score, (int, float)) and not isinstance(score, bool):
+                ledger.setdefault(a, {})[b] = {"score": score}
+    return ledger
+
+
 def evaluate_all(story: dict, sample: dict) -> tuple:
     """`(rows, left_out)`. One row per condition field in `story`: `{path, polarity, satisfied,
     proximity, unknown, label}`, in template order; `label` is `conditions.describe`. `left_out`
@@ -114,9 +131,21 @@ def evaluate_all(story: dict, sample: dict) -> tuple:
     ones under an unbuilt engine); only the ctx they are evaluated against is projected."""
     projected, left_out = author_model.playable_projection(story, set(mechanics.registered_engines()))
     ctx = build_ctx(projected, sample)
+    # CR-11 bonds are read by the `bond` leaf straight from config (tiers) and state (scores),
+    # with no engine call, so a bond condition can answer against the seeds and the sample while
+    # scored_bonds is unbuilt. The config rides beside the story, not in it: putting an unbuilt
+    # engine's block back into ctx["story"] would make every other engine lookup refuse to bind.
+    ctx["authored_mechanics"] = copy.deepcopy(story.get("mechanics") or {})
+    bonds = _bond_ledger(story, sample)
+    if bonds:
+        ctx["state"].setdefault("mechanics", {})["bonds"] = bonds
     rows = []
     names = conditions.display_names(story)
     for path, cond, polarity, ending in conditions.iter_conditions(story):
+        if isinstance(ending, dict) and ending.get("_scope") == "side_recipe":
+            # A recipe's condition names cast slots, which only a casting binds; there is no
+            # single answer to show until the engine enumerates castings.
+            continue
         result = conditions.evaluate(cond, ctx, polarity, ending)
         rows.append({
             "path": path,
