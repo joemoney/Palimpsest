@@ -143,7 +143,9 @@ type. Ids and names save when the field loses focus (click elsewhere or press Ta
   - **Becomes active**: *At the start* / *When a condition holds* / *Only when started by hand*
   - **Carries toward** (a dropdown: **+ Carry a waypoint…**)
   - **Fails when**
-  - **On complete: stat events**
+  - **On complete: stat events**: a ★ chip shows it on the thread's box. Leave it blank to
+    inherit the priority's row of **Forms → Thread progress → Completion rewards**. Not built:
+    the story loads with a warning.
   - **Delete thread**
 - **Endings column:** **Destination endings** (**+ Ending**) and **Failure endings**
   (**+ Failure**).
@@ -493,7 +495,10 @@ These live in the **Forms** tab, each in its own section. Give the values field 
 using the labels the form shows:
 
 - **Relationships:** registers are the social beats and their worth. A tier has a label and
-  optional narration.
+  optional narration. **Transitions** (not built; the story loads with a warning) hold
+  one-shot exits: give an *id*, a *when* (peak reached, plus a score or tier band), a
+  *directive* that says `{name}`, and *sets flag* with `{id}` for the first name, e.g.
+  `{id}_departed`. Suggest declaring the flags too.
 - **Inventory:** the tag vocabulary. Starting items are on the Protagonist card.
 - **Progression:** a label, kinds and a prompt hint.
 - **Pacing loop:** beats with definitions, and one rule with a directive.

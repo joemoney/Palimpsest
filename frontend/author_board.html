@@ -655,6 +655,25 @@ function canonLeaks(c){
   return out;
 }
 
+/* ---------- thread completion rewards (CR-07) ---------- */
+// A thread's own on_complete.stat_events wins; otherwise it inherits its priority's row of
+// mechanics.subplots.completion_rewards. The vocabulary is every key of an axis's costs.
+function rewardVocab(){const ax=((model.forms||{})['mechanics.stats']||{}).axes||{};const v=new Set();
+  for(const spec of Object.values(ax))for(const k of Object.keys((spec&&spec.costs)||{}))v.add(k);return v}
+function threadRewards(n){
+  const own=(n.on_complete&&n.on_complete.stat_events)||[];
+  if(own.length)return {events:own,inherited:false};
+  const rows=((model.forms||{})['mechanics.subplots']||{}).completion_rewards||{};
+  const ev=rows[n.priority]||[];
+  return {events:ev,inherited:ev.length>0};
+}
+function rewardChip(n){
+  const r=threadRewards(n);if(!r.events.length)return null;
+  const c=el('span','chip','\u2605 '+r.events.join(', '));
+  c.title=(r.inherited?`Inherited from the ${n.priority}-priority row of Thread progress: `:'This thread\u2019s own reward: ')+'these stat events are applied when it completes (CR-07, not built yet).';
+  return c;
+}
+
 /* ---------- health ---------- */
 // Live, client-side, structural-only checks for instant feedback while editing - not the
 // authoritative gate. The authoritative version is backend/author_lint.py, run server-side
@@ -690,7 +709,11 @@ function issues(){
     if(n.role==='texture'&&carries)out.push({lvl:'warn',text:`${n.title} is texture but carries waypoints. Make it spine or personal.`,id:n.id});
     if(n.role==='personal'&&!(n.cast||[]).length)out.push({lvl:'warn',text:`${n.title} is a relationship arc with no character in it. Tick who it involves.`,id:n.id});
     for(const name of n.cast||[])if(!chr(name))out.push({lvl:'error',text:`${n.title} casts ${name}, who is not in the Cast tab.`,id:n.id});
+    {const vocab=rewardVocab();
+     for(const ev of (n.on_complete&&n.on_complete.stat_events)||[])if(!vocab.has(ev))out.push({lvl:'error',text:`${n.title} pays the stat event ${ev} on completion, but ${vocab.size?'it is not a key of any axis\u2019s costs':'the story authors no axis costs'}. It would pay nothing.`,id:n.id})}
   }
+  {const vocab=rewardVocab(),rows=((model.forms||{})['mechanics.subplots']||{}).completion_rewards||{};
+   for(const [pr,evs] of Object.entries(rows))for(const ev of evs||[])if(!vocab.has(ev))out.push({lvl:'error',text:`The ${pr}-priority completion reward names the stat event ${ev}, but ${vocab.size?'it is not a key of any axis\u2019s costs':'the story authors no axis costs'}. It would pay nothing.`,id:null})}
   const seen=new Set();
   for(const c of model.characters){
     if(!c.name.trim())out.push({lvl:'error',text:'A character has no name. The name is its key in world.characters.',char:c.name});
@@ -762,6 +785,7 @@ function renderCanvasFree(){
     d.appendChild(el('h3',null,n.title||'Untitled'));
     d.appendChild(el('p',null,n.theme||'Add the main theme in the panel.'));
     if(n.kind==='subplot'&&(n.cast||[]).length){const cl=el('div','castline');n.cast.forEach(name=>cl.appendChild(el('span','chip',name)));d.appendChild(cl)}
+    if(n.kind==='subplot'){const rc=rewardChip(n);if(rc){const rl=el('div','castline');rl.appendChild(rc);d.appendChild(rl)}}
     let c;
     if(n.kind==='ending'&&n.ekind==='destination'){
       c=carriers(n);
@@ -1209,8 +1233,12 @@ function renderInspector(){
     insp.appendChild(field('On complete: stat events',textInput(((n.on_complete&&n.on_complete.stat_events)||[]).join(', '),v=>{
       const events=v.split(',').map(s=>s.trim()).filter(Boolean);
       if(events.length)n.on_complete={stat_events:events};else delete n.on_complete;
-    },'comma-separated event keys, e.g. lattice.rejoined'),VIS.author,
-      el('div','fieldnote','CR-07: stat-priced events from mechanics.stats.axes.<axis>.costs, applied when this thread completes.')));
+    },'comma-separated event keys, e.g. lattice.rejoined'),['notbuilt','not built'],
+      el('div','fieldnote','CR-07: stat events from mechanics.stats.axes.<axis>.costs, applied by the engine when this thread completes. Author-only: the narrator never sees this field. Overrides the reward its priority row gives (Forms \u203a Thread progress \u203a Completion rewards). The engine that pays it is not built yet: the story loads with a warning.')));
+    {const r=threadRewards(n);
+     if(r.inherited)insp.appendChild(el('p','note',`Inherited: ${r.events.join(', ')} from the ${n.priority}-priority completion reward. Typing events above overrides it.`));
+     const vocab=rewardVocab();
+     if(vocab.size)insp.appendChild(el('p','note','Events this story prices: '+[...vocab].join(', ')+'.'))}
   }
   if(n.kind==='ending'){
     insp.appendChild(field('Kind',selectInput(n.ekind,[['destination','Destination: steered toward'],['terminal','Failure: reached through stats']],v=>{n.ekind=v;if(v==='terminal'){model.edges=model.edges.filter(e=>!(e.type==='delivers'&&e.to===n.id))}})));
@@ -2096,6 +2124,7 @@ function renderLanes(){
       if(n.fail_when)meta.appendChild(el('span','abadge fail','✕ fails when '+condLabel(n.fail_when)));
       const cc=carryEdges(n).length;meta.appendChild(el('span','lcount',cc?`carries ${cc}`:(role==='texture'?'carries nothing':'carries nothing yet')));
       body.appendChild(meta);
+      {const rc=rewardChip(n);if(rc){const rl=el('div','castline');rl.appendChild(rc);body.appendChild(rl)}}
       if((n.cast||[]).length){const cl=el('div','castline');n.cast.forEach(nm=>cl.appendChild(el('span','chip',nm)));body.appendChild(cl)}
       d.appendChild(body);
       if(role!=='texture'){const p=el('span','lport');p.title='Drag onto a waypoint to carry it';p.dataset.port=n.id;d.appendChild(p)}
@@ -2348,6 +2377,7 @@ function renderFormField(holder,key,sch,ctx){
   if(owned)return el('div','fieldnote',`${label}: ${owned}`);
   const wrap=el('div','ffield');
   const head=el('div','fhead');head.appendChild(el('label',null,label));
+  if(raw['x-not-built']||sch['x-not-built']){const nb=el('span','vis notbuilt','not built');nb.title='Authored ahead of its engine: the story loads with a warning and this has no effect in play yet.';head.appendChild(nb)}
   const note=schemaNote(raw.$comment?raw:sch);
   const val=holder[key];
   const setV=v=>{if(v===undefined)delete holder[key];else holder[key]=v;formsChanged()};

@@ -11,6 +11,7 @@ save) or `"warning"` (doesn't) - CLAUDE.md's "schema -> lint (errors block, warn
 """
 import json
 import os
+import re
 
 import jsonschema
 
@@ -675,6 +676,99 @@ def scene_length_issues(raw: dict) -> list:
     return out
 
 
+def thread_reward_issues(raw: dict) -> list:
+    """CR-07: a thread's `on_complete.stat_events` and `mechanics.subplots.completion_rewards` name
+    events from the closed vocabulary of `mechanics.stats.axes.<axis>.costs`. A name outside it
+    could never be priced, so the reward would silently pay nothing (error). A margin with no
+    reward anywhere has nothing to foreshadow (warning)."""
+    mech = raw.get("mechanics") or {}
+    axes = (mech.get("stats") or {}).get("axes") if isinstance(mech.get("stats"), dict) else None
+    vocab = {event for spec in (axes or {}).values() if isinstance(spec, dict)
+             for event in (spec.get("costs") or {})}
+    subs = mech.get("subplots") if isinstance(mech.get("subplots"), dict) else {}
+    out = []
+
+    def check(where, events, target):
+        for event in events or []:
+            if event in vocab:
+                continue
+            why = ("the story authors no axis costs, so there are no events to name" if not vocab
+                   else "it is not a key of any axis's costs")
+            out.append({"id": target, "severity": "error",
+                        "message": f"{where} names the stat event {event}, but {why}. It would pay nothing."})
+
+    rewards = subs.get("completion_rewards") if isinstance(subs.get("completion_rewards"), dict) else {}
+    for priority, events in rewards.items():
+        check(f"The {priority}-priority completion reward", events, "mechanics.subplots")
+    threads = (raw.get("plot") or {}).get("subplots") or {}
+    for sid, sp in threads.items():
+        if isinstance(sp, dict):
+            check(f"Thread {sp.get('title') or sid}", (sp.get("on_complete") or {}).get("stat_events"), sid)
+    paid = any(rewards.values()) or any(isinstance(sp, dict) and (sp.get("on_complete") or {}).get("stat_events")
+                                        for sp in threads.values())
+    if subs.get("near_completion_margin") and not paid:
+        out.append({"id": "mechanics.subplots", "severity": "warning",
+                    "message": "A near-completion margin is set, but no thread has a completion reward, so the "
+                               "narrator has no payoff to be told about."})
+    return out
+
+
+def transition_issues(raw: dict) -> list:
+    """CR-08 `mechanics.relationships.transitions`. Errors are things that make a transition
+    unsatisfiable or ambiguous: a duplicate id, a `between` with min above max, a tier label the
+    ladder doesn't have. Warnings are ones that leave it working but unreadable: a directive that
+    never says who is leaving (`{name}`), and a `sets_flag` that no declared flag matches, or that
+    two characters would share because their first names match (`{id}` is the first name)."""
+    rel = (raw.get("mechanics") or {}).get("relationships")
+    trans = [t for t in (rel.get("transitions") or []) if isinstance(t, dict)] if isinstance(rel, dict) else []
+    if not trans:
+        return []
+    labels = {t.get("label") for t in rel.get("tiers") or [] if isinstance(t, dict)}
+    declared = {f.get("id") for f in ((raw.get("mechanics") or {}).get("flags") or {}).get("declared") or []
+                if isinstance(f, dict)}
+    names = [n for n in ((raw.get("world") or {}).get("characters") or {})]
+    firsts = {}
+    for n in names:
+        firsts.setdefault(re.sub(r"[^a-z0-9]+", "_", n.split()[0].lower()).strip("_") if n.split() else "", []).append(n)
+    out, seen = [], set()
+    for t in trans:
+        tid = t.get("id", "")
+        if tid in seen:
+            out.append({"id": "transitions", "severity": "error", "message": f"Relationship transition {tid} is authored twice."})
+        seen.add(tid)
+        when = t.get("when") if isinstance(t.get("when"), dict) else {}
+        between = when.get("between")
+        if isinstance(between, list) and len(between) == 2 and all(_number(b) for b in between) and between[0] > between[1]:
+            out.append({"id": "transitions", "severity": "error",
+                        "message": f"Transition {tid}: between runs from {between[0]} to {between[1]}, so it can never hold."})
+        for key in ("tier_gte", "tier_lte"):
+            if key in when and when[key] not in labels:
+                out.append({"id": "transitions", "severity": "error",
+                            "message": f"Transition {tid} tests the tier {when[key]}, which is not a tier of the relationship ladder."})
+        if "{name}" not in (t.get("directive") or ""):
+            out.append({"id": "transitions", "severity": "warning",
+                        "message": f"Transition {tid}'s directive never says {{name}}, so the narrator isn't told who it is about."})
+        flag = t.get("sets_flag")
+        if not flag:
+            continue
+        if "{id}" not in flag:
+            if flag not in declared:
+                out.append({"id": "transitions", "severity": "warning",
+                            "message": f"Transition {tid} sets {flag}, which is not a declared flag, so no condition can read it."})
+            continue
+        missing = sorted(n for n in names if flag.replace("{id}", re.sub(r"[^a-z0-9]+", "_", n.split()[0].lower()).strip("_")) not in declared) if names else []
+        if names and missing:
+            out.append({"id": "transitions", "severity": "warning",
+                        "message": f"Transition {tid} sets {flag}, but for {', '.join(missing)} the resulting flag is not "
+                                   "declared in mechanics.flags.declared, so no condition can read it."})
+        for first, who in firsts.items():
+            if len(who) > 1:
+                out.append({"id": "transitions", "severity": "error",
+                            "message": f"Transition {tid}'s {{id}} is a first name, and {', '.join(who)} share {first}, "
+                                       "so they would set the same flag."})
+    return out
+
+
 def world_issues(raw: dict) -> list:
     """World-tab hygiene, under L16 (dangling ids) where an id is involved: a `connected_to`, an
     opening location or a gate `target` naming a location the story doesn't author. Only
@@ -779,7 +873,7 @@ def lint(raw: dict, model: dict) -> list:
     schema = schema_errors(raw)
     return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw) + revelation_issues(raw) + world_issues(raw) + thread_cast_issues(raw)
             + ending_arc_issues(raw) + bond_issues(raw) + side_thread_issues(raw) + derived_issues(raw)
-            + scene_length_issues(raw)
+            + scene_length_issues(raw) + thread_reward_issues(raw) + transition_issues(raw)
             + stat_tier_issues(raw) + structural_issues(model) + cast_issues(model))
 
 

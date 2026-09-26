@@ -271,6 +271,21 @@ def validate(story):
         print("WARNING: plot.pacing.story_clock (CR-13) is authored but this build does not "
               "read it yet - every turn, idle or not, still counts against the ending budget.")
 
+    # CR-07's thread completion rewards: the board authors them, nothing pays them yet.
+    subs = (story.get("mechanics") or {}).get("subplots") or {}
+    threads = (story.get("plot") or {}).get("subplots") or {}
+    if subs.get("completion_rewards") or subs.get("near_completion_margin") or any(
+            isinstance(t, dict) and (t.get("on_complete") or {}).get("stat_events") for t in threads.values()):
+        print("WARNING: thread completion rewards (CR-07: mechanics.subplots.completion_rewards, "
+              "near_completion_margin or a thread's on_complete) are authored but this build does "
+              "not pay them yet - a completed thread moves no stat.")
+
+    # CR-08's relationship transitions: authored on the board, nothing evaluates them yet.
+    if ((story.get("mechanics") or {}).get("relationships") or {}).get("transitions"):
+        print("WARNING: mechanics.relationships.transitions (CR-08) are authored but this build "
+              "does not evaluate them yet - no relationship ever triggers an exit directive or sets "
+              "its flag.")
+
     # And CR-14's scene length by moment: only narration.scene_length is read today.
     if (story.get("narration") or {}).get("scene_length_by_moment"):
         print("WARNING: narration.scene_length_by_moment (CR-14) is authored but this build does "

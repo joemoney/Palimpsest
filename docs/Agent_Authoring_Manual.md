@@ -441,12 +441,19 @@ thread carries are warnings. An ending with waypoints but no carrier at all is a
 | `span` | `single_act` (default) or `multi_act` (takes more beats to complete, runs across acts). |
 | `delivers` | Waypoints this thread carries, `"<ending id>.<waypoint id>"`. |
 | `cast` | Authored character names. Author-only for now. |
-| `completion_threshold`, `ties_to_main_plot`, `on_complete` | Optional. Leave `completion_threshold` out to get the default. |
+| `completion_threshold`, `ties_to_main_plot` | Optional. Leave `completion_threshold` out to get the default. |
+| `on_complete` | Optional (CR-07, **not built**: loads with a warning). `{"stat_events": ["lattice.rejoined"]}`, names from some axis's `costs`; lint errors on a name no axis prices. Overrides the priority row in `mechanics.subplots.completion_rewards`. |
 
 Thread progress is priced by the engine from what the model reports (touched / advanced /
 decisive / resolved). `mechanics.subplots: {"engine": "weighted_threads"}` must be declared
 whenever the story authors threads, or they never progress. `weights` (optional) overrides the
 default prices.
+
+CR-07 (**not built**, loads with a warning) adds two optional keys to that block:
+`"completion_rewards": {"high": ["section.reclaimed"], "medium": ["node.relit"], "low": []}`
+(the stat events a thread pays on completion, by its `priority`; every name must be a key of an
+axis's `costs`) and `"near_completion_margin": 15` (how close to its threshold a thread must be
+before the narrator is told it may resolve this scene; no default).
 
 ---
 
@@ -484,6 +491,16 @@ Each block goes under `mechanics` with its `engine` key.
 - `limit`: roster size. Past it, the character closest to neutral is forgotten. Authored
   characters never are.
 - `scale`, `cap_per_window`, `unreciprocated_factor`.
+- `transitions` (CR-08, **not built**: loads with a warning): one-shot directives on a
+  relationship's history. Each is `{"id", "when", "directive", "sets_flag"?, "once_per_character"?}`.
+  `when` takes the modifiers of a `relationship` condition leaf, with the character bound by the
+  engine: `peak_gte`, `gte`, `lte`, `between`, `tier_gte`, `tier_lte` (at least one; all must
+  hold). `directive` must say `{name}`. `sets_flag` may say `{id}`, the character's first name
+  lowercased (`Lark Ferris` -> `lark_departed`); declare every resulting flag. Example:
+  `{"id": "drifting_out", "when": {"peak_gte": 25, "between": [-10, 10]}, "directive": "{name} is leaving this story: give them an exit that costs something, then let them be gone", "sets_flag": "{id}_departed"}`.
+  Lint errors on a duplicate id, an inverted `between`, a tier label the ladder lacks, or two
+  characters sharing a first name; it warns on a silent directive or an undeclared flag.
+  `name` and `id` are engine-filled there, so a `derived` value can't use either.
 
 ### Inventory: `tagged_items`
 

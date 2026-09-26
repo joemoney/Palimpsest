@@ -408,7 +408,18 @@
       "type": "object",
       "properties": {
         "engine": { "const": "weighted_threads" },
-        "weights": { "type": "object", "additionalProperties": { "type": "number" } }
+        "weights": { "type": "object", "additionalProperties": { "type": "number" } },
+        "completion_rewards": {
+          "$comment": "CR-07 (Story_Mechanics_Update.md): the stat events a thread pays when it completes, by the thread's priority (high / medium / low). Each name must be a key of some mechanics.stats.axes.<axis>.costs. A thread's own on_complete.stat_events overrides its priority's row; generated threads inherit by priority. Not built yet: mechanics.validate() warns while nothing reads it.",
+          "x-not-built": true,
+          "type": "object",
+          "additionalProperties": { "type": "array", "items": { "type": "string" } }
+        },
+        "near_completion_margin": {
+          "$comment": "CR-07: how close to its completion threshold a thread must be for the narrator to be told it may resolve this scene. No engine default: how early to foreshadow a payoff is a creative decision.",
+          "x-not-built": true,
+          "type": "integer", "minimum": 1
+        }
       },
       "patternProperties": { "^_": true },
       "additionalProperties": false
@@ -454,10 +465,45 @@
           "patternProperties": { "^_": true },
           "additionalProperties": false
         },
-        "unreciprocated_factor": { "type": "number" }
+        "unreciprocated_factor": { "type": "number" },
+        "transitions": {
+          "$comment": "CR-08 (Story_Mechanics_Update.md): one-shot directives when a relationship's history crosses a line, e.g. once warm and now drifting to neutral, the character exits. Each transition is checked against every relationship after its deltas, once per character unless once_per_character is false. Not built yet: mechanics.validate() warns while nothing reads it.",
+          "x-not-built": true,
+          "type": "array",
+          "items": { "$ref": "#/$defs/relationship_transition" }
+        }
       },
       "if": { "required": ["engine"] },
       "then": { "required": ["registers"] },
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "relationship_when": {
+      "$comment": "The modifiers CR-02's relationship leaf takes, with the character bound by the engine to each relationship in turn (so no name here). All that are present must hold. peak is the highest score the relationship has reached, falling back to its current score.",
+      "type": "object",
+      "properties": {
+        "peak_gte": { "type": "number" },
+        "gte": { "type": "number" },
+        "lte": { "type": "number" },
+        "between": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+        "tier_gte": { "type": "string" },
+        "tier_lte": { "type": "string" }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+
+    "relationship_transition": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "when": { "$ref": "#/$defs/relationship_when" },
+        "once_per_character": { "description": "Default true: fire once per character, ever.", "type": "boolean" },
+        "directive": { "description": "Narrator-visible for the one turn it fires. {name} is the character.", "type": "string" },
+        "sets_flag": { "description": "Flag set once the exit scene is narrated. {id} is the character's first name, lowercased (Lark Ferris -> lark). Declare each resulting flag in mechanics.flags.declared so a condition can read it.", "type": "string" }
+      },
+      "required": ["id", "when", "directive"],
       "patternProperties": { "^_": true },
       "additionalProperties": false
     },

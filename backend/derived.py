@@ -32,6 +32,7 @@ TOKEN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 BUILTIN = {
     "plot.opening_scene": {"player_name"},
     "mechanics.pacing_loop.rules": {"counter_value", "deferrals", "unspent_leverage", "queued_reveal"},
+    "mechanics.relationships.transitions": {"name", "id"},
 }
 RESERVED = set().union(*BUILTIN.values())
 

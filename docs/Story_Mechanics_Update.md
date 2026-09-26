@@ -409,12 +409,14 @@ Authored subplots may override with `"on_complete": {"stat_events": ["lattice.re
 **Schema:** extend `scored_axis` tiers with transition hooks and track per-character `peak`.
 ```json
 "transitions": [
-  {"id": "drifting_out", "when": {"relationship_self": {"peak_gte": 25, "between": [-10, 10]}},
+  {"id": "drifting_out", "when": {"peak_gte": 25, "between": [-10, 10]},
    "once_per_character": true,
    "directive": "{name} is leaving this story: give them an exit that costs something, then let them be gone",
    "sets_flag": "{id}_departed"}
 ]
 ```
+**As authored on the board:** the transitions sit under `mechanics.relationships.transitions`. `when` is flat, taking the modifiers of CR-02's `relationship` leaf (`peak_gte`, `gte`, `lte`, `between`, `tier_gte`, `tier_lte`) with the engine binding the character (an earlier draft wrapped it in a `relationship_self` leaf, which added nothing). `{name}` in the directive is the character; `{id}` in `sets_flag` is the character's first name, lowercased, because `Lark Ferris` sets `lark_departed`. `once_per_character` defaults to true. Lint checks the resulting flags are declared.
+
 **Engine behaviour:** evaluated after relationship deltas. When it fires, it injects a one-turn directive naming the character and marks the character `exiting`. After the exit scene, the state-update pass may set `departed`, which removes them from the relationship roster prompt and sets the flag (e.g. `lark_departed`), which CR-05 uses to prune destinations.
  
 **Acceptance:** fires once per character; never fires for a character whose peak stayed below 25; a departure prunes any destination whose `viable_while` depends on that character.

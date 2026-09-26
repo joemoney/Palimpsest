@@ -808,6 +808,30 @@ edits, so the two can't disagree. The budget fields relabel to "story-clock turn
 from existing observations, the streak, lean-forward options, the push) is specified in
 `Story_Mechanics_Update.md` CR-13 and waits for demand like the rest of S5.
 
+**CR-07 on the board (2026-09-26).** The thread panel's `on_complete.stat_events` already
+existed; this adds the rest. `mechanics.subplots` gained `completion_rewards` (events by priority)
+and `near_completion_margin` in the schema, edited from Forms › Thread progress by the generic
+form. A thread box shows a ★ reward chip - its own, or the one inherited from its priority's row,
+and the panel says which. `thread_reward_issues` (and the board's mirror in the health panel)
+errors on an event no axis's `costs` prices, and warns on a margin with no reward anywhere.
+`mechanics.validate()` warns while nothing pays it. The engine half - pre-arm line, applying the
+events once, the `reward_narrated` catch-up - is specified in `Story_Mechanics_Update.md` CR-07
+and waits for demand.
+
+**CR-08 on the board (2026-09-26).** `mechanics.relationships.transitions` in the schema
+(`relationship_transition`, `relationship_when`), edited by the generic form under Forms ›
+Relationships. A new `x-not-built` schema annotation puts the *not built* chip on a generic form
+field (also on CR-07's two fields). `transition_issues` lints duplicate ids, an inverted
+`between`, an unknown tier label, a directive without `{name}`, undeclared resulting flags and
+two characters with the same first name. `{name}` and `{id}` are registered as engine-filled
+placeholders for that path in `derived.BUILTIN`, so CR-04's scanner accepts them and a derived
+value can't shadow them. Design points settled here, since the spec left them open: `when`
+is flat (the `relationship_self` wrapper added nothing), and `{id}` is the first name because
+the only real story keys `Lark Ferris` but flags `lark_departed`. The engine half (per-character
+peak already exists as a condition input; evaluating after deltas, the `exiting` mark, `departed`)
+waits for demand. **CR-09** was not built on the board: `Design_Overhaul.md` marks it deferred
+pending measurement, and its own spec says to A/B the token cost before adopting.
+
 **CR-14 on the board (2026-09-26).** `narration.scene_length_by_moment` (`beats`, `directive`,
 `finale`, `inquiry`, each a `word_range`) in the schema, edited from a **Scene length** table at
 the foot of Forms › Narration - one table for every range including the existing

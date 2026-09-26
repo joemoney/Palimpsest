@@ -512,7 +512,14 @@ fix that in Step 8.
      destination is removed.
    - **On complete: stat events**: comma-separated cost keys applied when
      the thread completes, e.g. `lattice.rejoined`. These only mean something
-     in a story that prices its stats (see Step 13).
+     in a story that prices its stats (see Step 13), and the health panel
+     flags a key no axis prices. A thread with a reward shows a ★ chip on its
+     box. A thread with none inherits its priority's row of **Forms › Thread
+     progress › Completion rewards** (high / medium / low), and the panel says
+     so; **Near completion margin** in the same section sets how close to
+     finishing a thread must be before the narrator is told it may resolve
+     this scene. The engine that pays these is not built: a story that sets
+     any of it loads with a warning.
 4. Under **Characters in this thread**, tick who the thread involves. The
    list comes from the Cast tab, and a character whose name already appears
    in the thread's text is marked so you can spot them. Ticked characters
@@ -806,6 +813,18 @@ row that applies wins, and a blank row falls through. Below it, **Questions**
 sets a shorter range the narrator uses when the player only asks something or
 looks around. Only the default is read today. The rest is marked *not built*,
 and a story that sets it loads with a warning.
+
+**Relationships** ends with **Transitions** (*not built*): one-shot directives
+for a relationship's history, e.g. a character who was once warm and has
+drifted back to neutral is leaving, so the narrator is told to give them an
+exit that costs something. Each has an **id**, a **when** (a peak the
+relationship reached, plus a score range or tier band; the character is
+whichever relationship is being checked), a **directive** that says
+`{name}`, and optionally **sets flag**, where `{id}` is the character's first
+name in lowercase (`Lark Ferris` gives `lark_departed`). Declare each
+resulting flag in the Forms tab's flags, so an ending's *Viable while* can
+read it. Fields marked *not built* load with a warning and do nothing in
+play yet.
 
 - **The forms are built from the template schema itself**, so they offer
   exactly the fields the story format allows. Each field's help text comes
