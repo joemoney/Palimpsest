@@ -258,7 +258,9 @@ here for when the story needs a deliberate push.
 *Writing the JSON by hand instead, or asking an AI agent to? See
 [docs/Agent_Authoring_Manual.md](docs/Agent_Authoring_Manual.md). It covers the same file,
 section by section, with `python3 scripts/lint_template.py <slug>` as the command-line
-Validate.*
+Validate.* *Working with an AI assistant while you use the board? Give it
+[docs/Assistant_CoAuthor_Manual.md](docs/Assistant_CoAuthor_Manual.md) as a project file: it
+answers with the content and the exact tab, button and field to paste each piece into.*
 
 The storyboard is a visual editor at `/author`. You use it to lay out a
 story's structure: its endings, the threads that lead to them, the cast, and

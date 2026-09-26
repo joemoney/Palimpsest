@@ -5,7 +5,8 @@ This manual is for an agent (or a person) who writes a story template **by editi
 and this manual describe the same file. Everything the board can do, you can do here, and a
 story written this way opens on the board unchanged if you follow the shapes below.
 
-Read CLAUDE.md first if you will touch engine code. You don't need it to write a story.
+Read CLAUDE.md first if you will touch engine code. You don't need it to write a story. If
+you are helping a human who uses the board, use `docs/Assistant_CoAuthor_Manual.md` instead.
 
 Contents:
 1. [The loop](#1-the-loop)
