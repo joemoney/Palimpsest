@@ -271,6 +271,11 @@ def validate(story):
         print("WARNING: plot.pacing.story_clock (CR-13) is authored but this build does not "
               "read it yet - every turn, idle or not, still counts against the ending budget.")
 
+    # And CR-14's scene length by moment: only narration.scene_length is read today.
+    if (story.get("narration") or {}).get("scene_length_by_moment"):
+        print("WARNING: narration.scene_length_by_moment (CR-14) is authored but this build does "
+              "not read it yet - every scene still uses narration.scene_length.")
+
     # CR-05's declare-to-bind case: endings authored with no engine would never be steered
     # toward or reached, and - with no player end-story command (D6) - the story could never
     # end at all.

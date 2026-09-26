@@ -119,6 +119,7 @@ by leaving the mechanic out.
 | `mechanics.flags` | (no engine key) | Declared flags are readable by conditions. **Gap:** the state-update pass is not yet told each flag's `detect` text, so a declared flag is set only if the model happens to use its exact id. |
 | `mechanics.tracked_entity` | (no engine key) | Built |
 | `plot.pacing.story_clock` | none | **Not built** (loads, with a warning; every turn still counts) |
+| `narration.scene_length_by_moment` | none | **Not built** (loads, with a warning; every scene still uses `scene_length`) |
 | `mechanics.lore` | `keyed_lore` | **Not built** (refuses load) |
 | `mechanics.bonds` | `scored_bonds` | **Not built** (refuses load) |
 | `mechanics.side_threads` | `episodic_threads` | **Not built** (refuses load) |
@@ -230,6 +231,19 @@ boundaries, sent every turn).
 `pov` (required, e.g. `"second-person"`), `option_pov` (the voice of the choices offered to the
 player, e.g. `"first-person"`), `scene_length` (`{"min": 250, "max": 350}`, in words), `style`
 (list of short instructions).
+
+Optional `scene_length_by_moment` (CR-14, not built) sets word ranges per moment:
+
+```json
+{"beats": {"respite": {"min": 250, "max": 350}},
+ "directive": {"min": 450, "max": 550},
+ "finale": {"min": 500, "max": 650},
+ "inquiry": {"min": 120, "max": 220}}
+```
+
+The first that applies wins: finale, then a fired directive, then the previous turn's beat, then
+`scene_length`. `inquiry` is judged by the narrator. Every range needs both `min` and `max`, and
+beat names must come from the pacing loop.
 
 ### 6.4 `world`
 

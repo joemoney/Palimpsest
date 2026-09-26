@@ -808,6 +808,14 @@ edits, so the two can't disagree. The budget fields relabel to "story-clock turn
 from existing observations, the streak, lean-forward options, the push) is specified in
 `Story_Mechanics_Update.md` CR-13 and waits for demand like the rest of S5.
 
+**CR-14 on the board (2026-09-26).** `narration.scene_length_by_moment` (`beats`, `directive`,
+`finale`, `inquiry`, each a `word_range`) in the schema, edited from a **Scene length** table at
+the foot of Forms › Narration - one table for every range including the existing
+`scene_length` default, which the generic form now skips so each field has one editor.
+`scene_length_issues` lints inverted ranges, per-beat ranges for beats the pacing loop doesn't
+define (L10) and per-beat ranges with no pacing loop. `mechanics.validate()` warns while nothing
+reads it.
+
 ---
 
 ## Phase S4: Lore, visibility and the narrator preview

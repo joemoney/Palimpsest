@@ -640,6 +640,41 @@ def _creation_only(cond) -> bool:
     return all(k == "creation" or (k in ("all", "any", "not") and _creation_only(v)) for k, v in cond.items())
 
 
+def scene_length_issues(raw: dict) -> list:
+    """`narration.scene_length` and CR-14's `scene_length_by_moment`: a range whose min is above
+    its max can't be followed; a per-beat range naming a beat the pacing loop doesn't define can
+    never apply (L10); per-beat ranges in a story with no pacing loop never apply at all."""
+    narration = raw.get("narration") or {}
+    out = []
+
+    def check_range(label, rng):
+        if isinstance(rng, dict) and isinstance(rng.get("min"), int) and isinstance(rng.get("max"), int) \
+                and rng["min"] > rng["max"]:
+            out.append({"id": "narration", "severity": "error",
+                        "message": f"Scene length for {label} runs from {rng['min']} to {rng['max']} words: the minimum is above the maximum."})
+
+    check_range("every other scene", narration.get("scene_length"))
+    by = narration.get("scene_length_by_moment")
+    if not isinstance(by, dict):
+        return out
+    for key, label in (("finale", "the finale"), ("directive", "a fired pacing directive"), ("inquiry", "a question")):
+        check_range(label, by.get(key))
+    beats_cfg = by.get("beats") or {}
+    pacing = (raw.get("mechanics") or {}).get("pacing_loop")
+    known = set((pacing or {}).get("beats") or {}) if isinstance(pacing, dict) else set()
+    if beats_cfg and not isinstance(pacing, dict):
+        out.append({"id": "narration", "severity": "warning",
+                    "message": "Scene lengths are set per beat, but the story has no pacing loop, so no turn is ever "
+                               "classified and they never apply."})
+    for beat, rng in beats_cfg.items():
+        check_range(f"after a {beat} scene", rng)
+        if isinstance(pacing, dict) and beat not in known:
+            out.append({"id": "L10", "severity": "error",
+                        "message": f"Scene length is set for after a {beat} scene, but {beat} is not a beat in "
+                                   "mechanics.pacing_loop.beats."})
+    return out
+
+
 def world_issues(raw: dict) -> list:
     """World-tab hygiene, under L16 (dangling ids) where an id is involved: a `connected_to`, an
     opening location or a gate `target` naming a location the story doesn't author. Only
@@ -744,6 +779,7 @@ def lint(raw: dict, model: dict) -> list:
     schema = schema_errors(raw)
     return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw) + revelation_issues(raw) + world_issues(raw) + thread_cast_issues(raw)
             + ending_arc_issues(raw) + bond_issues(raw) + side_thread_issues(raw) + derived_issues(raw)
+            + scene_length_issues(raw)
             + stat_tier_issues(raw) + structural_issues(model) + cast_issues(model))
 
 

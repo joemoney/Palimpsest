@@ -66,9 +66,35 @@
           "patternProperties": { "^_": true },
           "additionalProperties": false
         },
-        "style": { "type": "array", "items": { "type": "string" } }
+        "style": { "type": "array", "items": { "type": "string" } },
+        "scene_length_by_moment": { "$ref": "#/$defs/scene_length_by_moment" }
       },
       "required": ["pov"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "word_range": {
+      "type": "object",
+      "properties": { "min": { "type": "integer", "minimum": 1 }, "max": { "type": "integer", "minimum": 1 } },
+      "required": ["min", "max"],
+      "patternProperties": { "^_": true },
+      "additionalProperties": false
+    },
+
+    "scene_length_by_moment": {
+      "$comment": "CR-14 (Story_Mechanics_Update.md): the scene's word range follows the moment, chosen in code before narration - finale, then a fired pacing directive (or CR-13's push), then the previous turn's beat, then narration.scene_length. inquiry is narrator-judged. Absent means every scene uses scene_length. Not built yet: mechanics.validate() warns while nothing reads it.",
+      "type": "object",
+      "properties": {
+        "beats": {
+          "description": "A range per pacing-loop beat, used for the turn after a scene classified as that beat.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/word_range" }
+        },
+        "directive": { "description": "When a pacing directive (or the idle-turn push) fires this turn.", "$ref": "#/$defs/word_range" },
+        "finale": { "description": "Every turn once an ending is committed.", "$ref": "#/$defs/word_range" },
+        "inquiry": { "description": "Narrator-judged: when the player's action is only a question or a look around.", "$ref": "#/$defs/word_range" }
+      },
       "patternProperties": { "^_": true },
       "additionalProperties": false
     },

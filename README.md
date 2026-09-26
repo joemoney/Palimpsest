@@ -798,6 +798,15 @@ relationships, inventory, thread progress, the pacing loop, progression,
 gates, the tracked entity). Pick a section on the left. The protagonist,
 character creation and the opening are on the Diagram tab's Start cards.
 
+**Narration** ends with a **Scene length** table: how many words the narrator
+is asked for at each kind of moment. The rows are the finale, a turn where a
+pacing directive fires, the turn after each pacing-loop beat (e.g. a short
+range after a quiet scene), and the default for every other scene. The first
+row that applies wins, and a blank row falls through. Below it, **Questions**
+sets a shorter range the narrator uses when the player only asks something or
+looks around. Only the default is read today. The rest is marked *not built*,
+and a story that sets it loads with a warning.
+
 - **The forms are built from the template schema itself**, so they offer
   exactly the fields the story format allows. Each field's help text comes
   from the schema.

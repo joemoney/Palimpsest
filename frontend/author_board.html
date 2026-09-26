@@ -2447,6 +2447,52 @@ function renderObjectBody(obj,sch,into,ctx){
       f.appendChild(rawJsonBox(obj[k],v=>{if(v===undefined)delete obj[k];else obj[k]=v;formsChanged()}));into.appendChild(f)}
   }
 }
+/* ---------- CR-14: scene length by moment (narration.scene_length_by_moment) ----------
+   One table for every word range a scene can be asked for, in the order the engine will pick
+   them. Rendered inside Forms > Narration, which skips both keys in its generic form so there
+   is a single editor for each. Nothing reads scene_length_by_moment yet (validate warns). */
+function renderSceneLengths(N,into){
+  const sec=el('div');sec.style.cssText='display:grid;gap:8px;margin-top:14px';
+  const h=el('h3',null,'Scene length ');h.style.cssText='font:600 15px/1.2 var(--display);margin:0';sec.appendChild(h);
+  sec.appendChild(el('p','note','How many words the narrator is asked for. The first row that applies to a turn wins; a blank row falls through to the next. Only the default is read by this build: the rest is designed (CR-14) and marked not built.'));
+  const def=N.scene_length||{};
+  const tb=el('table','bondgrid');tb.style.width='100%';
+  const hr=el('tr');['Moment','Min words','Max words',''].forEach(t=>hr.appendChild(el('th',null,t)));tb.appendChild(hr);
+  const cell=(get,set,ph)=>{const td=el('td');const i=el('input');i.type='number';i.min='1';const v=get();i.value=v??'';if(ph!=null)i.placeholder=String(ph);i.style.width='84px';
+    i.addEventListener('input',()=>{const t=i.value.trim();set(t===''?undefined:Number(t));formsChanged()});td.appendChild(i);return td};
+  const M=()=>N.scene_length_by_moment||{};
+  const setRange=(path,k,v)=>{ // path: ['finale'] | ['beats','respite']
+    const root=N.scene_length_by_moment=N.scene_length_by_moment||{};
+    let o=root;for(let i=0;i<path.length-1;i++)o=o[path[i]]=o[path[i]]||{};
+    const leaf=o[path[path.length-1]]=o[path[path.length-1]]||{};
+    if(v===undefined)delete leaf[k];else leaf[k]=v;
+    if(!Object.keys(leaf).length)delete o[path[path.length-1]];
+    if(root.beats&&!Object.keys(root.beats).length)delete root.beats;
+    if(!Object.keys(root).length)delete N.scene_length_by_moment};
+  const getRange=(path,k)=>{let o=M();for(const p of path)o=(o||{})[p];return (o||{})[k]};
+  const row=(label,note,path,built)=>{const tr=el('tr');const td=el('td');td.style.textAlign='left';
+    const l=el('div',null,label);l.style.fontWeight='600';td.appendChild(l);if(note){const n=el('div','fieldnote',note);td.appendChild(n)}tr.appendChild(td);
+    if(path){tr.appendChild(cell(()=>getRange(path,'min'),v=>setRange(path,'min',v),'\u2014'));tr.appendChild(cell(()=>getRange(path,'max'),v=>setRange(path,'max',v),'\u2014'))}
+    const bt=el('td');if(!built){bt.appendChild(el('span','vis notbuilt','not built'))}tr.appendChild(bt);tb.appendChild(tr);return tr};
+  row('The finale','Every turn once an ending is committed.',['finale']);
+  row('A pacing directive fires','Also the idle-turn push. A turn where the story forces something to happen.',['directive']);
+  const beats=beatNames(),authored=Object.keys(M().beats||{});
+  beats.forEach(b=>row(`After a ${b} scene`,'The turn after a scene the pacing loop classified as this beat.',['beats',b]));
+  authored.filter(b=>!beats.includes(b)).forEach(b=>{const tr=row(`After a ${b} scene`,'Not a beat in this story\u2019s pacing loop, so this never applies.',['beats',b]);tr.querySelector('.fieldnote').className='fieldnote err'});
+  if(!beats.length){const tr=el('tr');const td=el('td');td.colSpan=4;td.style.textAlign='left';td.appendChild(el('span','fieldnote','No pacing-loop beats (Forms \u203a Pacing loop), so there are no per-beat rows.'));tr.appendChild(td);tb.appendChild(tr)}
+  // The default: narration.scene_length, which the engine reads today.
+  const dtr=el('tr');const dtd=el('td');dtd.style.textAlign='left';const dl=el('div',null,'Every other scene (default)');dl.style.fontWeight='600';dtd.appendChild(dl);
+  dtd.appendChild(el('div','fieldnote','narration.scene_length. Read today; used whenever no row above applies.'));dtr.appendChild(dtd);
+  const setDef=(k,v)=>{N.scene_length=N.scene_length||{};if(v===undefined)delete N.scene_length[k];else N.scene_length[k]=v;if(!Object.keys(N.scene_length).length)delete N.scene_length};
+  dtr.appendChild(cell(()=>def.min,v=>setDef('min',v),470));dtr.appendChild(cell(()=>def.max,v=>setDef('max',v),500));dtr.appendChild(el('td'));tb.appendChild(dtr);
+  sec.appendChild(tb);
+  sec.appendChild(el('h4',null,'Questions'));
+  sec.appendChild(el('p','note','Judged by the narrator, not the engine: when the player\u2019s action is only a question or a look around, the narrator is asked to answer in this range instead and end on something the player can act on. Never on a finale or directive turn.'));
+  const qt=el('table','bondgrid');const qr=el('tr');const qtd=el('td');qtd.style.textAlign='left';const ql=el('div',null,'Only a question or a look around');ql.style.fontWeight='600';qtd.appendChild(ql);qr.appendChild(qtd);
+  qr.appendChild(cell(()=>getRange(['inquiry'],'min'),v=>setRange(['inquiry'],'min',v),'e.g. 120'));qr.appendChild(cell(()=>getRange(['inquiry'],'max'),v=>setRange(['inquiry'],'max',v),'e.g. 220'));
+  const qb=el('td');qb.appendChild(el('span','vis notbuilt','not built'));qr.appendChild(qb);qt.appendChild(qr);sec.appendChild(qt);
+  into.appendChild(sec);
+}
 function renderForms(){
   const fv=$('#formsView');const top=fv.scrollTop;fv.innerHTML='';
   const sections=(model.form_sections||[]).filter(([p])=>!START_SECTIONS.includes(p));
@@ -2473,6 +2519,7 @@ function renderForms(){
       const ctx={section:path,rel:'',onStructure:structure};
       const rs=resolveSchema(sch)||{};
       if(rs.type==='array'||rs.oneOf||!(rs.properties||rs.additionalProperties))body.appendChild(renderFormField(holder,'v',sch,{...ctx,label,required:true}));
+      else if(path==='narration'){renderObjectBody(holder.v,sch,body,{...ctx,skip:['scene_length','scene_length_by_moment']});renderSceneLengths(holder.v,body)}
       else renderObjectBody(holder.v,sch,body,ctx);
       main.appendChild(body);
       const rm=el('button','btn danger','Remove this section');rm.type='button';rm.style.marginTop='18px';

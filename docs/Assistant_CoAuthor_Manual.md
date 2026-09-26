@@ -502,6 +502,17 @@ using the labels the form shows:
 
 For anything long, such as a pacing directive, give the text in its own block.
 
+### 6.11b "Scenes are too long / too padded"
+
+Suggest ranges in **Forms → Narration → Scene length**:
+- a shorter range after the quiet beat;
+- a full range when a pacing directive fires;
+- a **Questions** range (e.g. 120–220 words) for turns where the player only asks something.
+
+Give each as *row → min → max*. Also suggest a `style` line such as "Don't recap the previous
+scene or restate the choices." It isn't built yet: the story loads with a warning, and only the
+default row is used until it is.
+
 ### 6.12 The protagonist, character creation, the opening
 
 - **Protagonist** card (Diagram → Start column):
