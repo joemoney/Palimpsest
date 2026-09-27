@@ -4,6 +4,9 @@
 # Runtime data: per-user saves and the accounts database - not authored content
 data/
 
+# Lock files
+*.lock
+
 # Python
 __pycache__/
 *.py[cod]
