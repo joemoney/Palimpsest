@@ -53,6 +53,8 @@ CR-05 ranks destinations by it; the simulator reports it.
 """
 from collections import namedtuple
 
+import clock
+
 OPEN = "open"
 CLOSED = "closed"
 _POLARITIES = (OPEN, CLOSED)
@@ -469,7 +471,7 @@ def _leaf(kind, value, ctx, polarity, ending) -> Result:
         ok = any(value in (r.get("tags") or []) for r in _inventory(ctx))
         return Result(ok, 1.0 if ok else 0.0, [])
     if kind == "turn_gte":
-        turn = (_state(ctx).get("pacing") or {}).get("turn_count", 0)
+        turn = clock.story_turn(ctx)  # CR-13: the story clock when the story authors one, else turn_count
         ok = _num(value) and turn >= value
         return Result(bool(ok), 1.0 if ok else (max(0.0, turn / value) if _num(value) and value else 0.0), [])
     if kind == "act_gte":

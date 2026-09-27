@@ -26,6 +26,7 @@ tracked as its own item rather than folded into one of the five ports.
 """
 import re
 
+import clock
 from . import (TURN_SCRATCH, Effect, MechanicEngine, ObservationField, register,
                register_effect)
 
@@ -240,9 +241,12 @@ class BoundedCounter(MechanicEngine):
         # decrement. turn_count is already the post-increment "this is turn N" value by the
         # time resolve() runs (see update_state_after_turn), so interval=5 ticks on turn 5,
         # 10, 15... - a story that authors no interval keeps today's every-turn cadence.
-        turn_count = ctx["state"]["pacing"]["turn_count"]
+        # CR-13: drift reads the story clock, so asking questions (which take little in-world time) does not
+        # tick a deadline down; and only on a turn the clock moved, or a parked clock resting on a multiple
+        # of `interval` would tick every idle turn.
+        turn_count = clock.story_turn(ctx)
         for axis, (per_turn, interval) in self.drift(cfg).items():
-            if turn_count % interval == 0:
+            if clock.advanced(ctx) and turn_count % interval == 0:
                 move(axis, per_turn, "per_turn")
         return effects
 

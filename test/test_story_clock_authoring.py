@@ -1,6 +1,6 @@
 """CR-13 story clock, authoring side: `plot.pacing.story_clock` is in the schema, round-trips
 through the board untouched (the Forms tab and the Ending funnel settings both edit the same
-object), and warns at load while no engine reads it (build order: authored first, loudly unread).
+object), and no longer warns at load: the engine reads it (backend/clock.py, test_story_clock.py).
 
 Run directly: python3 test/test_story_clock_authoring.py
 """
@@ -46,11 +46,7 @@ print("OK: story_clock round-trips through the board and turning it off removes 
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
     mechanics.validate(RAW)
-assert "story_clock (CR-13)" in buf.getvalue(), buf.getvalue()
-buf = io.StringIO()
-with contextlib.redirect_stdout(buf):
-    mechanics.validate({"plot": {"pacing": {"nudge_frequency": 8, "act_check_frequency": 12}}})
-assert "story_clock" not in buf.getvalue()
-print("OK: an authored story clock warns at load while no engine reads it; an absent one is silent")
+assert "story_clock" not in buf.getvalue(), "the engine reads it now, so there is nothing to warn about"
+print("OK: an authored story clock loads without a warning")
 
 print("\nALL CHECKS PASSED: test_story_clock_authoring")

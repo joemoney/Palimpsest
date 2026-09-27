@@ -25,6 +25,9 @@ The questions it answers, each with the count behind it (a small n is flagged, n
               the prompt cost of asking.
   nudges      how often the pacing nudge fires and what is in it; directives fired and deferred; turns where
               both landed.
+  story clock how many turns were idle, how many of those were free and how many paid, the longest idle streak,
+              which signals made the other turns count, how often the push fired (or yielded to a pacing rule),
+              how many turns the options leaned forward, and how far the story clock ended behind the turn count.
   nudge steering  what steering added to those nudges: carrier lines carrying a plant, how often the boost
               changed which thread led, hints (and whether they rotate), drive nudges, how often a drive
               nudge yielded to an armed pacing rule, and the characters it all added.
@@ -124,6 +127,7 @@ def analyze_run(events):
     out["flags"] = _flags(kinds, start)
     out["nudges"] = _nudges(kinds)
     out["nudge_steering"] = _nudge_steering(kinds)
+    out["clock"] = _clock(kinds, start)
     out["cost"] = _cost(kinds)
     return out
 
@@ -328,6 +332,41 @@ def _nudges(kinds):
     }
 
 
+def _clock(kinds, start):
+    """CR-13, from the engine's own `clock` events (one per turn on a story that authors a story clock)."""
+    events = kinds.get("clock", [])
+    cfg = (start.get("pacing") or {})
+    if not events:
+        return {"authored": cfg.get("free_idle_streak") is not None, "turns": 0}
+    idle = [e for e in events if e.get("idle")]
+    runs, cur = [], 0
+    for e in events:
+        if e.get("idle"):
+            cur += 1
+        elif cur:
+            runs.append(cur)
+            cur = 0
+    if cur:
+        runs.append(cur)
+    turns = kinds.get("turn", [])
+    lean = sum(1 for t in turns if t.get("lean_forward"))
+    pushes = kinds.get("push", [])
+    last = events[-1]
+    signal_counts = collections.Counter(s for e in events if not e.get("idle") for s in e.get("signals") or [])
+    return {
+        "authored": True, "free_idle_streak": cfg.get("free_idle_streak"), "has_push": cfg.get("has_push"), "turns": len(events),
+        "idle": rate(len(idle), len(events)), "free_idle": sum(1 for e in idle if e.get("free")),
+        "paid_idle": sum(1 for e in idle if not e.get("free")),
+        "idle_runs": len(runs), "longest_idle_streak": max(runs or [0]),
+        "streak_lengths": {str(k): v for k, v in sorted(collections.Counter(runs).items())},
+        "moved_by": dict(signal_counts.most_common()),
+        "pushes_fired": sum(1 for p in pushes if p.get("fired")), "pushes_yielded": sum(1 for p in pushes if not p.get("fired")),
+        "lean_forward_turns": lean,
+        "clock_lag_at_end": (max(e["turn"] for e in events) - last["clock"]) if last.get("clock") is not None else None,
+        "idle_turns": [e["turn"] for e in idle][:30],
+    }
+
+
 def _nudge_steering(kinds):
     nudges = kinds.get("nudge", [])
     with_steering = [e for e in nudges if "mode" in e]
@@ -469,6 +508,17 @@ def render(runs):
         w("\n-- nudges and directives")
         w(f"nudges {n['nudges']} every {n['turns_between']} turns, chars {n['chars']}, parts {n['parts']}; directives fired "
           f"{n['directives_fired']} deferred {n['directives_deferred']} {n['directive_rules']}; turns with both {n['turns_with_nudge_and_directive']}")
+        ck = r["clock"]
+        w("\n-- story clock")
+        if not ck.get("turns"):
+            w(f"authored: {ck.get('authored')}; no clock events in this run")
+        else:
+            w(f"free streak {ck['free_idle_streak']} (push authored: {ck['has_push']}); turns decided {ck['turns']}; idle {_fmt(ck['idle'])} "
+              f"= {ck['free_idle']} free + {ck['paid_idle']} paid; runs {ck['idle_runs']}, longest {ck['longest_idle_streak']}, "
+              f"lengths {ck['streak_lengths']}")
+            w(f"turns that counted were moved by {ck['moved_by']}; pushes fired {ck['pushes_fired']} (yielded to a rule "
+              f"{ck['pushes_yielded']}); options leaned forward on {ck['lean_forward_turns']} turns; story clock ended {ck['clock_lag_at_end']} behind")
+            w(f"idle turns (read these in the transcript): {ck['idle_turns']}")
         ns = r["nudge_steering"]
         w("\n-- nudge steering")
         w(f"nudges with steering fields {ns['nudges_with_steering_fields']} of {ns['nudges']}; carrier plant on a thread line: "

@@ -873,6 +873,8 @@ No new observation field and no new LLM call: it is a function of the observatio
 "story_clock": 41, "idle_streak": 2, "push_fired_for_streak": false
 ```
 
+**Built** (2026-09-27, `backend/clock.py`; see AUTHORING_TOOL_PHASES.md S5 for the decisions made in passing).
+
 **Authoring tool.**
 - Ending funnel settings (Story health panel) get an **Idle turns** section: the free streak and the push directive. The Forms tab's Pacing section edits the same fields.
 - The Timeline bar and budget fields say their turns are story-clock turns when the clock is authored.

@@ -42,9 +42,10 @@ import state_store
 # The steering feature set writing this log. Bump when a piece lands, so two runs can be compared.
 # steering-1: declared-flag detect, PLANT in act generation, early carrier activation.
 # steering-2: + the nudge consumers: carrier priority and plant on a thread's line, hints, drive nudges.
-TRACE_BUILD = "steering-2"
+# steering-3: + the story clock (CR-13): idle turns, the free streak, lean-forward options and the push.
+TRACE_BUILD = "steering-3"
 FEATURES = {"flags_detect": True, "plant": True, "early_activation": True,
-            "carrier_nudge": True, "hint": True, "drive_nudge": True, "texture_only": False}
+            "carrier_nudge": True, "hint": True, "drive_nudge": True, "texture_only": False, "story_clock": True}
 
 _MAX_STR, _MAX_ITEMS = 240, 60
 
@@ -215,7 +216,9 @@ def _story_summary(ctx) -> dict:
         pacing = plot.get("pacing") or {}
         out["pacing"] = {"nudge_frequency": pacing.get("nudge_frequency"),
                          "act_check_frequency": pacing.get("act_check_frequency"),
-                         "max_parallel_subplots": pacing.get("max_parallel_subplots")}
+                         "max_parallel_subplots": pacing.get("max_parallel_subplots"),
+                         "free_idle_streak": (pacing.get("story_clock") or {}).get("free_idle_streak"),
+                         "has_push": bool((pacing.get("story_clock") or {}).get("push_directive"))}
         subplots = plot.get("subplots") or {}
         out["threads"] = {sid: {"role": sp.get("role", "spine"),
                                 "start": "active" if sp.get("starts_active") else "when" if sp.get("activate_when") else "manual",

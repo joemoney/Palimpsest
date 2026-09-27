@@ -1036,7 +1036,7 @@
         "act_check_frequency": { "type": "integer" },
         "max_parallel_subplots": { "type": "integer" },
         "story_clock": {
-          "$comment": "CR-13 (Story_Mechanics_Update.md): turns that move nothing don't spend the story's budget, up to a free streak. Absent means every turn counts. Not built yet: mechanics.validate() warns while nothing reads it.",
+          "$comment": "CR-13 (Story_Mechanics_Update.md): turns that move nothing don't spend the story's budget, up to a free streak. Absent means every turn counts. Read by the engine (backend/clock.py): the ending budget and its checks, the act-check cadence, turn_gte conditions and stat per_turn drift run on a second counter that idle turns past the free streak advance.",
           "type": "object",
           "properties": {
             "free_idle_streak": {

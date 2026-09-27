@@ -89,6 +89,8 @@ def _overlay(ctx: dict, partial: dict) -> None:
     for sid, sp in seeded_plot["subplots"].items():
         plot["subplots"].setdefault(sid, {}).update(sp)
     state["pacing"]["turn_count"] = partial["pacing"]["turn_count"]
+    if "story_clock" in partial["pacing"]:  # CR-13: the sample's Turn is the clock's value too
+        state["pacing"]["story_clock"] = partial["pacing"]["story_clock"]
 
     for name, entry in partial["characters"].items():
         state["characters"].setdefault(name, {"first_seen_turn": 0}).update(

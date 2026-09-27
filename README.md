@@ -782,7 +782,7 @@ example, the story is never forced to an ending, so it ends only when an
 ending becomes ready. The failure-ending row shows a tick at each failure
 ending's min turn.
 
-Under the same settings, **Idle turns** (marked *not built*) makes turns that
+Under the same settings, **Idle turns** makes turns that
 move nothing free, a few at a time: the player asks a question or looks
 around, and no thread, flag, waypoint, fragment, stat, relationship, item or
 place changes. Click **+ Make idle turns free**, then set **Free idle turns in

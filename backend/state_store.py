@@ -22,6 +22,7 @@ import uuid
 import filelock
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import clock
 import mechanics
 import migrate_v1
 from frozen_dict import assert_unmutated, freeze, thaw
@@ -210,6 +211,18 @@ def write_template(story_slug: str, raw: dict, *, bump_version: bool = True) -> 
 # Fresh-save construction (first play) and reconciliation (every later load)
 # ---------------------------------------------------------------------------
 
+def _seed_pacing(story: dict) -> dict:
+    pacing = {
+        "turn_count": 0,
+        "turns_since_nudge": 0,
+        "turns_since_act_check": 0,
+        "subplots_completed_this_act": 0,
+        "last_direction": "",
+    }
+    clock.seed(story, pacing)  # CR-13: only a story that authors story_clock gets the counters (P-2)
+    return pacing
+
+
 def new_save_state(story: dict, story_slug: str) -> dict:
     """Builds a fresh runtime state dict for a brand-new save, seeded from story's authored
     pools (subplots, opening scene, initial scene) - see SCHEMA_V2_SPEC.md §4. Everything
@@ -304,13 +317,7 @@ def new_save_state(story: dict, story_slug: str) -> dict:
             },
         },
 
-        "pacing": {
-            "turn_count": 0,
-            "turns_since_nudge": 0,
-            "turns_since_act_check": 0,
-            "subplots_completed_this_act": 0,
-            "last_direction": "",
-        },
+        "pacing": _seed_pacing(story),
 
         "history": {
             "recent_turns": [],

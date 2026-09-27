@@ -37,6 +37,7 @@ model sees numbered detect texts, never ending ids or names - the state-update p
 narrator, but a number carries nothing that could leak into a scene later.
 """
 from . import Effect, MechanicEngine, ObservationField, register, register_effect
+import clock
 import conditions
 
 # Structural cadence, not a creative decision: how often the funnel re-scores. A story that
@@ -134,11 +135,16 @@ class EndingFunnel(MechanicEngine):
 
     @staticmethod
     def turn(ctx):
-        return ((ctx.get("state") or {}).get("pacing") or {}).get("turn_count", 0)
+        """The turn the budget, the checks and `min_turn` are measured in: the story clock (CR-13) when the
+        story authors one, so free idle turns do not spend the ending budget, else `turn_count`. It is also
+        what the funnel stamps into its ledger (`waypoints_done`, `pruned`, `committed`)."""
+        return clock.story_turn(ctx)
 
     def is_check_turn(self, cfg, ctx):
+        # `advanced`: on a free idle turn the story clock has not moved, so it may still sit on a multiple of
+        # `check_every`. Without this a parked clock would re-run the check (and the commit judge) every idle turn.
         turn = self.turn(ctx)
-        return turn > 0 and turn % self.check_every(cfg) == 0
+        return turn > 0 and turn % self.check_every(cfg) == 0 and clock.advanced(ctx)
 
     def phase(self, cfg, ctx):
         """`open`, `narrow`, `commit` (narrow_until reached, commit_by not) or `forced`."""

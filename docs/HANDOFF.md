@@ -43,7 +43,7 @@ build the piece real authoring needs next.
 | Bonds (CR-11) | Cast tab → Bonds | **Not built** (refuses load) |
 | Side threads, recipes, vignettes (CR-11), player-started threads (CR-12) | Side threads tab | **Not built** (refuses load) |
 | Stat tiers, on_enter (CR-01) | Diagram → stat bar → tier ladder | Tiers built; `on_enter` not built (warns) |
-| Story clock / idle turns (CR-13) | Health panel → Ending funnel settings → Idle turns (also Forms → Pacing) | **Not built** (warns; every turn still counts) |
+| Story clock / idle turns (CR-13) | Health panel → Ending funnel settings → Idle turns (also Forms → Pacing) | **Built** (`backend/clock.py`) |
 | Scene length by moment (CR-14) | Forms → Narration → Scene length | **Not built** (warns; `scene_length` default still used) |
 | Everything else (narration, pacing, stats, relationships, inventory, progression, pacing loop, gates, tracked entity) | Forms tab, schema-driven | Built |
 
@@ -177,8 +177,8 @@ built, whether the board would rewrite anything, and canonical formatting.
 6. **CR-06 `keyed_lore`**, **CR-11 `scored_bonds` / `episodic_threads`**, **CR-12 player
    threads** (and retire `player_driven_goals`: `plot_manager add-goal`, the goal list, the
    `PLAYER GOAL:` nudge).
-7. **CR-13 story clock** and **CR-14 scene length by moment**: specs with acceptance criteria
-   are in `Story_Mechanics_Update.md`.
+7. ~~CR-13 story clock~~ **Done** (see AUTHORING_TOOL_PHASES.md S5). **CR-14 scene length by moment**: spec with
+   acceptance criteria is in `Story_Mechanics_Update.md`; not built.
 8. **Deferred smaller ideas:**
    - derive `OPENROUTER_MAX_TOKENS` from the story's largest word maximum rather than a fixed
      4096;

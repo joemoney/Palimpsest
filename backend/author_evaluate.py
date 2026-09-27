@@ -24,6 +24,7 @@ import copy
 import re
 
 import author_model
+import clock
 import conditions
 import mechanics
 
@@ -83,7 +84,11 @@ def build_ctx(story: dict, sample: dict) -> dict:
             "current_act": sample.get("act") if isinstance(sample.get("act"), int) else 1,
             "subplots": subplots,
         },
-        "pacing": {"turn_count": sample.get("turn") if isinstance(sample.get("turn"), int) else 0},
+        "pacing": {"turn_count": sample.get("turn") if isinstance(sample.get("turn"), int) else 0,
+                   # CR-13: with a story clock authored, the sample's Turn is the clock's value too, since the
+                   # budget, the checks and `turn_gte` read it, and a sample carries no idle history.
+                   **({"story_clock": sample.get("turn") if isinstance(sample.get("turn"), int) else 0}
+                      if clock.authored({"story": story}) else {})},
         "characters": characters,
     }
     if _map(sample.get("tier_log")):

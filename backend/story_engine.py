@@ -15,6 +15,7 @@ load_dotenv()
 import google.generativeai as genai
 import requests
 
+import clock
 import conditions
 import engine_trace
 import mechanics
@@ -956,6 +957,7 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
     # a location table at all, so scene_update.location is accepted as any free-text
     # string instead of validated against a fixed list.
     scene = ctx["state"]["scene"]
+    location_before = scene.get("location")
     valid_locations = list(ctx["story"]["world"].get("locations", {}).keys())
     locations_hint = (
         f"\nVALID LOCATION IDS (scene_update.location must be one of these, or the current one "
@@ -1143,10 +1145,12 @@ is a separate, manual step."""
     # actually named them (see the prompt) rather than every incidental relationship, to
     # avoid spinning up records for generic background figures.
     known_names = set(existing_characters)
+    characters_introduced = 0
     for draft in diff.get("new_characters", []):
         name = draft.get("name")
         if not name or name in known_names:
             continue
+        characters_introduced += 1
         insert_character(
             ctx, name,
             description=draft.get("description", ""),
@@ -1169,7 +1173,19 @@ is a separate, manual step."""
     # that used to be the physical order of statements in this function is declared data now
     # - including "failure last", which was a comment and a statement position. (A terminal ending
     # is now checked after this pipeline by check_ending_funnel, D5.)
-    mechanics.run_observation_pipeline(ctx, diff)
+    def decide_clock(events):
+        """CR-13: was this turn idle? Decided here, before the pipeline resolves, because stat drift reads
+        the story clock. From the engines' typed events plus what the core update above applied."""
+        if not clock.authored(ctx):
+            return
+        moved = clock.signals(events, {
+            "flag": bool(flags_set_declared or flags_set_other),
+            "place": scene.get("location") != location_before,
+            "character": characters_introduced > 0})
+        record = clock.advance(ctx, moved, finale=ctx["state"]["plot"]["endgame"]["requested"])
+        engine_trace.emit(ctx, "clock", **record)
+
+    mechanics.run_observation_pipeline(ctx, diff, before_resolve=decide_clock)
 
     return diff
 
@@ -1642,7 +1658,11 @@ def _trace_turn_fields(ctx: dict) -> dict:
                 "phase": bound.engine.phase(bound.cfg, ctx) if bound else None,
                 "steered": st.get("steered"), "done": len(st.get("waypoints_done") or {}),
                 "active_threads": sum(1 for r in ctx["state"]["plot"]["subplots"].values() if r.get("active")),
-                "flags_set": len(ctx["state"]["protagonist"]["flags"]["active"])}
+                "flags_set": len(ctx["state"]["protagonist"]["flags"]["active"]),
+                # CR-13: the two clocks side by side, and whether the next prompt will lean forward
+                "story_clock": ctx["state"]["pacing"].get("story_clock"),
+                "idle_streak": ctx["state"]["pacing"].get("idle_streak"),
+                "lean_forward": clock.exhausted(ctx) if clock.authored(ctx) else None}
     except Exception as exc:  # noqa: BLE001
         engine_trace._fail("_trace_turn_fields", exc)
         return {}
@@ -2200,7 +2220,7 @@ def _section_pacing_or_endgame(ctx: dict) -> str | None:
     return None
 
 
-def _section_pacing_directive(ctx: dict) -> str | None:
+def _pacing_rule_directive(ctx: dict) -> str | None:
     """Phase 6 step 5 (docs/analysis_and_plans/PACING_LOOP/PHASE_6_HANDOFF.md §4; spec §9 step 5, §10, §11): fires at most
     one pacing directive per turn, for whichever rule step 4's counter update (see
     update_progress_from_turn) armed. A single-turn addition like _section_pacing_or_endgame
@@ -2267,6 +2287,28 @@ def _section_pacing_directive(ctx: dict) -> str | None:
     engine_trace.defer(ctx, "pacing_directive", rule=rule["id"], fired=True, deferrals=deferrals,
                        reduced=deferrals >= max_deferrals, counter=template_vars["counter_value"])
     return directive_template.format(**template_vars)
+
+
+def _section_pacing_directive(ctx: dict) -> str | None:
+    """The one pacing directive this turn: an armed pacing-loop rule's, or - when the story authors a story clock
+    (CR-13) and the player's free idle streak has just been used up - its `push_directive`, once for that streak.
+
+    A rule that fires the same turn wins (at most one directive per turn, an armed rule being the more specific
+    instruction), and the push is then spent for this streak all the same, so it cannot fire on the next turn
+    as if it were new. Never in the finale (`clock.exhausted`)."""
+    rule_text = _pacing_rule_directive(ctx)
+    if not clock.push_due(ctx):
+        return rule_text
+    push = clock.push_text(ctx)
+    clock.spend_push(ctx)
+    if push is None:
+        return rule_text
+    if rule_text:
+        engine_trace.defer(ctx, "push", fired=False, yielded_to=ctx["state"]["pacing"].get("last_fired_rule"),
+                           streak=ctx["state"]["pacing"].get("idle_streak"))
+        return rule_text
+    engine_trace.defer(ctx, "push", fired=True, streak=ctx["state"]["pacing"].get("idle_streak"), chars=len(push))
+    return f"PACING DIRECTIVE: {push}"
 
 
 def _section_scene(ctx: dict) -> str:
@@ -2396,7 +2438,8 @@ def generate_missing_options(ctx: dict, narration_text: str) -> str | None:
     prompt = (
         f"{narration_text}\n\n"
         "The scene above is missing its required list of player options. "
-        f"{_options_block_instruction(option_count, option_pov)} "
+        f"{_options_block_instruction(option_count, option_pov)}"
+        f"{(' ' + clock.LEAN_FORWARD) if clock.exhausted(ctx) else ''} "
         "Respond with only the OPTIONS block - no narration, no other text."
     )
     try:
@@ -2449,6 +2492,7 @@ def _section_footer(ctx: dict) -> str:
             f"Continue the story based on the player's next action. Narrate the scene itself in "
             f"{scene_min}-{scene_max} words. "
             f"{_options_block_instruction(option_count, option_pov)}"
+            f"{(' ' + clock.LEAN_FORWARD) if clock.exhausted(ctx) else ''}"
         )
 
     return f"""Stay strictly within the established world, tone, and rules above.{stats_instruction}{stat_tier_instruction}{standing_instruction}{carry_instruction}
@@ -2631,11 +2675,18 @@ def update_state_after_turn(
     pacing_state = ctx["state"]["pacing"]
     pacing_state["turn_count"] += 1
     pacing_state["turns_since_nudge"] += 1
-    pacing_state["turns_since_act_check"] = pacing_state.get("turns_since_act_check", 0) + 1
     _trace_before(ctx)
 
     # Separate state-update pass: subplot progress, flags, revealed fragments, entity contact
     update_progress_from_turn(ctx, player_action, ai_response)
+    # CR-13: a pass that failed outright observed nothing, and an unknown turn must never be the one that
+    # comes free, so it counts as a turn that moved the story.
+    if clock.authored(ctx) and not clock.decided(ctx):
+        record = clock.advance(ctx, ["unobserved"], finale=ctx["state"]["plot"]["endgame"]["requested"])
+        engine_trace.emit(ctx, "clock", **record)
+    # The act director's cadence is in story-clock turns: a free idle turn does not bring the next check closer.
+    if clock.advanced(ctx):
+        pacing_state["turns_since_act_check"] = pacing_state.get("turns_since_act_check", 0) + 1
 
     # The engine pipeline runs inside update_progress_from_turn above, where the diff it
     # reads actually is. A second unconditional run_turn_pipeline(ctx) used to sit here - a

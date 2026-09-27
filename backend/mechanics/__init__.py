@@ -265,12 +265,6 @@ def validate(story):
         print(f"WARNING: tiers on {', '.join(hooked)} author on_enter (CR-01), which this build "
               f"does not read yet - crossing into those tiers fires nothing.")
 
-    # Same for CR-13's story clock: authored, round-trips, no reader yet - every turn still
-    # spends the budget. Delete in the change that builds the story clock.
-    if ((story.get("plot") or {}).get("pacing") or {}).get("story_clock"):
-        print("WARNING: plot.pacing.story_clock (CR-13) is authored but this build does not "
-              "read it yet - every turn, idle or not, still counts against the ending budget.")
-
     # CR-07's thread completion rewards: the board authors them, nothing pays them yet.
     subs = (story.get("mechanics") or {}).get("subplots") or {}
     threads = (story.get("plot") or {}).get("subplots") or {}
@@ -505,7 +499,7 @@ def run_turn_pipeline(ctx, observations=None):
     apply_effects(ctx, resolve_all(ctx, observations))
 
 
-def run_observation_pipeline(ctx, diff):
+def run_observation_pipeline(ctx, diff, before_resolve=None):
     """`run_turn_pipeline` starting one step earlier, from the raw observation-pass diff:
     each engine reads back its own field, the resulting events are logged, and every engine
     resolves against the whole stream.
@@ -516,6 +510,9 @@ def run_observation_pipeline(ctx, diff):
     separately, which is what makes sharding safe, not about an engine being blind to what
     the others asked."""
     events = events_from_diff(ctx, diff)
+    if before_resolve is not None:
+        # The story clock (CR-13) is decided from these events, and stat drift reads it while resolving.
+        before_resolve(events)
     run_turn_pipeline(ctx, events)
     return events
 

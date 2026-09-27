@@ -118,7 +118,7 @@ by leaving the mechanic out.
 | `mechanics.failure_conditions` | `triggered_ending` | **Removed (D5)**: a template carrying it is refused at load. Write terminals in `mechanics.endings` instead. |
 | `mechanics.flags` | (no engine key) | Built: declared flags are readable by conditions, and the state-update pass is told each unset flag's `detect` text. |
 | `mechanics.tracked_entity` | (no engine key) | Built |
-| `plot.pacing.story_clock` | none | **Not built** (loads, with a warning; every turn still counts) |
+| `plot.pacing.story_clock` | none | Built (`backend/clock.py`) |
 | `narration.scene_length_by_moment` | none | **Not built** (loads, with a warning; every scene still uses `scene_length`) |
 | `mechanics.lore` | `keyed_lore` | **Not built** (refuses load) |
 | `mechanics.bonds` | `scored_bonds` | **Not built** (refuses load) |
@@ -306,10 +306,17 @@ Required: `main_thread`, `pacing`, `initial_scene`, `opening_scene`. Optional: `
 - `pacing`: `nudge_frequency` and `act_check_frequency` (turns, required),
   `max_parallel_subplots`. The act check runs when a thread completes in the current act **or**
   every `act_check_frequency` turns, and the model then judges whether the act has resolved.
-  Optional `story_clock` (CR-13, not built): `{"free_idle_streak": 3, "push_directive": "..."}`.
+  Optional `story_clock` (CR-13): `{"free_idle_streak": 3, "push_directive": "..."}`.
   Up to `free_idle_streak` turns in a row that move nothing don't count against the ending
   budget, act checks or `turn_gte`. After that the options lean forward, `push_directive` (narrator,
   one turn) fires once, and idle turns count again. See `Story_Mechanics_Update.md` CR-13.
+  A turn is idle when the update pass reported none of: a thread moved past `touched`, a flag set,
+  a waypoint hit, a fragment revealed, a stat event, a social event, an item gained or used, a leverage
+  entry, a new place, a newly named character. A finale turn is never idle, and a turn whose update pass
+  failed counts. The ending `budget`, `check_every`, terminal `min_turn`, `act_check_frequency`, `turn_gte`
+  conditions and stat `per_turn` drift are then measured in story-clock turns; the nudge cadence, flag
+  staleness, `finale_turns` and relationship caps stay on the raw turn count. Write `budget` and
+  `turn_gte` numbers in story-clock turns.
 - `initial_scene`: `location` (a location id) and `summary`.
 - `opening_scene` has exactly one of two shapes:
   - `{"narration_before_name": "...", "narration_after_name": "..."}`: the player names the

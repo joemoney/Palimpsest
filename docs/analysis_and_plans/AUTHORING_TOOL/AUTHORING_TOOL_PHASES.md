@@ -1158,6 +1158,43 @@ to land out of order and partially, tracked here after the fact rather than plan
     nudged about.
   - **Not measured against a live model**; whether the narrator acts on any of this is what the trace is for.
 
+- **CR-13, the story clock** (2026-09-27; trace build `steering-3`). `backend/clock.py` is the pure half and
+  `story_engine` the wiring. A story that authors `plot.pacing.story_clock` gets `pacing.story_clock`,
+  `idle_streak`, `push_fired` and `clock_step` (an old save adopts them at its current turn); one that does not
+  gets nothing and every reader falls back to `turn_count`.
+  - **Idle** is decided in code before the pipeline resolves (stat drift reads the clock), from the engines' own
+    typed events (`subplot_beat` past `touched`, stat events and changes, social, items, leverage, fragments
+    revealed, waypoint hits) plus what the core update applied (a flag actually set, a location actually changed, a
+    newly named character). A finale turn is never idle, and a state-update pass that failed counts as moving.
+  - **The streak**: idle turns 1..`free_idle_streak` leave the clock unchanged, the next advances it and so does
+    each after; a turn that moves resets the streak and re-arms the push.
+  - **On the story clock**: the ending budget and phases, funnel checks, terminal `min_turn` and the funnel's ledger
+    stamps (`endings.turn`), `turn_gte`, stat `per_turn` drift, and the act-check cadence (`turns_since_act_check`
+    grows only on a turn the clock moved). **Still on `turn_count`**: the nudge cadence, flag staleness, summary
+    rollover, recent turns, relationship caps, timestamps, `first_seen_turn` and the finale's own length.
+  - **A parked clock re-fires nothing.** A funnel check is "the clock is a multiple of `check_every`" and drift is
+    "a multiple of `per_turn_interval`"; on a free idle turn the clock sits where it was, so both now require that
+    the clock *moved this turn* (`clock.advanced`). Without it a parked clock would have re-run the commit judge
+    and re-ticked a deadline on every idle turn.
+  - **Prompt effects**: the options instruction gains a lean-forward sentence while the streak is used up (footer and
+    the missing-options repair), and `push_directive` joins the narration prompt once per streak as `PACING
+    DIRECTIVE: ...` from `_section_pacing_directive`. An armed pacing rule the same turn wins and the push is spent
+    for that streak anyway; never in the finale.
+  - The board's *not built* chip and the load warning are gone; the sample bar's Turn sets the clock too. The trace
+    gains a `clock` event per turn, a `push` event and `story_clock` / `idle_streak` / `lean_forward` on the `turn`
+    event; the report has a `story clock` section; `Steering_Review.md` adds #20-#24.
+  **Decisions made in passing - flag if wrong:**
+  - **Idle is read from validated events, not the model's raw diff**, so an id the engine rejected or a declared
+    flag reported false moves nothing. The spec lists "a `done_when` newly true"; that is not counted on its own,
+    because it is always the consequence of an observed change or of time, and neither should make a turn count.
+  - **Funnel timestamps are story-clock values** (`waypoints_done`, `pruned`, `committed`, terminal cooldowns), since
+    they share `endings.turn` with the budget. The trace's own `turn` stays the raw turn count.
+  - **A failed state-update pass counts as a turn that moved.** The safe direction: an unknown turn is never free.
+  - **The lean-forward sentence and the `PACING DIRECTIVE:` prefix are engine wording.** Both are plain framing of
+    an authored or specified instruction, not story content.
+  - **Not measured against a live model.** Whether the state-update pass reports enough for idle detection to be
+    right is exactly what the `story clock` report section and the transcript are for.
+
 **Goal.** Every "not built" chip disappears, eventually.
 
 Order, as `Story_Mechanics_Update.md` §5 justifies (reference, not a build queue - see above):

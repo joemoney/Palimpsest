@@ -46,6 +46,11 @@ python3 scripts/steering_report.py --json > run_a.json          # to diff two bu
 | 17 | The drive nudge appears only from `narrow_until` and points at the right destination | `nudge steering` | `drive nudges` and their `leaders`; leader flips between checks (`funnel` scores) | |
 | 18 | A drive nudge rarely has to give way to a pacing rule | `nudge steering` | `yielded to a pacing rule` against `drive nudges`, and the rule named | A high yield rate means the two mechanisms fight for the same turns; the nudge cadence (`nudge_frequency`) and the rule's threshold are the levers. |
 | 19 | Steering is a small part of the nudge | `nudge steering` | `characters added` (median, max, share of the nudge) | |
+| 20 | Most turns a player takes move the story, so the free streak is rarely needed | `story clock` | `idle` rate, `longest idle streak`, `streak lengths` | Whether a turn was *really* idle. Read the listed idle turns in the transcript: a scene that clearly moved things but reported nothing means the detection is too strict. |
+| 21 | The idle test lets a real advance through | `story clock` | `turns that counted were moved by ...`: if one signal dominates, the others may not be reported reliably | |
+| 22 | The free streak is long enough to matter and short enough to stay bounded | `story clock` | `free` vs `paid` idle, `story clock ended N behind`, and the ending's `end_turn` vs its `commit_by` | |
+| 23 | The push and the lean-forward options change what a lingering player does | `story clock` | `pushes fired`, `options leaned forward on N turns`, and whether the turn after each is idle | Whether the push was *good*: read the scene it produced. |
+| 24 | A parked clock re-fires nothing | `funnel` | commit checks per idle stretch (should be zero extra), stat values across an idle run | |
 | 14 | Steering adds little wall-clock time | `cost` | `seconds per turn`, `act_advancement_check` p50/p90, prompt characters over time | |
 
 ## Reading a report

@@ -71,6 +71,13 @@ ev("commit_check", 24, ready=["alpha"], chosen=None, judge_null=True, nulls=1, b
 ev("commit_check", 27, ready=["alpha"], chosen="alpha", judge_null=True, nulls=2, by_null_limit=True)
 ev("terminal", 22, id="dead", confirmed=False, has_criteria=True)
 ev("endgame", 27, cause="committed", title="Alpha", committed={"id": "alpha"})
+# the story clock: turns 1-3 idle and free, 4 idle and paid, 5 moved by a flag, 6 idle free, 7 moved by a stat and a thread
+for t, idle_, free, sig, streak, clk in [(1, True, True, [], 1, 0), (2, True, True, [], 2, 0), (3, True, True, [], 3, 0),
+                                          (4, True, False, [], 4, 1), (5, False, False, ["flag"], 0, 2),
+                                          (6, True, True, [], 1, 2), (7, False, False, ["stat", "thread"], 0, 3)]:
+    ev("clock", t, idle=idle_, free=free, signals=sig, streak=streak, clock=clk, step=0 if free else 1)
+ev("push", 4, fired=True, streak=3, chars=40)
+ev("push", 12, fired=False, yielded_to="force_wake", streak=3)
 
 runs = report.analyze(events)
 assert len(runs) == 1
@@ -137,6 +144,12 @@ n = r["nudges"]
 assert n["nudges"] == 3 and n["turns_between"] == 8 and n["directives_fired"] == 1 and n["directives_deferred"] == 1
 assert n["turns_with_nudge_and_directive"] == 1 and n["parts"]["PACING"] == 3
 
+ck = r["clock"]
+assert ck["authored"] and ck["turns"] == 7 and ck["idle"] == {"n": 7, "hits": 5, "rate": 0.714, "small_n": True}
+assert (ck["free_idle"], ck["paid_idle"]) == (4, 1) and ck["idle_runs"] == 2 and ck["longest_idle_streak"] == 4
+assert ck["streak_lengths"] == {"1": 1, "4": 1} and ck["moved_by"] == {"flag": 1, "stat": 1, "thread": 1}
+assert ck["pushes_fired"] == 1 and ck["pushes_yielded"] == 1 and ck["idle_turns"] == [1, 2, 3, 4, 6]
+
 ns = r["nudge_steering"]
 assert ns["nudges_with_steering_fields"] == 3 and ns["nudges"] == 3
 assert ns["with_carrier_plant"] == {"n": 3, "hits": 1, "rate": 0.333, "small_n": True} and ns["plants_per_nudge"] == {"0": 2, "1": 1}
@@ -173,7 +186,7 @@ with tempfile.TemporaryDirectory() as d:
     assert len(loaded) == len(events) + 1 and report.analyze(loaded)[0]["quality"]["bad_lines"] == 1
     text = report.render(report.analyze(loaded))
     for heading in ("-- funnel", "-- waypoints", "-- steering association", "-- acts", "-- carriers", "-- declared flags",
-                    "-- nudges and directives", "-- nudge steering", "-- cost"):
+                    "-- nudges and directives", "-- story clock", "-- nudge steering", "-- cost"):
         assert heading in text, heading
     assert "(small n)" in text and "never set: ['f2']" in text
     assert report.main([path, "--json"]) == 0
