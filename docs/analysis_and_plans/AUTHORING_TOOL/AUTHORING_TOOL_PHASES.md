@@ -1076,6 +1076,51 @@ to land out of order and partially, tracked here after the fact rather than plan
     `generate_new_subplot`, `check_and_advance_act` and the saves all read it, and the saves are
     not being migrated for a rename.
 
+- **Ending steering, first slice: `PLANT` in act generation and early carrier activation, with an engine
+  trace** (2026-09-27). Two pieces of CR-05/CR-10 plus the instrument to measure them; the rest of steering
+  waits on what the data says (see `docs/Steering_Review.md`).
+  - **`PLANT`** (`endings.plant_candidates`, `check_and_advance_act`): the act director's prompt gets up to two
+    unplanted waypoints' `plant` text, drawn from *steered* destinations only, deduplicated by plant text,
+    ranked by how often each has already been offered (so every destination is set up in turn, not the first
+    two forever), with an instruction to shape the next act so it sets them up as events, never quoting them.
+    Only the `plant` reaches the prompt: never a destination's id, name, arc, criteria or hint, nor a
+    waypoint's `detect` (tested). An offer is recorded (`mechanics.endings.offers`) only when the check
+    produced an act.
+  - **Early activation** (`endings.early_carriers`, `story_engine.activate_carriers_early`): on a funnel
+    check, from the Narrow phase, a steered destination's unplanted waypoint whose carriers include nothing
+    running gets its first dormant authored carrier started, even though its `activate_when` has not held.
+    At most one per check; never a thread with no `activate_when`, a texture thread, or one that failed or
+    completed; ignores `max_parallel_subplots`; stops once the story is ending.
+  - **The trace** (`backend/engine_trace.py`, `scripts/steering_report.py`): one JSONL file per save under
+    `data/traces/`, one event per decision (funnel checks with scores, steered set and carrier map; each
+    waypoint planted and by which route; each act check with the plants shown and the prompt sizes; declared
+    flags asked, set and dropped; carrier scans and early starts; thread transitions and why; nudges and
+    pacing directives; commit judge calls and outcomes; per-turn step timings and prompt sizes). Bounded
+    lines, never able to fail a turn, off by `PALIMPSEST_TRACE=0`, silent for the Preview tab. Saves gain
+    two additive keys (`run_id`, and `offers` in the endings bucket); the save version does not change.
+  **Decided by the author, 2026-09-27** (they accepted the recommendations put to them):
+  - **No generated fallback spine thread.** When a steered waypoint has no authored carrier, nothing is
+    invented for it; an uncarried waypoint is a lint warning, so the gap goes back to the author. Texture
+    generation stays. (Story_Mechanics_Update.md Open question 6.)
+  - **`max_acts` has no default.** Unset means unbounded, the way the budget boundaries work: a default
+    would be an engine constant encoding a creative decision. Not built yet.
+  - **Waypoint progress feeds the act judge and does not gate act advancement**, keeping the invariant that
+    an act advances on either a subplot completing or `act_check_frequency` turns elapsing. Not built yet.
+  - **An armed pacing-loop rule wins over a drive nudge on the turn it fires.** Not built yet; the trace
+    records how often the two collide today.
+  **Decisions made in passing - flag if wrong:**
+  - **Early activation skips a thread with no `activate_when`.** The spec says "an authored carrier that
+    isn't active yet". A thread with neither `starts_active` nor `activate_when` is one the author left to
+    be started by hand (lint warns about it), so it is not started for them.
+  - **One early activation per check** (`MAX_EARLY_ACTIVATIONS`), so a leader with several waypoints behind
+    several dormant threads does not open them all at once. Spec silent.
+  - **`MAX_PLANTS = 2`** is the spec's "up to two", kept as a cadence constant.
+  - **Plants ride only on act checks**, which fire on `act_check_frequency` (12) or a subplot completing, so
+    a plant reaches the generator about once per act. The nudge carries them too once piece 2 lands; the
+    trace shows how often an act check happens at all before deciding that matters.
+  - **Not measured against a live model.** Everything above is tested for what it puts in a prompt and what
+    it writes to the trace, not for whether steering shortens the path to an ending.
+
 **Goal.** Every "not built" chip disappears, eventually.
 
 Order, as `Story_Mechanics_Update.md` §5 justifies (reference, not a build queue - see above):

@@ -52,6 +52,12 @@ JUDGE_NULL_LIMIT = 2
 MAX_DETECT_ASKED = 6
 # CR-05's score: waypoint completion and ready_when proximity.
 SCORE_WAYPOINTS, SCORE_READY = 0.6, 0.4
+# CR-05: "up to two unplanted waypoints" per act generation. Cadence of how much one prompt is asked to
+# set up, not a creative decision, and it keeps that prompt text bounded.
+MAX_PLANTS = 2
+# CR-10: an authored carrier is activated early at most this many at a time, per funnel check. A
+# leader with three unplanted waypoints behind three dormant threads must not open all three at once.
+MAX_EARLY_ACTIVATIONS = 1
 
 
 def waypoint_key(entry, waypoint) -> str:
@@ -114,7 +120,7 @@ class EndingFunnel(MechanicEngine):
 
     def init_state(self, cfg, ctx):
         return {"pruned": {}, "waypoints_done": {}, "scores": {}, "steered": [],
-                "judge_nulls": 0, "terminal_cooldown": {}, "committed": None}
+                "judge_nulls": 0, "terminal_cooldown": {}, "committed": None, "offers": {}}
 
     def state(self, ctx):
         """This engine's bucket, read-only. A save created before the story authored endings
@@ -198,6 +204,95 @@ class EndingFunnel(MechanicEngine):
                 plants.add(w.get("plant"))
                 out.append((waypoint_key(entry, w), w["detect"]))
         return out[:MAX_DETECT_ASKED]
+
+    # --- steering: what the act generator is asked to set up --------------------------
+
+    def plant_candidates(self, cfg, ctx, limit=MAX_PLANTS):
+        """`[{dest, key, plant, offers}]`: the unplanted waypoints of steered destinations that an act
+        generation is asked to set up (CR-05's `PLANT`), at most `limit`.
+
+        Only steered destinations contribute, so a pruned destination's waypoints never reappear and,
+        from Narrow on, the ones that lost the ranking stop being pushed. A waypoint with no `plant`
+        text has nothing to say and is skipped; one shared by two destinations is offered once
+        (deduplicated by `plant`, as `pending_detects` does).
+
+        **Fairness.** Without a memory the same two waypoints (the first of the first two destinations)
+        would be offered every time until planted, and later destinations would never be set up. So the
+        ranking is by how often a waypoint has already been offered to a generation that produced an act
+        (`offers`, recorded by `record_offers`), then by its place in its own destination's pending list,
+        then by destination order. The first generation gets the first waypoint of the first two
+        destinations, the next gets the first of the next two, and so on round the table."""
+        st = self.state(ctx)
+        if st.get("committed") or ctx["state"]["plot"]["endgame"]["requested"]:
+            return []
+        done, offers = st.get("waypoints_done") or {}, st.get("offers") or {}
+        ranked, seen = [], set()
+        for d_index, entry in enumerate(self.steered(cfg, ctx)):
+            place = 0
+            for w in self.pending(entry, done):
+                plant = (w.get("plant") or "").strip()
+                if not plant or plant in seen:
+                    continue
+                seen.add(plant)
+                key = waypoint_key(entry, w)
+                ranked.append(((offers.get(key, 0), place, d_index), entry["id"], key, plant))
+                place += 1
+        ranked.sort(key=lambda r: r[0])
+        return [{"dest": d, "key": k, "plant": p, "offers": offers.get(k, 0)} for _, d, k, p in ranked[:limit]]
+
+    def carrier_report(self, cfg, ctx):
+        """`[{key, dest, carriers: {thread id: status}}]` for every unplanted waypoint of a steered
+        destination. Read-only; the trace's answer to "did the steered waypoints have a live carrier?"."""
+        st = self.state(ctx)
+        done = st.get("waypoints_done") or {}
+        carriers = _carriers(ctx)
+        statuses = ((ctx["state"].get("plot") or {}).get("subplots") or {})
+        out = []
+        for entry in self.steered(cfg, ctx):
+            for w in self.pending(entry, done):
+                key = waypoint_key(entry, w)
+                out.append({"key": key, "dest": entry["id"],
+                            "carriers": {sid: (statuses.get(sid) or {}).get("status", "not_started")
+                                         for sid in carriers.get(key, [])}})
+        return out
+
+    def early_carriers(self, cfg, ctx):
+        """`[{sid, key, dest}]`: authored threads worth activating early (CR-10), best first.
+
+        From the Narrow phase on, a steered destination's unplanted waypoint whose carriers include
+        no thread already running gets its first dormant authored carrier started, even though that
+        thread's `activate_when` does not hold yet. Bounded by the caller to MAX_EARLY_ACTIVATIONS
+        per check. Only a thread with an `activate_when` qualifies: one with none is the author's to
+        start by hand (the Subplot Manager), and a texture thread carries nothing. A thread that has
+        failed or completed is never restarted."""
+        st = self.state(ctx)
+        if st.get("committed") or ctx["state"]["plot"]["endgame"]["requested"]:
+            return []
+        if self.phase(cfg, ctx) == "open":
+            return []
+        done = st.get("waypoints_done") or {}
+        carriers = _carriers(ctx)
+        seeds = (ctx["story"].get("plot") or {}).get("subplots") or {}
+        runtime = (ctx["state"].get("plot") or {}).get("subplots") or {}
+        live = lambda sid: (runtime.get(sid) or {}).get("active") or \
+            (runtime.get(sid) or {}).get("status") in ("active", "progressed")  # noqa: E731
+        out, seen = [], set()
+        for entry in self.steered(cfg, ctx):
+            for w in self.pending(entry, done):
+                key = waypoint_key(entry, w)
+                who = carriers.get(key, [])
+                if not who or any(live(sid) for sid in who):
+                    continue
+                for sid in who:
+                    seed, rec = seeds.get(sid) or {}, runtime.get(sid) or {}
+                    if sid in seen or seed.get("role") == "texture" or not seed.get("activate_when"):
+                        continue
+                    if rec.get("status", "not_started") != "not_started" or rec.get("active"):
+                        continue
+                    seen.add(sid)
+                    out.append({"sid": sid, "key": key, "dest": entry["id"]})
+                    break
+        return out
 
     # --- observation ---------------------------------------------------------------
 
@@ -378,6 +473,14 @@ def _apply_update(ctx, effect):
     _bucket(ctx).update({k: effect.payload[k]
                          for k in ("waypoints_done", "pruned", "scores", "steered")
                          if k in effect.payload})
+
+
+def record_offers(ctx, keys):
+    """Count a waypoint as offered once a generation that was told about it produced an act, so the next
+    generation's ranking rotates (see `plant_candidates`)."""
+    offers = _bucket(ctx).setdefault("offers", {})
+    for key in keys:
+        offers[key] = offers.get(key, 0) + 1
 
 
 def record_commit(ctx, entry, forced=False):

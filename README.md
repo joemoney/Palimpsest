@@ -87,6 +87,17 @@ Special commands, typed at the prompt like a normal action:
   Prints a warning every time: it bypasses narration and edits plot state
   directly, so a vague command can break story coherence.
 
+### Reviewing the engine
+Every turn also appends the engine's decisions (funnel scores, waypoints planted, act checks, flags,
+early carrier starts, nudges, timings) to `data/traces/<user>/<story>.jsonl`. After a playthrough:
+
+```bash
+python3 scripts/steering_report.py --story the_missing_core
+```
+
+`docs/Steering_Review.md` says what each number tests and what it cannot tell you.
+`PALIMPSEST_TRACE=0` turns the trace off.
+
 ### Web (multi-user)
 ```bash
 docker-compose up

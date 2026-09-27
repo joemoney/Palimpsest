@@ -16,6 +16,7 @@ import google.generativeai as genai
 import requests
 
 import conditions
+import engine_trace
 import mechanics
 import state_store
 from state_store import DEFAULT_STORY_SLUG, DEFAULT_USER_ID
@@ -547,6 +548,7 @@ def _timed(label: str, fn, model: str):
         elapsed = time.monotonic() - start
         print(f"[TIMING] {label} model={model}: {elapsed:.2f}s")
         state_store.record_call_duration(label, elapsed)
+        engine_trace.note_timing(label, elapsed)
 
 
 # ---------------------------------------------------------------------------
@@ -1064,6 +1066,7 @@ never for a generic/descriptive handle (e.g. "the guard", "the advocate", "the w
 terminal"). Promoting a generic-label character to a full one later
 is a separate, manual step."""
 
+    engine_trace.note_prompt("state_update", len(prompt))
     try:
         diff = _timed("state_update", lambda: call_llm_json(prompt), model=TIER_C_MODEL)
     except (json.JSONDecodeError, ValueError):
@@ -1072,6 +1075,7 @@ is a separate, manual step."""
     turn_count = ctx["state"]["pacing"]["turn_count"]
     flags = ctx["state"]["protagonist"]["flags"]
     declared = _declared_flags(ctx)
+    flags_set_declared, flags_dropped_false, flags_set_other = [], [], 0
     for flag_name, flag_info in diff.get("flags_set", {}).items():
         if isinstance(flag_info, dict):
             value = flag_info.get("value", True)
@@ -1084,9 +1088,21 @@ is a separate, manual step."""
             # A condition reads a flag as set once it is in `active` or `archive` whatever its
             # value (`conditions._known_flags`), and a declared flag gates threads, acts and
             # ending pruning. "The model said false" must not open one of those doors.
+            flags_dropped_false.append(flag_name)
             continue
         flags["active"][flag_name] = value
         flags["meta"][flag_name] = {"turn_set": turn_count, "pinned": pinned}
+        if flag_name in declared:
+            flags_set_declared.append(flag_name)
+        else:
+            flags_set_other += 1
+    if declared:
+        # What the declared-flag detect text bought: how many were asked about, at what prompt cost,
+        # and which the model set (or reported false) this turn. Precision needs the transcript.
+        engine_trace.emit(ctx, "flags", asked=[fid for fid, _ in pending_flags],
+                          asked_chars=len(flags_context) + len(flags_instruction),
+                          set_declared=flags_set_declared, dropped_false=flags_dropped_false,
+                          set_other=flags_set_other)
 
     if (diff.get("scene_update") or {}).get("entity_interaction"):
         ctx["state"]["plot"]["entity_contact_count"] += 1
@@ -1258,6 +1274,8 @@ new person - most subplots don't need one."""
         span=generated.get("span") if generated.get("span") in ("single_act", "multi_act") else "single_act",
     )
     _maybe_insert_generated_character(ctx, generated, origin="subplot")
+    engine_trace.emit(ctx, "subplot_generated", sid=new_id, title=title,
+                      span=generated.get("span"), priority=generated.get("priority"))
     return new_id
 
 
@@ -1385,6 +1403,8 @@ def _begin_endgame(ctx: dict, final_arc: dict, cause: str):
     records what caused it and when, and appends a finale act. `endgame.requested` keeps its name
     though nobody requests it any more: `generate_new_subplot` and `check_and_advance_act` read it
     as "the story is ending"."""
+    engine_trace.emit(ctx, "endgame", cause=cause, title=final_arc.get("title"),
+                      committed=((ctx["state"].get("mechanics") or {}).get("endings") or {}).get("committed"))
     endgame = ctx["state"]["plot"]["endgame"]
     endgame["requested"] = True
     endgame["requested_turn"] = ctx["state"]["pacing"]["turn_count"]
@@ -1496,7 +1516,10 @@ def check_ending_funnel(ctx: dict):
     mechanics.apply_effects(ctx, engine.settle(cfg, ctx))
 
     for entry in engine.tripped_terminals(cfg, ctx):
-        if _confirm_terminal(ctx, entry):
+        confirmed = _confirm_terminal(ctx, entry)
+        engine_trace.emit(ctx, "terminal", id=entry.get("id"), confirmed=bool(confirmed),
+                          has_criteria=bool((entry.get("criteria") or "").strip()))
+        if confirmed:
             endings.record_commit(ctx, entry)
             _begin_endgame(ctx, engine.final_arc(entry), cause="terminal")
             return entry
@@ -1506,8 +1529,15 @@ def check_ending_funnel(ctx: dict):
         ready = engine.ready(cfg, ctx)
         if ready:
             chosen = _judge_commit(ctx, ready)
-            if chosen is None and endings.record_judge_null(ctx) >= endings.JUDGE_NULL_LIMIT:
-                chosen = engine.leader(cfg, ctx, ready)
+            judged_null = chosen is None
+            nulls = None
+            if chosen is None:
+                nulls = endings.record_judge_null(ctx)
+                if nulls >= endings.JUDGE_NULL_LIMIT:
+                    chosen = engine.leader(cfg, ctx, ready)
+            engine_trace.emit(ctx, "commit_check", ready=[e["id"] for e in ready],
+                              chosen=(chosen or {}).get("id"), judge_null=judged_null, nulls=nulls,
+                              by_null_limit=judged_null and chosen is not None)
             if chosen is not None:
                 endings.record_commit(ctx, chosen)
                 _begin_endgame(ctx, engine.final_arc(chosen), cause="committed")
@@ -1522,6 +1552,129 @@ def check_ending_funnel(ctx: dict):
                            cause="forced")
             return leader
     return None
+
+
+def _trace_before(ctx: dict) -> None:
+    """Snapshot what the turn's diffs are reported against (see engine_trace)."""
+    try:
+        bucket = (ctx["state"].get("mechanics") or {}).get("endings") or {}
+        engine_trace.stash_before(
+            done=dict(bucket.get("waypoints_done") or {}), pruned=dict(bucket.get("pruned") or {}),
+            statuses={sid: r.get("status", "not_started") for sid, r in ctx["state"]["plot"]["subplots"].items()},
+            early=[])
+    except Exception as exc:  # noqa: BLE001 - tracing never takes a turn down
+        engine_trace._fail("_trace_before", exc)
+
+
+def _trace_funnel(ctx: dict) -> None:
+    """The funnel's own record for this turn: waypoints planted (and by which route, with what state their
+    carriers were in), destinations pruned (and why), and - on a check turn - the scores, the steered set,
+    what is ready and whether every steered waypoint has a live carrier. Quiet on a turn with none of that."""
+    try:
+        bound = mechanics.bound_for(ctx["story"], "endings")
+        if bound is None or not engine_trace.enabled():
+            return
+        engine, cfg = bound.engine, bound.cfg
+        st = engine.state(ctx)
+        before = engine_trace.before()
+        done, pruned = st.get("waypoints_done") or {}, st.get("pruned") or {}
+        planted = [k for k in done if k not in (before.get("done") or {})]
+        newly_pruned = [i for i in pruned if i not in (before.get("pruned") or {})]
+        is_check = engine.is_check_turn(cfg, ctx)
+        if not (is_check or planted or newly_pruned):
+            return
+        by_key = {mechanics.endings.waypoint_key(e, w): (e, w)
+                  for e in engine.destinations(cfg) for w in e.get("waypoints") or []}
+        carriers = mechanics.endings._carriers(ctx)
+        statuses = ctx["state"]["plot"]["subplots"]
+        for key in planted:
+            entry, w = by_key.get(key, ({}, {}))
+            how = "done_when" if w.get("done_when") and conditions.satisfied(w["done_when"], ctx, conditions.CLOSED) else "detect"
+            engine_trace.emit(ctx, "waypoint", key=key, dest=entry.get("id"), how=how,
+                              carriers={sid: (statuses.get(sid) or {}).get("status", "not_started")
+                                        for sid in carriers.get(key, [])})
+        reasons = {}
+        for dest_id in newly_pruned:
+            entry = next((e for e in engine.destinations(cfg) if e.get("id") == dest_id), {})
+            vw = entry.get("viable_while")
+            reasons[dest_id] = "viable_while" if vw and not conditions.satisfied(vw, ctx, conditions.OPEN) else "carriers_failed"
+        total = sum(len(e.get("waypoints") or []) for e in engine.viable(cfg, ctx))
+        engine_trace.emit(
+            ctx, "funnel", phase=engine.phase(cfg, ctx), check=is_check, scores=st.get("scores") or {},
+            steered=st.get("steered") or [], ready=[e["id"] for e in engine.ready(cfg, ctx)],
+            viable=[e["id"] for e in engine.viable(cfg, ctx)], pruned_new=reasons, planted=planted,
+            done=len(done), viable_waypoints=total, committed=st.get("committed"),
+            carriers=engine.carrier_report(cfg, ctx) if is_check else None)
+    except Exception as exc:  # noqa: BLE001
+        engine_trace._fail("_trace_funnel", exc)
+
+
+def _trace_threads(ctx: dict) -> None:
+    """Thread status changes this turn, and why a thread started (early, by its condition, or otherwise)."""
+    try:
+        before = engine_trace.before()
+        was = before.get("statuses") or {}
+        seeds = ctx["story"]["plot"].get("subplots", {}) or {}
+        changes = []
+        for sid, rec in ctx["state"]["plot"]["subplots"].items():
+            now = rec.get("status", "not_started")
+            if now == was.get(sid, now):
+                continue
+            change = {"sid": sid, "from": was.get(sid), "to": now}
+            if now == "active":
+                change["why"] = ("early" if sid in (before.get("early") or []) else
+                                 "condition" if (seeds.get(sid) or {}).get("activate_when") else "other")
+            changes.append(change)
+        if changes:
+            engine_trace.emit(ctx, "threads", changes=changes,
+                              active=sum(1 for r in ctx["state"]["plot"]["subplots"].values() if r.get("active")))
+    except Exception as exc:  # noqa: BLE001
+        engine_trace._fail("_trace_threads", exc)
+
+
+def _trace_turn_fields(ctx: dict) -> dict:
+    try:
+        st = ((ctx["state"].get("mechanics") or {}).get("endings")) or {}
+        endgame = ctx["state"]["plot"]["endgame"]
+        bound = mechanics.bound_for(ctx["story"], "endings")
+        return {"endgame": {"requested": endgame["requested"], "cause": endgame.get("cause"),
+                            "concluded": endgame["concluded"]},
+                "phase": bound.engine.phase(bound.cfg, ctx) if bound else None,
+                "steered": st.get("steered"), "done": len(st.get("waypoints_done") or {}),
+                "active_threads": sum(1 for r in ctx["state"]["plot"]["subplots"].values() if r.get("active")),
+                "flags_set": len(ctx["state"]["protagonist"]["flags"]["active"])}
+    except Exception as exc:  # noqa: BLE001
+        engine_trace._fail("_trace_turn_fields", exc)
+        return {}
+
+
+def activate_carriers_early(ctx: dict) -> list:
+    """CR-10: from the Narrow phase, on a funnel check, start a dormant authored thread that carries a
+    steered waypoint nothing running can deliver, even though its `activate_when` has not held yet.
+
+    At most `endings.MAX_EARLY_ACTIVATIONS` per check; only a thread with an `activate_when` (one with none
+    is the author's to start by hand); never a texture, failed or completed thread. The same rules as any
+    activation otherwise: it ignores `max_parallel_subplots` (confirmed for `activate_when`, and an early
+    start is one), and nothing starts once the story is ending. Returns the ids started."""
+    bound = mechanics.bound_for(ctx["story"], "endings")
+    if bound is None or ctx["state"]["plot"]["endgame"]["requested"]:
+        return []
+    engine, cfg = bound.engine, bound.cfg
+    if not engine.is_check_turn(cfg, ctx):
+        return []
+    candidates = engine.early_carriers(cfg, ctx)
+    picked = candidates[:mechanics.endings.MAX_EARLY_ACTIVATIONS]
+    subplots = ctx["state"]["plot"]["subplots"]
+    for c in picked:
+        record = subplots[c["sid"]]
+        record["status"], record["active"] = "active", True
+        engine_trace.before().setdefault("early", []).append(c["sid"])
+    if candidates or engine.phase(cfg, ctx) != "open":
+        # Every check outside the Open phase, whether or not anything was worth starting: the rate at which
+        # the funnel finds a steered waypoint with no running carrier is itself the measurement.
+        engine_trace.emit(ctx, "carrier_scan", phase=engine.phase(cfg, ctx), candidates=candidates,
+                          started=[c["sid"] for c in picked])
+    return [c["sid"] for c in picked]
 
 
 def check_and_advance_act(ctx: dict):
@@ -1565,6 +1718,8 @@ def check_and_advance_act(ctx: dict):
     # `requires` is authored on the *act* and a story may carry act preconditions with no
     # mechanics.gate block at all - declare-to-bind would leave it with nothing to ask.
     if not mechanics.gate.satisfied(current_act.get("requires"), ctx):
+        engine_trace.emit(ctx, "act_check", called=False, skipped="requires_unmet",
+                          due="completed" if completed_recently else "cadence")
         return None
 
     summary = ctx["state"]["history"]["compressed_summary"] or "The story has just begun."
@@ -1589,6 +1744,17 @@ def check_and_advance_act(ctx: dict):
         if tracked_entity else ""
     )
 
+    # CR-05's `PLANT`: what the act about to be generated is asked to set up. Only the authored `plant` text
+    # goes in - never an ending's id, name, arc, criteria or hint, nor a waypoint's `detect` - so the act
+    # generator cannot learn where the story is being steered, only what to put on the page.
+    endings_bound = mechanics.bound_for(ctx["story"], "endings")
+    plants = endings_bound.engine.plant_candidates(endings_bound.cfg, ctx) if endings_bound else []
+    plant_block = (
+        "PLANT (if the act is ready, shape the NEXT act so it sets up one or two of these as things that happen "
+        "on the page, never as an explanation, and never quote them):\n"
+        + "\n".join(f"- {p['plant']}" for p in plants) + "\n"
+    ) if plants else ""
+
     prompt = f"""You are the pacing director for an ongoing interactive story. Judge whether the
 current act feels narratively resolved, based on what's actually happened - not a checklist.
 
@@ -1597,7 +1763,7 @@ SIGNALS THIS ACT WAS BUILT AROUND: {', '.join(current_act.get('completion_signal
 SUBPLOTS COMPLETED THIS ACT: {', '.join(completed_titles) or 'none'}
 ONGOING MULTI-ACT SUBPLOTS (deliberately still running, expected to continue beyond this act - their non-completion is not a sign the act hasn't resolved): {', '.join(ongoing_multi_act) or 'none'}
 FRAGMENTS REVEALED: {revealed_fragments}
-{entity_line}EXISTING CHARACTERS (do not repeat): {', '.join(existing_characters) or 'none'}
+{entity_line}{plant_block}EXISTING CHARACTERS (do not repeat): {', '.join(existing_characters) or 'none'}
 STORY SO FAR: {summary}
 RECENT EXCHANGES:
 {recent}
@@ -1616,6 +1782,7 @@ the act you're creating (not a restatement of its description), the same specifi
 signals a human author would write for a hand-crafted act. Leave new_character null unless
 the next act really can't work without a specific new person - most acts don't need one."""
 
+    engine_trace.note_prompt("act_check", len(prompt))
     try:
         verdict = _timed(
             "act_advancement_check",
@@ -1623,10 +1790,17 @@ the next act really can't work without a specific new person - most acts don't n
             model=TIER_AB_MODEL,
         )
     except (json.JSONDecodeError, ValueError):
+        engine_trace.emit(ctx, "act_check", called=True, failed=True, plants=[p["key"] for p in plants])
         return None
 
+    shown = [{"key": p["key"], "dest": p["dest"], "offers": p["offers"]} for p in plants]
     if not verdict.get("ready"):
+        engine_trace.emit(ctx, "act_check", called=True, ready=False, due="completed" if completed_recently else "cadence",
+                          plants=shown, plant_chars=len(plant_block), prompt_chars=len(prompt))
         return None
+    if plants:
+        # The plants were shown to a generation that produced an act, so they count as offered.
+        mechanics.endings.record_offers(ctx, [p["key"] for p in plants])
 
     _mark_act_completed(ctx, current_act["act_number"])
     new_act_number = max((a["act_number"] for a in _all_acts(ctx)), default=0) + 1
@@ -1647,6 +1821,9 @@ the next act really can't work without a specific new person - most acts don't n
     ctx["state"]["plot"]["current_act"] = new_act_number
     pacing_state["subplots_completed_this_act"] = 0
     _maybe_insert_generated_character(ctx, verdict, origin="act")
+    engine_trace.emit(ctx, "act_check", called=True, ready=True, due="completed" if completed_recently else "cadence",
+                      plants=shown, plant_chars=len(plant_block), prompt_chars=len(prompt),
+                      new_act=new_act_number, title=verdict.get("next_act_title"))
 
     return new_act_number
 
@@ -1923,7 +2100,11 @@ def _section_pacing_or_endgame(ctx: dict) -> str | None:
     nudge_frequency = ctx["story"]["plot"].get("pacing", {}).get("nudge_frequency", DEFAULT_NUDGE_FREQUENCY)
     if pacing_state["turns_since_nudge"] >= nudge_frequency:
         pacing_state["turns_since_nudge"] = 0
-        return generate_pacing_nudge(ctx)
+        nudge = generate_pacing_nudge(ctx)
+        # The baseline steering piece 2 will be measured against: how often a nudge fires and what is in it.
+        engine_trace.defer(ctx, "nudge", chars=len(nudge), parts=[p.split(":")[0][:24] for p in nudge.split("\n") if ":" in p],
+                           act=(_current_act(ctx) or {}).get("act_number"))
+        return nudge
     return None
 
 
@@ -1972,6 +2153,7 @@ def _section_pacing_directive(ctx: dict) -> str | None:
     # again - pressure is released *somehow* within max_deferrals + 1 turns of arming.
     if suppressed and deferrals < max_deferrals:
         entry["deferrals"] = deferrals + 1
+        engine_trace.defer(ctx, "pacing_directive", rule=rule["id"], fired=False, deferrals=deferrals + 1)
         return None
 
     counters = pacing_state.get("counters", {})
@@ -1990,6 +2172,8 @@ def _section_pacing_directive(ctx: dict) -> str | None:
     # deferral cycle begins - which is the guaranteed-floor behaviour, not a bug.
     entry["deferrals"] = 0
     pacing_state["last_fired_rule"] = rule["id"]
+    engine_trace.defer(ctx, "pacing_directive", rule=rule["id"], fired=True, deferrals=deferrals,
+                       reduced=deferrals >= max_deferrals, counter=template_vars["counter_value"])
     return directive_template.format(**template_vars)
 
 
@@ -2356,6 +2540,7 @@ def update_state_after_turn(
     pacing_state["turn_count"] += 1
     pacing_state["turns_since_nudge"] += 1
     pacing_state["turns_since_act_check"] = pacing_state.get("turns_since_act_check", 0) + 1
+    _trace_before(ctx)
 
     # Separate state-update pass: subplot progress, flags, revealed fragments, entity contact
     update_progress_from_turn(ctx, player_action, ai_response)
@@ -2386,11 +2571,16 @@ def update_state_after_turn(
     # CR-05: commit before generation and act advancement, so a turn that commits an ending
     # doesn't also invent a subplot or an act the finale would then have to ignore
     check_ending_funnel(ctx)
+    _trace_funnel(ctx)
+    # CR-10: from the Narrow phase, start a dormant authored carrier for a steered waypoint nothing
+    # running can deliver - before generation, so an authored thread fills the pool before an invented one
+    activate_carriers_early(ctx)
     for _ in status["completed"]:
         generate_new_subplot(ctx)
 
     # See if the current act has narratively resolved and needs a successor
     check_and_advance_act(ctx)
+    _trace_threads(ctx)
 
     # Roll oldest turns into compressed summary once a full batch has built up past the limit
     history = ctx["state"]["history"]
@@ -2587,6 +2777,7 @@ def _generate_and_apply_turn(
     call can restore to exactly this point and re-roll. Returns True once the story has
     concluded."""
     prompt = build_system_prompt(ctx) + f"\n\nPlayer action: {player_action}\n\nNarrator:"
+    engine_trace.note_prompt("narration", len(prompt))
     ai_response = _timed("narration", lambda: call_llm(prompt), model=TIER_AB_MODEL)
 
     # A non-endgame turn is required to end with an OPTIONS block (endgame turns are
@@ -2616,6 +2807,7 @@ def _generate_and_apply_turn(
     if ctx["state"]["plot"]["endgame"]["requested"] and "THE END" in ai_response:
         ctx["state"]["plot"]["endgame"]["concluded"] = True
 
+    engine_trace.flush_turn(ctx, **_trace_turn_fields(ctx))
     state_store.save_state(ctx, user_id, story_slug)
     return ctx["state"]["plot"]["endgame"]["concluded"]
 
@@ -2700,6 +2892,7 @@ def take_turn(
 ) -> bool:
     """Runs one turn of the story. Returns True once the story has concluded (THE END)."""
     _status_ctx.user_id, _status_ctx.story_slug = user_id, story_slug
+    engine_trace.bind(user_id, story_slug)
     try:
         ctx = state_store.load_state(user_id, story_slug)
 
@@ -2710,11 +2903,15 @@ def take_turn(
         if refusal:
             raise ActionRefused(refusal["sentence"], refusal["gate"])
 
+        # After the refusal check (a refused turn changes no state, and starts no run) and before the
+        # pre-turn snapshot, so a regenerate restores a state that already has its run id.
+        engine_trace.ensure_run(ctx)
         pre_turn_snapshot = copy.deepcopy(ctx["state"])
         pre_turn_snapshot.pop("pending_regenerate", None)
         return _generate_and_apply_turn(ctx, player_action, pre_turn_snapshot, user_id, story_slug)
     finally:
         _status_ctx.user_id = None
+        engine_trace.unbind()
         state_store.clear_turn_status(user_id, story_slug)
 
 
@@ -2730,6 +2927,7 @@ def regenerate_last_turn(
     Returns False with no effect if there's nothing to regenerate (no turn taken yet, e.g. the
     fixed opening scene, or a save from before this feature existed)."""
     _status_ctx.user_id, _status_ctx.story_slug = user_id, story_slug
+    engine_trace.bind(user_id, story_slug, regen=True)
     try:
         ctx = state_store.load_state(user_id, story_slug)
         pending = ctx["state"].get("pending_regenerate")
@@ -2737,12 +2935,15 @@ def regenerate_last_turn(
             return False
 
         restored_state = pending["state"]
+        if ctx["state"].get("run_id"):
+            restored_state.setdefault("run_id", ctx["state"]["run_id"])
         player_action = pending["player_action"]
         pre_turn_snapshot = copy.deepcopy(restored_state)
         restored_ctx = {"story": ctx["story"], "state": restored_state}
         return _generate_and_apply_turn(restored_ctx, player_action, pre_turn_snapshot, user_id, story_slug)
     finally:
         _status_ctx.user_id = None
+        engine_trace.unbind()
         state_store.clear_turn_status(user_id, story_slug)
 
 

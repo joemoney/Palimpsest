@@ -114,7 +114,7 @@ by leaving the mechanic out.
 | `mechanics.revelations` | `triggered_reveal` | Built |
 | `mechanics.gate` | `precondition` | Built |
 | `mechanics.subplots` | `weighted_threads` | Built |
-| `mechanics.endings` | `ending_funnel` | Built: pruning, scoring, commits, forced commit, terminals. **Not built:** steering (`hint`, `plant` in nudges), `epilogue` display, `max_acts`. |
+| `mechanics.endings` | `ending_funnel` | Built: pruning, scoring, commits, forced commit, terminals, and steering through act generation (`plant`) and early carrier activation. **Not built:** `hint` and `plant` in nudges, drive nudges, `epilogue` display, `max_acts`. |
 | `mechanics.failure_conditions` | `triggered_ending` | **Removed (D5)**: a template carrying it is refused at load. Write terminals in `mechanics.endings` instead. |
 | `mechanics.flags` | (no engine key) | Built: declared flags are readable by conditions, and the state-update pass is told each unset flag's `detect` text. |
 | `mechanics.tracked_entity` | (no engine key) | Built |
@@ -157,7 +157,7 @@ Three audiences read a template:
 | fragment `content` | Narrator, once revealed |
 | fragment `title` | Author |
 | flag `detect`, waypoint `detect` | Judge |
-| waypoint `plant` | Narrator (steering and forced-commit bridging) |
+| waypoint `plant` | Narrator: shown to the act generator (up to two unplanted waypoints per act check) and used in a forced commit's bridging note |
 | ending `arc` | Narrator, once that ending is committed (the finale) |
 | ending `criteria` | Judge (commit and terminal confirmation) |
 | ending `hint` | Narrator via pacing nudge (steering; not built) |
@@ -398,6 +398,15 @@ again.
 A waypoint is marked done by `done_when` (checked in code every turn) or by `detect` (judge
 text the state-update pass checks). It must have at least one of them, or it can never be
 done (L09).
+
+`plant` is sent to the act generator verbatim, so write it as an event that can happen on the page
+("a buyer at Tally who pays too well"), not its meaning or an instruction. Only steered destinations'
+unplanted waypoints are offered, up to two per act check, rotating so each destination is set up in
+turn. Nothing else about the ending (name, arc, criteria, hint, detect) reaches that prompt. From the
+Narrow phase, on a funnel check, a steered waypoint whose carrier threads are all dormant gets its first
+dormant carrier started even if its `activate_when` has not held. A thread with no `activate_when` is
+never started that way (it is yours to start by hand), and neither is a texture thread. Nothing is
+generated for a waypoint no thread carries: lint warns, and the gap is yours to close.
 
 **The budget** sets when the story may end, in turns. Every boundary is optional, and a missing
 one means that phase never begins:

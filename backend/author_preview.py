@@ -25,6 +25,7 @@ import threading
 
 import author_evaluate
 import author_model
+import engine_trace
 import mechanics
 import state_store
 import story_engine
@@ -103,13 +104,14 @@ def narrator_sections(ctx: dict) -> tuple:
     the sections rejoin into exactly what `build_system_prompt` returns for the same state."""
     walk = {"story": ctx["story"], "state": copy.deepcopy(ctx["state"])}
     sections = []
-    for fn in story_engine.SECTIONS:
-        text = fn(walk)
-        if text is not None:
-            sections.append({"name": fn.__name__.removeprefix("_section_"), "text": text, "tokens": tokens(text)})
-    body = "\n\n".join(s["text"] for s in sections)
-    prompt = f"You are the narrator of an interactive story.\n\n{body}\n"
-    whole = story_engine.build_system_prompt({"story": ctx["story"], "state": copy.deepcopy(ctx["state"])})
+    with engine_trace.muted():  # building a prompt to show it is not play, and leaves no trace
+        for fn in story_engine.SECTIONS:
+            text = fn(walk)
+            if text is not None:
+                sections.append({"name": fn.__name__.removeprefix("_section_"), "text": text, "tokens": tokens(text)})
+        body = "\n\n".join(s["text"] for s in sections)
+        prompt = f"You are the narrator of an interactive story.\n\n{body}\n"
+        whole = story_engine.build_system_prompt({"story": ctx["story"], "state": copy.deepcopy(ctx["state"])})
     return sections, prompt, prompt == whole
 
 
@@ -123,7 +125,7 @@ def state_update_prompt(ctx: dict) -> str:
         return copy.deepcopy(_EMPTY_DIFF)
 
     work = {"story": ctx["story"], "state": copy.deepcopy(ctx["state"])}
-    with _CAPTURE_LOCK:
+    with _CAPTURE_LOCK, engine_trace.muted():
         original = story_engine.call_llm_json
         story_engine.call_llm_json = recorder
         try:
