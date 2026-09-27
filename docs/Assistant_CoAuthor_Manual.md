@@ -252,7 +252,7 @@ condition needs one of these ids, have the author pick it in the builder by titl
    - derived values;
    - a stat tier's **On enter: directive**.
 
-   Also: **Max acts** isn't enforced, **Hint** and waypoint steering aren't used yet, and the
+   Also: **Max acts** isn't enforced, and the
    **Epilogue** isn't displayed yet.
 8. **Keep what reaches every turn short.** World rules, setting, character descriptions and
    faction lines go into every narration. Offer the short version. A fact that matters only

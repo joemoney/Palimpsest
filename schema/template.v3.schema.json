@@ -915,7 +915,7 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "plant": { "x-assist": "fragment", "x-visibility": "narrator", "x-visible-when": "when steering is built", "type": "string" },
+        "plant": { "x-assist": "fragment", "x-visibility": "narrator", "x-visible-when": "act generation and pacing nudges", "type": "string" },
         "detect": { "x-visibility": "judge", "x-visible-when": "state-update pass", "type": "string" },
         "done_when": { "$ref": "#/$defs/condition" }
       },
@@ -939,7 +939,7 @@
         },
         "ready_when": { "$ref": "#/$defs/condition" },
         "waypoints": { "type": "array", "items": { "$ref": "#/$defs/waypoint" } },
-        "hint": { "x-assist": "fragment", "x-visibility": "narrator", "x-visible-when": "when steering is built", "type": "string" },
+        "hint": { "x-assist": "fragment", "x-visibility": "narrator", "x-visible-when": "a pacing nudge, at most one per nudge", "type": "string" },
         "criteria": { "x-secret": true, "x-visibility": "judge", "x-visible-when": "when the ending is ready", "type": "string" },
         "arc": {
           "type": "object",

@@ -1121,6 +1121,43 @@ to land out of order and partially, tracked here after the fact rather than plan
   - **Not measured against a live model.** Everything above is tested for what it puts in a prompt and what
     it writes to the trace, not for whether steering shortens the path to an ending.
 
+- **Ending steering, second slice: the nudge consumers** (2026-09-27; trace build `steering-2`). Everything the
+  pacing nudge carries for steering, built to the accepted recommendations:
+  - **Carrier priority and `plant`** (`endings.nudge_plan`, `generate_pacing_nudge`): a *running* thread that
+    delivers an unplanted waypoint of a steered destination is raised one priority step for the nudge (it wins a
+    tie), and its line carries the waypoint's `plant` (`SET UP THROUGH THIS THREAD:` on the lead thread,
+    `(set up: ...)` on a background one), at most two per nudge. Each thread gets the waypoint it has been named
+    for least (`nudge_offers`); a plant already given to another thread is not repeated. With no carriers the
+    order is exactly the old one (priority, stable among equals).
+  - **Hints**: one steered destination's `hint`, the one shown least (`hints_shown`), as `A DETAIL TO WORK IN,
+    lightly and in passing...`. At most one per nudge, so one per cycle. Shown from the Open phase, when every
+    viable destination is steered.
+  - **The drive nudge**: from `narrow_until` (the `commit` phase on), the leader among viable destinations by
+    stored score and up to two of its unplanted waypoints with a `plant`, as `PRIORITY THIS SCENE:`, each with
+    the running thread that could deliver it. **It yields on a turn a pacing-loop rule is about to fire**
+    (decision D): `_pacing_directive_will_fire` is a dry run of the directive's own decision (no `last_fired_rule`
+    popped, no deferral counted), and a deferred or unarmed rule does not take the floor.
+  - Only `plant` and `hint` text is added: never an ending's id, name, arc, criteria or `detect` (tested). The
+    counters (`nudge_offers`, `hints_shown`) are additive endings-state keys; a regenerate restores them with the
+    snapshot and rebuilds the same nudge.
+  - **Trace**: the `nudge` event now says what steering did (mode, primary vs the unboosted primary, plants named
+    and to which threads, hint, drive leader and waypoints, what it yielded to, characters added), and the report
+    gained a `nudge steering` section and counts nudge offers alongside act offers in the steering association
+    (with a per-surface split). The assumptions are #15-#19 in `docs/Steering_Review.md`.
+  **Decisions made in passing - flag if wrong:**
+  - **The boost is one step and a tie goes to the carrier**, not "carriers first": a low carrier does not outrank a
+    high thread, a medium one ties a high one. The spec says only "raised".
+  - **"Become drive nudges" is read as adding a priority line to the nudge**, not replacing it: the act line, the
+    lead thread, hooks and the rest stay. Replacing them would have dropped content other systems put there.
+  - **A hint appears from the Open phase**, when all viable destinations are steered, one at a time. The alternative
+    is holding hints back until Narrow, which would make them meaningless in a story whose budget puts the whole
+    middle in Open.
+  - **Drive uses the leader among viable destinations**, not only the steered set, since a destination can lead on
+    score without being among the top `steer_top` of the last check.
+  - **Only running threads carry a plant on their line.** A dormant carrier is started by early activation, not
+    nudged about.
+  - **Not measured against a live model**; whether the narrator acts on any of this is what the trace is for.
+
 **Goal.** Every "not built" chip disappears, eventually.
 
 Order, as `Story_Mechanics_Update.md` §5 justifies (reference, not a build queue - see above):

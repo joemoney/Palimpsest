@@ -114,7 +114,7 @@ by leaving the mechanic out.
 | `mechanics.revelations` | `triggered_reveal` | Built |
 | `mechanics.gate` | `precondition` | Built |
 | `mechanics.subplots` | `weighted_threads` | Built |
-| `mechanics.endings` | `ending_funnel` | Built: pruning, scoring, commits, forced commit, terminals, and steering through act generation (`plant`) and early carrier activation. **Not built:** `hint` and `plant` in nudges, drive nudges, `epilogue` display, `max_acts`. |
+| `mechanics.endings` | `ending_funnel` | Built: pruning, scoring, commits, forced commit, terminals, and steering through act generation (`plant`), early carrier activation, and the pacing nudge (carrier `plant`, `hint`, drive). **Not built:** generation limited to texture, `epilogue` display, `max_acts`. |
 | `mechanics.failure_conditions` | `triggered_ending` | **Removed (D5)**: a template carrying it is refused at load. Write terminals in `mechanics.endings` instead. |
 | `mechanics.flags` | (no engine key) | Built: declared flags are readable by conditions, and the state-update pass is told each unset flag's `detect` text. |
 | `mechanics.tracked_entity` | (no engine key) | Built |
@@ -157,10 +157,10 @@ Three audiences read a template:
 | fragment `content` | Narrator, once revealed |
 | fragment `title` | Author |
 | flag `detect`, waypoint `detect` | Judge |
-| waypoint `plant` | Narrator: shown to the act generator (up to two unplanted waypoints per act check) and used in a forced commit's bridging note |
+| waypoint `plant` | Narrator: shown to the act generator (up to two unplanted waypoints per act check), on a running carrier thread's line in the pacing nudge, in the drive nudge, and in a forced commit's bridging note |
 | ending `arc` | Narrator, once that ending is committed (the finale) |
 | ending `criteria` | Judge (commit and terminal confirmation) |
-| ending `hint` | Narrator via pacing nudge (steering; not built) |
+| ending `hint` | Narrator via the pacing nudge (steering; one steered destination per nudge, rotating) |
 | ending `name` | Author and board; used for the finale only when there is no `arc` |
 | gate `refusal_hint` | Narrator, when an action is refused |
 | stat tier `narration` | Narrator, while the stat is in that tier |
@@ -407,6 +407,12 @@ Narrow phase, on a funnel check, a steered waypoint whose carrier threads are al
 dormant carrier started even if its `activate_when` has not held. A thread with no `activate_when` is
 never started that way (it is yours to start by hand), and neither is a texture thread. Nothing is
 generated for a waypoint no thread carries: lint warns, and the gap is yours to close.
+
+In the pacing nudge, a *running* thread that carries an unplanted waypoint of a steered destination is raised
+one priority step and its line carries the `plant`; one steered destination's `hint` joins as a passing detail
+(one per nudge, rotating), so write each `hint` as a clause that suggests without saying ("the ship is quieter
+with Lark aboard"), because it can appear from the first nudge. From `narrow_until` the nudge also names the
+leading destination's missing waypoints as the scene's priority, unless a pacing-loop rule is about to fire.
 
 **The budget** sets when the story may end, in turns. Every boundary is optional, and a missing
 one means that phase never begins:

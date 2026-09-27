@@ -91,6 +91,7 @@ class Judge:
 # --- load-time: registered, and a catch-all is required --------------------------------
 ctx = make_ctx()
 assert bucket(ctx) == {"pruned": {}, "waypoints_done": {}, "scores": {}, "steered": [], "offers": {},
+                       "nudge_offers": {}, "hints_shown": {},
                        "judge_nulls": 0, "terminal_cooldown": {}, "committed": None}
 no_catch_all = copy.deepcopy(ENDINGS)
 no_catch_all["entries"][1]["viable_while"] = {"turn_gte": 0}

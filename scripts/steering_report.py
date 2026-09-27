@@ -13,8 +13,8 @@ The questions it answers, each with the count behind it (a small n is flagged, n
   waypoints   when each was planted and by which route (`done_when` or `detect`); how long after it was first
               offered to an act generation; and the steering estimate below.
   steering    of the (waypoint, funnel check) pairs where a steered waypoint was still unplanted, the share
-              planted within one act-check interval, split by whether it had been offered to an act
-              generation in the interval before. NOT a causal estimate - a waypoint is offered because it
+              planted within one act-check interval, split by whether it had been offered (to an act
+              generation, or named in a pacing nudge) in the interval before, and by surface. NOT a causal estimate - a waypoint is offered because it
               is unplanted, and an unplanted waypoint with a live carrier plants sooner anyway - but the
               gap and its sample size are the first thing to look at, and `carrier state` splits it.
   acts        how often the act director is called, how often it says ready, how many plants it was shown,
@@ -24,7 +24,10 @@ The questions it answers, each with the count behind it (a small n is flagged, n
   flags       for each declared flag: turns asked about, the turn it was set, the lag; false reports dropped;
               the prompt cost of asking.
   nudges      how often the pacing nudge fires and what is in it; directives fired and deferred; turns where
-              both landed (the baseline for the nudge/directive precedence decision).
+              both landed.
+  nudge steering  what steering added to those nudges: carrier lines carrying a plant, how often the boost
+              changed which thread led, hints (and whether they rotate), drive nudges, how often a drive
+              nudge yielded to an armed pacing rule, and the characters it all added.
   cost        seconds and prompt characters per step, and the share steering text takes of the prompts.
 
 Regenerated turns: events written while re-rolling the last turn are kept and the first attempt's events
@@ -79,6 +82,19 @@ def rate(hits, n):
     return {"n": n, "hits": hits, "rate": round(hits / n, 3) if n else None, "small_n": n < SMALL_N}
 
 
+def offer_events(kinds):
+    """`[(turn, key, surface)]` for every time a waypoint's plant was put in front of a model: an act check
+    that was called (surface `act`), a carrier's line in a pacing nudge (`nudge`) or a drive nudge (`drive`)."""
+    out = []
+    for e in kinds.get("act_check", []):
+        if e.get("called"):
+            out += [(e["turn"], p["key"], "act") for p in e.get("plants") or []]
+    for e in kinds.get("nudge", []):
+        out += [(e["turn"], p["key"], "nudge") for p in e.get("carrier_plants") or []]
+        out += [(e["turn"], k, "drive") for k in (e.get("drive") or {}).get("keys") or []]
+    return out
+
+
 def by_kind(events):
     out = collections.defaultdict(list)
     for e in events:
@@ -107,6 +123,7 @@ def analyze_run(events):
     out["threads"] = _threads(kinds, last_turn)
     out["flags"] = _flags(kinds, start)
     out["nudges"] = _nudges(kinds)
+    out["nudge_steering"] = _nudge_steering(kinds)
     out["cost"] = _cost(kinds)
     return out
 
@@ -146,14 +163,14 @@ def _funnel(kinds, start):
 
 def _waypoints(kinds, start):
     offers = collections.defaultdict(list)
-    for e in kinds.get("act_check", []):
-        if e.get("called"):
-            for p in e.get("plants") or []:
-                offers[p["key"]].append((e["turn"], bool(e.get("ready"))))
+    for turn, key, surface in offer_events(kinds):
+        offers[key].append((turn, surface))
     rows = []
     for e in kinds.get("waypoint", []):
-        first = min((t for t, _ in offers.get(e["key"], [])), default=None)
+        first_offer = min(offers.get(e["key"], []), default=(None, None))
+        first = first_offer[0]
         rows.append({"key": e["key"], "turn": e["turn"], "how": e.get("how"), "first_offered": first,
+                     "first_offer_surface": first_offer[1],
                      "lag_after_offer": (e["turn"] - first) if first is not None and e["turn"] >= first else None,
                      "planted_before_offer": first is None or e["turn"] < first, "carriers": e.get("carriers")})
     planted = {r["key"] for r in rows}
@@ -174,24 +191,29 @@ def _waypoints(kinds, start):
 def _steering(kinds, start):
     interval = ((start.get("pacing") or {}).get("act_check_frequency")) or 12
     offered_at = collections.defaultdict(list)
-    for e in kinds.get("act_check", []):
-        if e.get("called"):
-            for p in e.get("plants") or []:
-                offered_at[p["key"]].append(e["turn"])
+    for turn, key, surface in offer_events(kinds):
+        offered_at[key].append((turn, surface))
     planted_at = {e["key"]: e["turn"] for e in kinds.get("waypoint", [])}
     cells = collections.defaultdict(lambda: [0, 0])  # (offered, carrier live) -> [n, planted within interval]
+    surface_cells = collections.defaultdict(lambda: [0, 0])  # "act" | "nudge" | "none" -> [n, planted within interval]
     for e in kinds.get("funnel", []):
         if not e.get("check"):
             continue
         for row in e.get("carriers") or []:
             key, t = row["key"], e["turn"]
-            offered = any(t - interval < o <= t for o in offered_at.get(key, []))
+            recent = {surf for o, surf in offered_at.get(key, []) if t - interval < o <= t}
+            offered = bool(recent)
             live = any(s in ("active", "progressed") for s in (row.get("carriers") or {}).values())
+            hit = 1 if key in planted_at and t < planted_at[key] <= t + interval else 0
             cell = cells[(offered, live)]
             cell[0] += 1
-            cell[1] += 1 if key in planted_at and t < planted_at[key] <= t + interval else 0
+            cell[1] += hit
+            for surf in (("act",) if "act" in recent else ()) + (("nudge",) if recent & {"nudge", "drive"} else ()) + (() if offered else ("none",)):
+                surface_cells[surf][0] += 1
+                surface_cells[surf][1] += hit
     out = {"interval_turns": interval, "caveat": "association, not effect: see the module docstring",
-           "cells": {f"offered={o},live_carrier={l}": rate(h, n) for (o, l), (n, h) in sorted(cells.items())}}
+           "cells": {f"offered={o},live_carrier={l}": rate(h, n) for (o, l), (n, h) in sorted(cells.items())},
+           "by_surface": {k: rate(h, n) for k, (n, h) in sorted(surface_cells.items())}}
     for label, pick in (("offered", lambda o, l: o), ("not_offered", lambda o, l: not o)):
         n = sum(c[0] for (o, l), c in cells.items() if pick(o, l))
         h = sum(c[1] for (o, l), c in cells.items() if pick(o, l))
@@ -306,6 +328,37 @@ def _nudges(kinds):
     }
 
 
+def _nudge_steering(kinds):
+    nudges = kinds.get("nudge", [])
+    with_steering = [e for e in nudges if "mode" in e]
+    carrier = [e for e in with_steering if e.get("carrier_plants")]
+    hints = [e for e in with_steering if e.get("hint")]
+    drives = [e for e in with_steering if e.get("drive")]
+    yielded = [e for e in with_steering if e.get("drive_yielded_to")]
+    flipped = [e for e in with_steering if e.get("primary") != e.get("primary_unboosted")]
+    per_dest = collections.Counter(e["hint"]["dest"] for e in hints)
+    per_key = collections.Counter(p["key"] for e in carrier for p in e["carrier_plants"])
+    for e in drives:
+        for k in e["drive"]["keys"]:
+            per_key[k] += 1
+    steering_chars = [e.get("steering_chars", 0) for e in with_steering]
+    return {
+        "nudges_with_steering_fields": len(with_steering), "nudges": len(nudges),
+        "with_carrier_plant": rate(len(carrier), len(with_steering)),
+        "plants_per_nudge": {str(k): v for k, v in sorted(collections.Counter(len(e.get("carrier_plants") or []) for e in with_steering).items())},
+        "boost_changed_primary": rate(len(flipped), len(with_steering)),
+        "with_hint": rate(len(hints), len(with_steering)), "hints_by_destination": dict(per_dest),
+        "drive_nudges": len(drives), "drive_yielded": len(yielded),
+        "drive_yielded_to": dict(collections.Counter(e["drive_yielded_to"] for e in yielded)),
+        "drive_leaders": dict(collections.Counter(e["drive"]["leader"] for e in drives)),
+        "waypoints_named": len(per_key), "named_per_waypoint": {"min": min(per_key.values()) if per_key else None,
+                                                                  "max": max(per_key.values()) if per_key else None},
+        "steering_chars": {"median": med(steering_chars), "max": max(steering_chars or [0]),
+                           "share_of_nudge": round(sum(steering_chars) / sum(e.get("chars", 0) for e in with_steering), 3)
+                           if with_steering and sum(e.get("chars", 0) for e in with_steering) else None},
+    }
+
+
 def _cost(kinds):
     turns = kinds.get("turn", [])
     step = collections.defaultdict(lambda: {"n": 0, "s": 0.0, "each": []})
@@ -383,6 +436,8 @@ def render(runs):
         w(f"  not offered in the interval before: {_fmt(st['not_offered'])}")
         for k, v in st["cells"].items():
             w(f"    {k:40s} {_fmt(v)}")
+        for surf, v in st.get("by_surface", {}).items():
+            w(f"    via {surf:34s} {_fmt(v)}")
         w(f"  {st['caveat']}")
         a = r["acts"]
         w("\n-- acts")
@@ -414,6 +469,15 @@ def render(runs):
         w("\n-- nudges and directives")
         w(f"nudges {n['nudges']} every {n['turns_between']} turns, chars {n['chars']}, parts {n['parts']}; directives fired "
           f"{n['directives_fired']} deferred {n['directives_deferred']} {n['directive_rules']}; turns with both {n['turns_with_nudge_and_directive']}")
+        ns = r["nudge_steering"]
+        w("\n-- nudge steering")
+        w(f"nudges with steering fields {ns['nudges_with_steering_fields']} of {ns['nudges']}; carrier plant on a thread line: "
+          f"{_fmt(ns['with_carrier_plant'])}; plants per nudge {ns['plants_per_nudge']}; boost changed the lead thread: "
+          f"{_fmt(ns['boost_changed_primary'])}")
+        w(f"hints: {_fmt(ns['with_hint'])} by destination {ns['hints_by_destination']}; drive nudges {ns['drive_nudges']} "
+          f"(leaders {ns['drive_leaders']}), yielded to a pacing rule {ns['drive_yielded']} {ns['drive_yielded_to']}")
+        w(f"waypoints named in a nudge {ns['waypoints_named']} (per waypoint {ns['named_per_waypoint']}); characters added "
+          f"{ns['steering_chars']}")
         k = r["cost"]
         w("\n-- cost")
         w(f"seconds per turn {k['seconds_per_turn']}")

@@ -57,8 +57,14 @@ for t in range(1, 31):
     asked = (["f1"] if t <= 5 else []) + ["f2"]
     ev("flags", t, asked=asked, asked_chars=100, set_declared=["f1"] if t == 5 else [], dropped_false=["f1"] if t == 3 else [], set_other=1 if t == 9 else 0)
 # nudges every 8, a directive fired at 16 (same turn as a nudge), one deferred
-for t in (8, 16, 24):
-    ev("nudge", t, chars=300, parts=["PACING", "THIS ACT RESOLVES WHEN"], act=1)
+ev("nudge", 8, chars=300, parts=["PACING", "THIS ACT RESOLVES WHEN"], act=1, mode="normal", primary="s2", primary_unboosted="s9",
+   boosted=["s3"], carrier_plants=[{"sid": "s3", "key": "beta.b1", "dest": "beta", "nudged": 0}], hint={"dest": "alpha", "shown": 0},
+   drive=None, drive_yielded_to=None, steering_chars=100)
+ev("nudge", 16, chars=300, parts=["PACING", "THIS ACT RESOLVES WHEN"], act=1, mode="drive", primary="s2", primary_unboosted="s2",
+   boosted=[], carrier_plants=[], hint={"dest": "beta", "shown": 0}, drive={"leader": "alpha", "keys": ["alpha.a2"], "via": ["s2"]},
+   drive_yielded_to=None, steering_chars=200)
+ev("nudge", 24, chars=300, parts=["PACING", "THIS ACT RESOLVES WHEN"], act=1, mode="normal", primary="s2", primary_unboosted="s2",
+   boosted=[], carrier_plants=[], hint=None, drive=None, drive_yielded_to="force_wake", steering_chars=0)
 ev("pacing_directive", 16, rule="force_wake", fired=True, deferrals=0, reduced=False, counter=5)
 ev("pacing_directive", 17, rule="force_wake", fired=False, deferrals=1)
 ev("commit_check", 24, ready=["alpha"], chosen=None, judge_null=True, nulls=1, by_null_limit=False)
@@ -85,17 +91,24 @@ assert wp["planted"] == 2 and wp["authored"] == 3 and wp["by_route"] == {"done_w
 assert wp["never_planted"] == ["beta.b1"]
 rows = {x["key"]: x for x in wp["rows"]}
 assert rows["alpha.a1"]["first_offered"] == 11 and rows["alpha.a1"]["lag_after_offer"] == 4 and not rows["alpha.a1"]["planted_before_offer"]
-assert rows["alpha.a2"]["first_offered"] == 23 and rows["alpha.a2"]["planted_before_offer"] and rows["alpha.a2"]["lag_after_offer"] is None
-assert wp["planted_before_any_offer"] == 1
-assert wp["lag_after_first_offer"] == {"n": 1, "median": 4, "p90": 4, "small_n": True}
+# a2's first offer was the drive nudge at 16 (before the act check at 23), from any surface
+assert rows["alpha.a2"]["first_offered"] == 16 and rows["alpha.a2"]["first_offer_surface"] == "drive"
+assert rows["alpha.a2"]["lag_after_offer"] == 4 and not rows["alpha.a2"]["planted_before_offer"]
+assert rows["alpha.a1"]["first_offer_surface"] == "act"
+assert wp["planted_before_any_offer"] == 0
+assert wp["lag_after_first_offer"] == {"n": 2, "median": 4.0, "p90": 4, "small_n": True}
 
 st = r["steering"]
-# the check at turn 12: a1 was offered at 11 (inside (0,12]) and planted at 15 (inside (12,24]); a2 and b1 were not offered,
-# and a2 was planted at 20, b1 never
-assert st["offered"] == {"n": 1, "hits": 1, "rate": 1.0, "small_n": True}
-assert st["not_offered"] == {"n": 2, "hits": 1, "rate": 0.5, "small_n": True}
+# the check at turn 12: a1 was offered by an act check at 11 and planted at 15 (inside (12,24]); b1 was named in a nudge at 8 and
+# never planted; a2 had not been offered yet (its first offer is at 16) and was planted at 20
+assert st["offered"] == {"n": 2, "hits": 1, "rate": 0.5, "small_n": True}
+assert st["not_offered"] == {"n": 1, "hits": 1, "rate": 1.0, "small_n": True}
 assert st["cells"]["offered=True,live_carrier=True"]["hits"] == 1
-assert st["cells"]["offered=False,live_carrier=False"] == {"n": 2, "hits": 1, "rate": 0.5, "small_n": True}
+assert st["cells"]["offered=True,live_carrier=False"] == {"n": 1, "hits": 0, "rate": 0.0, "small_n": True}
+assert st["cells"]["offered=False,live_carrier=False"] == {"n": 1, "hits": 1, "rate": 1.0, "small_n": True}
+assert st["by_surface"] == {"act": {"n": 1, "hits": 1, "rate": 1.0, "small_n": True},
+                            "nudge": {"n": 1, "hits": 0, "rate": 0.0, "small_n": True},
+                            "none": {"n": 1, "hits": 1, "rate": 1.0, "small_n": True}}
 assert st["interval_turns"] == 12
 
 a = r["acts"]
@@ -123,6 +136,14 @@ assert fl["share_of_state_update_prompt"] == round(30 * 100 / (30 * 3000), 4)
 n = r["nudges"]
 assert n["nudges"] == 3 and n["turns_between"] == 8 and n["directives_fired"] == 1 and n["directives_deferred"] == 1
 assert n["turns_with_nudge_and_directive"] == 1 and n["parts"]["PACING"] == 3
+
+ns = r["nudge_steering"]
+assert ns["nudges_with_steering_fields"] == 3 and ns["nudges"] == 3
+assert ns["with_carrier_plant"] == {"n": 3, "hits": 1, "rate": 0.333, "small_n": True} and ns["plants_per_nudge"] == {"0": 2, "1": 1}
+assert ns["boost_changed_primary"]["hits"] == 1 and ns["with_hint"]["hits"] == 2 and ns["hints_by_destination"] == {"alpha": 1, "beta": 1}
+assert ns["drive_nudges"] == 1 and ns["drive_yielded"] == 1 and ns["drive_yielded_to"] == {"force_wake": 1} and ns["drive_leaders"] == {"alpha": 1}
+assert ns["waypoints_named"] == 2 and ns["named_per_waypoint"] == {"min": 1, "max": 1}
+assert ns["steering_chars"] == {"median": 100, "max": 200, "share_of_nudge": round(300 / 900, 3)}
 
 k = r["cost"]
 assert k["seconds"]["narration"] == {"calls": 30, "total": 300.0, "p50": 10.0, "p90": 10.0}
@@ -152,7 +173,7 @@ with tempfile.TemporaryDirectory() as d:
     assert len(loaded) == len(events) + 1 and report.analyze(loaded)[0]["quality"]["bad_lines"] == 1
     text = report.render(report.analyze(loaded))
     for heading in ("-- funnel", "-- waypoints", "-- steering association", "-- acts", "-- carriers", "-- declared flags",
-                    "-- nudges and directives", "-- cost"):
+                    "-- nudges and directives", "-- nudge steering", "-- cost"):
         assert heading in text, heading
     assert "(small n)" in text and "never set: ['f2']" in text
     assert report.main([path, "--json"]) == 0

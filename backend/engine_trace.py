@@ -41,9 +41,10 @@ import state_store
 
 # The steering feature set writing this log. Bump when a piece lands, so two runs can be compared.
 # steering-1: declared-flag detect, PLANT in act generation, early carrier activation.
-TRACE_BUILD = "steering-1"
+# steering-2: + the nudge consumers: carrier priority and plant on a thread's line, hints, drive nudges.
+TRACE_BUILD = "steering-2"
 FEATURES = {"flags_detect": True, "plant": True, "early_activation": True,
-            "carrier_nudge": False, "hint": False, "drive_nudge": False, "texture_only": False}
+            "carrier_nudge": True, "hint": True, "drive_nudge": True, "texture_only": False}
 
 _MAX_STR, _MAX_ITEMS = 240, 60
 

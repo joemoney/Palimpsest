@@ -55,6 +55,9 @@ SCORE_WAYPOINTS, SCORE_READY = 0.6, 0.4
 # CR-05: "up to two unplanted waypoints" per act generation. Cadence of how much one prompt is asked to
 # set up, not a creative decision, and it keeps that prompt text bounded.
 MAX_PLANTS = 2
+# CR-05's drive nudge names the leader's missing waypoints. Two, for the same reason as MAX_PLANTS: a scene
+# can be pushed toward one or two things at once, and the nudge text stays bounded.
+MAX_DRIVE = 2
 # CR-10: an authored carrier is activated early at most this many at a time, per funnel check. A
 # leader with three unplanted waypoints behind three dormant threads must not open all three at once.
 MAX_EARLY_ACTIVATIONS = 1
@@ -120,7 +123,8 @@ class EndingFunnel(MechanicEngine):
 
     def init_state(self, cfg, ctx):
         return {"pruned": {}, "waypoints_done": {}, "scores": {}, "steered": [],
-                "judge_nulls": 0, "terminal_cooldown": {}, "committed": None, "offers": {}}
+                "judge_nulls": 0, "terminal_cooldown": {}, "committed": None, "offers": {},
+                "nudge_offers": {}, "hints_shown": {}}
 
     def state(self, ctx):
         """This engine's bucket, read-only. A save created before the story authored endings
@@ -239,6 +243,76 @@ class EndingFunnel(MechanicEngine):
                 place += 1
         ranked.sort(key=lambda r: r[0])
         return [{"dest": d, "key": k, "plant": p, "offers": offers.get(k, 0)} for _, d, k, p in ranked[:limit]]
+
+    # --- steering: what the pacing nudge is asked to carry ------------------------------
+
+    def nudge_plan(self, cfg, ctx):
+        """What steering adds to a pacing nudge (CR-05, CR-10). Pure: `story_engine` composes the text and
+        records what was used (`record_nudge`).
+
+        `{"carriers": {sid: {key, dest, plant, nudged}}, "hint": {dest, text, shown} | None,
+        "drive": {leader, waypoints: [{key, plant, via}]} | None}`, or all-empty once the story is ending.
+
+        - **carriers**: each *running* thread that delivers an unplanted waypoint of a steered destination
+          is handed one of them, the one it has been asked to carry least often (`nudge_offers`), then in
+          authored order. The thread's nudge line carries the waypoint's `plant`, and the caller raises the
+          thread's priority for the nudge. A plant already given to another thread is not repeated.
+        - **hint**: one steered destination's `hint`, the one shown least often (`hints_shown`), then in
+          steered order. At most one per nudge, so at most one per cycle. A destination with no hint has
+          none to give.
+        - **drive**: from `narrow_until` (the `commit` phase on), the leader among viable destinations
+          (`leader`, by stored score) and up to MAX_DRIVE of its unplanted waypoints that have a `plant`,
+          each with the running threads that could deliver it. The nudge presents these as the scene's
+          priority; the caller drops it on a turn a pacing-loop rule fires (that rule wins).
+        Only `plant` and `hint` text is ever produced: never an id, name, arc, criteria or `detect`."""
+        empty = {"carriers": {}, "hint": None, "drive": None}
+        st = self.state(ctx)
+        if st.get("committed") or ctx["state"]["plot"]["endgame"]["requested"]:
+            return empty
+        done = st.get("waypoints_done") or {}
+        nudged = st.get("nudge_offers") or {}
+        carriers_of = _carriers(ctx)
+        runtime = (ctx["state"].get("plot") or {}).get("subplots") or {}
+        running = lambda sid: bool((runtime.get(sid) or {}).get("active"))  # noqa: E731
+
+        offers = {}
+        steered = self.steered(cfg, ctx)
+        for entry in steered:
+            for w in self.pending(entry, done):
+                plant = (w.get("plant") or "").strip()
+                if not plant:
+                    continue
+                key = waypoint_key(entry, w)
+                for sid in carriers_of.get(key, []):
+                    if running(sid):
+                        offers.setdefault(sid, []).append((nudged.get(key, 0), len(offers.get(sid, [])), key, entry["id"], plant))
+        assigned, used = {}, set()
+        for sid in sorted(offers, key=lambda s: min(offers[s])[:2]):
+            for nudged_n, _, key, dest, plant in sorted(offers[sid]):
+                if plant not in used:
+                    assigned[sid] = {"key": key, "dest": dest, "plant": plant, "nudged": nudged_n}
+                    used.add(plant)
+                    break
+
+        shown = st.get("hints_shown") or {}
+        hints = [(shown.get(e["id"], 0), i, e) for i, e in enumerate(steered) if (e.get("hint") or "").strip()]
+        hint = None
+        if hints:
+            count, _, entry = min(hints, key=lambda h: h[:2])
+            hint = {"dest": entry["id"], "text": entry["hint"].strip(), "shown": count}
+
+        drive = None
+        if self.phase(cfg, ctx) in ("commit", "forced"):
+            viable = self.viable(cfg, ctx)
+            if viable:
+                leader = self.leader(cfg, ctx, viable)
+                missing = [w for w in self.pending(leader, done) if (w.get("plant") or "").strip()][:MAX_DRIVE]
+                if missing:
+                    drive = {"leader": leader["id"], "waypoints": [
+                        {"key": waypoint_key(leader, w), "plant": w["plant"].strip(),
+                         "via": [sid for sid in carriers_of.get(waypoint_key(leader, w), []) if running(sid)]}
+                        for w in missing]}
+        return {"carriers": assigned, "hint": hint, "drive": drive}
 
     def carrier_report(self, cfg, ctx):
         """`[{key, dest, carriers: {thread id: status}}]` for every unplanted waypoint of a steered
@@ -481,6 +555,18 @@ def record_offers(ctx, keys):
     offers = _bucket(ctx).setdefault("offers", {})
     for key in keys:
         offers[key] = offers.get(key, 0) + 1
+
+
+def record_nudge(ctx, keys, hint_dest=None):
+    """Count what a pacing nudge carried, so the next one rotates: each waypoint plant it named and the
+    destination whose hint it used. Recorded when the nudge is built, since a built nudge is a shown one."""
+    bucket = _bucket(ctx)
+    offers = bucket.setdefault("nudge_offers", {})
+    for key in keys:
+        offers[key] = offers.get(key, 0) + 1
+    if hint_dest:
+        shown = bucket.setdefault("hints_shown", {})
+        shown[hint_dest] = shown.get(hint_dest, 0) + 1
 
 
 def record_commit(ctx, entry, forced=False):

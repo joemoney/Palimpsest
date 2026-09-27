@@ -163,13 +163,12 @@ built, whether the board would rewrite anything, and canonical formatting.
    the loader does not yet *refuse* a template with no `mechanics.endings` (lint L08 errors on it
    and keeps it off the player-facing list); that flips when `example` and `new_babel` author
    endings.
-3. **Ending steering.** First slice **done** (see AUTHORING_TOOL_PHASES.md S5): `PLANT` in act
-   generation, early carrier activation, and an engine trace with a report
-   (`docs/Steering_Review.md`). **Next, after reading the data:** the nudge consumers (an active carrier's
-   nudge line gets the `plant`; a steered destination's `hint` at most once per nudge cycle; a drive nudge
-   from `narrow_until`), then generation limited to texture, then `max_acts` (no default) and the
-   `epilogue` display. Decided: no generated spine fallback; waypoint progress feeds the act judge and does
-   not gate advancement; an armed pacing rule beats a drive nudge.
+3. **Ending steering.** First two slices **done** (see AUTHORING_TOOL_PHASES.md S5): `PLANT` in act generation,
+   early carrier activation, the nudge consumers (carrier priority and plant on a thread's line, hints, the drive
+   nudge that yields to an armed pacing rule), and an engine trace with a report (`docs/Steering_Review.md`).
+   **Next, after reading the data from real play:** generation limited to texture, then `max_acts` (no default),
+   then the `epilogue` display. Decided: no generated spine fallback; waypoint progress feeds the act judge and does
+   not gate advancement.
 4. **CR-01 `on_enter`**, then **CR-03 visibility enforcement** in the loader.
 5. **CR-04 `derived`:** resolve when creation completes, store the values in the save,
    substitute `{name}` wherever prompts are built (including the pacing directive's

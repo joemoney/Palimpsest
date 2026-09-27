@@ -1828,14 +1828,46 @@ the next act really can't work without a specific new person - most acts don't n
     return new_act_number
 
 
-def generate_pacing_nudge(ctx: dict) -> str:
-    """Generate a meta-instruction to nudge the story toward active goals."""
+def _pacing_directive_will_fire(ctx: dict):
+    """The id of the pacing-loop rule that `_section_pacing_directive` will fire this turn, or None. A dry run
+    of its decision with no side effects (it neither pops `last_fired_rule` nor counts a deferral), so the
+    nudge, which is built first, can yield to a rule that is about to speak."""
+    bound = mechanics.bound_for(ctx["story"], "pacing_loop")
+    rule = bound.engine.rule(bound.cfg) if bound else None
+    if not rule:
+        return None
+    pacing_state = ctx["state"]["pacing"]
+    entry = pacing_state.get("armed", {}).get(rule["id"])
+    if entry is None or bound.engine.effective_threshold(rule, _current_act(ctx)) is None:
+        return None
+    fired_last_turn = pacing_state.get("last_fired_rule")
+    suppressed = any(_suppress_predicate(name, ctx, rule["id"], fired_last_turn) for name in rule.get("suppress_when", []))
+    if suppressed and entry.get("deferrals", 0) < rule.get("max_deferrals", 3):
+        return None
+    return rule["id"]
+
+
+def generate_pacing_nudge(ctx: dict, report: dict | None = None) -> str:
+    """Generate a meta-instruction to nudge the story toward active goals.
+
+    When the story has an ending funnel this is also where steering reaches the narrator (CR-05, CR-10):
+    a running thread that carries an unplanted waypoint of a steered destination has its priority raised
+    for the nudge and its line carries the waypoint's `plant`; one steered destination's `hint` joins as a
+    passing detail, at most one per nudge; and from `narrow_until` the nudge names the leader's missing
+    waypoints as the scene's priority (the drive nudge), which yields on a turn a pacing-loop rule fires.
+    Only `plant` and `hint` text is added, never an ending's name, arc, criteria or `detect`. `report`, if
+    given, is filled with what steering did, for the trace."""
     pacing_state = ctx["state"]["pacing"]
     subplots_view = _all_subplots(ctx)
     thread_steering = ctx["state"]["plot"]["thread_steering"]
 
     active_subplots = [(sid, sp) for sid, sp in subplots_view.items() if sp["active"]]
 
+    endings_bound = mechanics.bound_for(ctx["story"], "endings")
+    plan = (endings_bound.engine.nudge_plan(endings_bound.cfg, ctx) if endings_bound
+            else {"carriers": {}, "hint": None, "drive": None})
+    added = []          # every string steering put in this nudge, so its size is measured
+    used_keys = []      # the waypoint plants this nudge named, counted once it is built
     nudge_parts = []
 
     current_act = _current_act(ctx)
@@ -1846,11 +1878,19 @@ def generate_pacing_nudge(ctx: dict) -> str:
         if current_act.get("completion_signals"):
             nudge_parts.append(f"THIS ACT RESOLVES WHEN: {', '.join(current_act['completion_signals'])}")
 
+    shown_carriers = []
     if active_subplots:
         priority_map = {"high": 3, "medium": 2, "low": 1}
-        active_subplots_sorted = sorted(active_subplots, key=lambda x: priority_map.get(x[1]["priority"], 0), reverse=True)
+        # CR-10: a thread carrying a steered waypoint is raised one step for this nudge, and wins a tie.
+        # With no carriers this is exactly the old order (priority, stable among equals).
+        carries = plan["carriers"]
+        unboosted = sorted(active_subplots, key=lambda x: priority_map.get(x[1]["priority"], 0), reverse=True)
+        active_subplots_sorted = sorted(
+            active_subplots,
+            key=lambda x: (-(priority_map.get(x[1]["priority"], 0) + (1 if x[0] in carries else 0)),
+                           0 if x[0] in carries else 1))
 
-        primary_subplot = active_subplots_sorted[0][1]
+        primary_sid, primary_subplot = active_subplots_sorted[0]
         primary_tag = " (ongoing, multi-act)" if primary_subplot.get("span") == "multi_act" else ""
         nudge_parts.append(f"ACTIVE SUBPLOT: '{primary_subplot['title']}'{primary_tag} - {primary_subplot['description']}")
         # CR-13: ties_to_main_plot is authored/generated for every subplot and shown in
@@ -1858,13 +1898,42 @@ def generate_pacing_nudge(ctx: dict) -> str:
         # says *why* the subplot matters to the main thread.
         if primary_subplot.get("ties_to_main_plot"):
             nudge_parts.append(f"TIES TO MAIN: {primary_subplot['ties_to_main_plot']}")
+        if primary_sid in carries and len(shown_carriers) < mechanics.endings.MAX_PLANTS:
+            line = f"SET UP THROUGH THIS THREAD: {carries[primary_sid]['plant']}"
+            nudge_parts.append(line)
+            added.append(line)
+            shown_carriers.append(primary_sid)
 
         if len(active_subplots) > 1:
-            other_titles = [
-                sp["title"] + (" (multi-act)" if sp.get("span") == "multi_act" else "")
-                for _, sp in active_subplots_sorted[1:3]
-            ]
+            other_titles = []
+            for sid, sp in active_subplots_sorted[1:3]:
+                title = sp["title"] + (" (multi-act)" if sp.get("span") == "multi_act" else "")
+                if sid in carries and len(shown_carriers) < mechanics.endings.MAX_PLANTS:
+                    extra = f" (set up: {carries[sid]['plant']})"
+                    title += extra
+                    added.append(extra)
+                    shown_carriers.append(sid)
+                other_titles.append(title)
             nudge_parts.append(f"BACKGROUND SUBPLOTS: {', '.join(other_titles)}")
+        used_keys += [carries[sid]["key"] for sid in shown_carriers]
+
+    # The drive nudge (CR-05): from narrow_until, the leader's missing waypoints as the scene's priority. An
+    # armed pacing-loop rule that fires this turn has the floor (one pacing directive per turn), so it yields.
+    drive, yielded_to = plan["drive"], None
+    if drive:
+        yielded_to = _pacing_directive_will_fire(ctx)
+        if yielded_to:
+            drive = None
+        else:
+            said = []
+            for wp in drive["waypoints"]:
+                via = [subplots_view[sid]["title"] for sid in wp["via"] if sid in subplots_view]
+                said.append(wp["plant"] + (f" (through '{via[0]}')" if via else ""))
+            line = ("PRIORITY THIS SCENE: " + "; ".join(said) + ". Bring this about through the story as it "
+                    "stands, on the page as something that happens, never as an explanation.")
+            nudge_parts.append(line)
+            added.append(line)
+            used_keys += [wp["key"] for wp in drive["waypoints"]]
 
     max_parallel = ctx["story"]["plot"].get("pacing", {}).get("max_parallel_subplots", DEFAULT_MAX_PARALLEL_SUBPLOTS)
     if len(active_subplots) < max_parallel:
@@ -1912,6 +1981,28 @@ def generate_pacing_nudge(ctx: dict) -> str:
     emerging_themes = thread_steering.get("emerging_themes", [])
     if emerging_themes:
         nudge_parts.append(f"EMERGING THEMES: {', '.join(emerging_themes)}")
+
+    # CR-05's hint: one steered destination's diegetic fragment, worked in lightly; never shown in the UI.
+    hint = plan["hint"]
+    if hint:
+        line = f"A DETAIL TO WORK IN, lightly and in passing, never as a statement of what is coming: {hint['text']}"
+        nudge_parts.append(line)
+        added.append(line)
+    if endings_bound and (used_keys or hint):
+        mechanics.endings.record_nudge(ctx, used_keys, hint["dest"] if hint else None)
+    if report is not None:
+        report.update(
+            mode="drive" if drive else "normal",
+            primary=active_subplots_sorted[0][0] if active_subplots else None,
+            primary_unboosted=unboosted[0][0] if active_subplots else None,
+            boosted=[sid for sid in shown_carriers],
+            carrier_plants=[{"sid": sid, "key": plan["carriers"][sid]["key"], "dest": plan["carriers"][sid]["dest"],
+                             "nudged": plan["carriers"][sid]["nudged"]} for sid in shown_carriers],
+            hint={"dest": hint["dest"], "shown": hint["shown"]} if hint else None,
+            drive=({"leader": drive["leader"], "keys": [w["key"] for w in drive["waypoints"]],
+                    "via": sorted({sid for w in drive["waypoints"] for sid in w["via"]})} if drive else None),
+            drive_yielded_to=yielded_to if plan["drive"] else None,
+            steering_chars=sum(len(x) for x in added))
 
     pacing_state["last_direction"] = " | ".join(nudge_parts)
     return "\n".join(nudge_parts)
@@ -2100,10 +2191,11 @@ def _section_pacing_or_endgame(ctx: dict) -> str | None:
     nudge_frequency = ctx["story"]["plot"].get("pacing", {}).get("nudge_frequency", DEFAULT_NUDGE_FREQUENCY)
     if pacing_state["turns_since_nudge"] >= nudge_frequency:
         pacing_state["turns_since_nudge"] = 0
-        nudge = generate_pacing_nudge(ctx)
-        # The baseline steering piece 2 will be measured against: how often a nudge fires and what is in it.
+        steering = {}
+        nudge = generate_pacing_nudge(ctx, steering)
+        # How often a nudge fires, what is in it, and what steering added to it (and what it yielded).
         engine_trace.defer(ctx, "nudge", chars=len(nudge), parts=[p.split(":")[0][:24] for p in nudge.split("\n") if ":" in p],
-                           act=(_current_act(ctx) or {}).get("act_number"))
+                           act=(_current_act(ctx) or {}).get("act_number"), **steering)
         return nudge
     return None
 
