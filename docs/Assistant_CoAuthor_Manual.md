@@ -164,7 +164,7 @@ type. Ids and names save when the field loses focus (click elsewhere or press Ta
     - **AI: Suggest waypoints**
     - **Ready when**, **Hint**, **Criteria**
     - **Arc title**, **Arc description**, **Epilogue**
-  - Failure panel: **Title**, **Main theme**, **Kind**, **Trigger**, **Min turn**,
+  - Failure panel: **Title**, **Main theme**, **Kind**, **Min turn**,
     **Ready when**, **Criteria**, **Arc title**, **Arc description**, **Epilogue**.
 
 ### Other tabs
@@ -406,14 +406,16 @@ threads and cast into account, which that button can't.
 
 ### 6.4 "A failure ending for when <stat> runs out"
 
-Produce **Title**, **Main theme**, **Trigger** (a short phrase, e.g. "NERVE reaches 0"),
-**Ready when**, optional **Min turn**, **Criteria** (what the judge must confirm, e.g. "the
+Produce **Title**, **Main theme**, **Ready when**, optional **Min turn**, **Criteria** (what the judge must confirm, e.g. "the
 scene was a real breakdown, not a bad moment"), **Arc title**, **Arc description**.
 
 Steps: endings column → **+ Failure** → fill the fields → **Ready when** in Raw JSON, e.g.
 `{"stat": "nerve", "lte": 0}`.
 
-Failure endings carry no waypoints and are never steered toward.
+Failure endings carry no waypoints and are never steered toward. If the failure is an event and
+not a number ("the last light source fails"), also produce a flag id and **detect** text for it
+(6.8) and give `{"flag": "<id>"}` as **Ready when**. The player cannot end the story: every story
+needs at least one catch-all destination, or it can never end.
 
 ### 6.5 "Create a character"
 

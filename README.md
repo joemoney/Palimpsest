@@ -83,8 +83,6 @@ CLI defaults to a local single-player save against the public example story
 
 Special commands, typed at the prompt like a normal action:
 - `quit` / `exit` — leave the session
-- `end story` (or "end the story" / "conclude the story" / "wrap up the story") —
-  begin wrapping the narrative up for good
 - `steer ...` — directly reshape the plot via `backend/plot_manager.py` (see below).
   Prints a warning every time: it bypasses narration and edits plot state
   directly, so a vague command can break story coherence.
@@ -183,27 +181,22 @@ above are the CLI equivalent of the web walkthrough below.
    regenerate button (below the most recent scene) re-rolls it with a
    fresh response to the same action, discarding the version you didn't
    like. Only ever affects the single most recent scene.
-6. **The story has no fixed length** - there's no set number of acts or a
-   built-in ending waiting for you. Only the first act is pre-written;
-   whenever the current one feels resolved, the engine judges that for
-   itself and generates the next act on the spot, with no ceiling.
-   Subplots work the same way, automatically topping back up as old ones
-   complete. Nothing here is scripted in advance, so don't expect a fixed
-   chapter count or a natural stopping point - the story keeps going until
-   you decide to end it (next).
-7. **Ending the story** - type one of `end story`, `end the story`,
-   `conclude the story`, or `wrap up the story` as your action. The
-   narration shifts into wrapping up open threads, and the story
-   concludes once it ends a response with the line `THE END` - after
-   that, no further acts or subplots generate automatically (manual
-   Plot/Subplot Manager edits still work, if you want to keep steering
-   the finale by hand).
-8. Scroll up to reread earlier scenes - older history loads in
+6. **How the story ends** - there's no set number of acts and no command to
+   end it early. Only the first act is pre-written; whenever the current
+   one feels resolved, the engine judges that for itself and generates the
+   next act on the spot. Subplots work the same way, topping back up as old
+   ones complete. The story ends on its own when it reaches one of the
+   endings its author wrote, whether you steered toward one or it ran out
+   of road: the narration turns toward a close, and the story concludes
+   once it ends a response with the line `THE END`. After that, no further
+   acts or subplots generate automatically (manual Plot/Subplot Manager
+   edits still work, if you want to keep steering the finale by hand).
+7. Scroll up to reread earlier scenes - older history loads in
    automatically as you scroll, no pagination to click through.
-9. If the AI model is temporarily unreachable (rate limit, brief outage),
+8. If the AI model is temporarily unreachable (rate limit, brief outage),
    you'll see an error message and nothing will have been lost - your
    previous scene and choices are untouched, just retry.
-10. The title bar can get in the way while reading - collapse it with the
+9. The title bar can get in the way while reading - collapse it with the
    chevron button in the top-right, and a small tab at the very top of the
    screen brings it back whenever you want it.
 
@@ -750,7 +743,9 @@ of NERVE. Click **+ Ending** and set **Kind** to *Failure: reached through
 stats*. Then fill in:
 - **Min turn**: the earliest turn it can trigger.
 - **Ready when**: the condition the engine checks every turn, e.g. NERVE at
-  most 0.
+  most 0. For a failure that is an event rather than a number (the last light
+  source fails, the third defiance of the bench), declare a flag whose detect
+  text is that event (Step 9) and use the flag here.
 - **Criteria**: the judge's confirmation, e.g. *"the scene just narrated was
   lethal, not merely damaging."*
 - **Arc** and **Epilogue**, as for destinations.

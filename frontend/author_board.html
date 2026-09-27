@@ -698,7 +698,7 @@ function issues(){
   const out=[];
   const ends=model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='destination');
   // Mirrors author_lint.ending_arc_issues: the arc is what the narrator gets once an ending commits.
-  for(const n of model.nodes.filter(n=>n.kind==='ending'&&(n.ekind==='terminal'?n.source==='endings':true))){
+  for(const n of model.nodes.filter(n=>n.kind==='ending')){
     const arc=n.arc||{};const miss=['title','description'].filter(k=>!(arc[k]||'').trim());
     if(!miss.length)continue;
     const what=miss.length===2?'arc title or description':'arc '+miss[0];
@@ -1270,31 +1270,20 @@ function renderInspector(){
   if(n.kind==='ending'){
     insp.appendChild(field('Kind',selectInput(n.ekind,[['destination','Destination: steered toward'],['terminal','Failure: reached through stats']],v=>{n.ekind=v;if(v==='terminal'){model.edges=model.edges.filter(e=>!(e.type==='delivers'&&e.to===n.id))}})));
     if(n.ekind==='terminal'){
-      insp.appendChild(field('Trigger',textInput(n.trigger,v=>n.trigger=v,'e.g. FRAME reaches 0')));
-      insp.appendChild(el('p','note','Failure endings are never steered toward, so they carry no waypoints. The engine checks the trigger every turn and a judge confirms it.'));
-
-      // CR-05's fuller terminal shape (mechanics.endings, kind: terminal) rather than the
-      // legacy mechanics.failure_conditions shape Trigger alone writes to (D5's retirement of
-      // failure_conditions is still S5, so both shapes stay valid side by side). Filling in
-      // any field below marks this node source:"endings" so author_model writes it under
-      // mechanics.endings instead - the promotion AUTHORING_TOOL_PHASES.md describes as "a
-      // real board action", done here by simply using the fields rather than a separate
-      // button.
-      insp.appendChild(el('p','note','Filling in anything below promotes this to a full CR-05 terminal, authored under mechanics.endings instead of mechanics.failure_conditions.'));
-      const promote=()=>{n.source='endings'};
+      insp.appendChild(el('p','note','Failure endings are never steered toward, so they carry no waypoints. The engine checks Ready when every turn and, if there are criteria, a judge confirms it. For a failure that is an event rather than a number (e.g. the last light source fails), declare a flag whose detect text is that event and use it as Ready when.'));
       const minTurnInp=el('input');minTurnInp.type='number';minTurnInp.value=n.min_turn??'';minTurnInp.placeholder='e.g. 10';
-      minTurnInp.addEventListener('input',()=>{const v=minTurnInp.value.trim();if(v===''){delete n.min_turn}else{n.min_turn=Number(v);promote()}save();renderTimeline()});
+      minTurnInp.addEventListener('input',()=>{const v=minTurnInp.value.trim();if(v===''){delete n.min_turn}else{n.min_turn=Number(v)}save();renderTimeline()});
       insp.appendChild(field('Min turn',minTurnInp));
       insp.appendChild(el('h4',null,'Ready when'));
       insp.appendChild(el('p','note','Checked every turn - the engine\'s own trigger, e.g. a stat reaching zero.'));
-      insp.appendChild(jsonConditionField(n.ready_when,v=>{if(v===undefined)delete n.ready_when;else{n.ready_when=v;promote()}},
+      insp.appendChild(jsonConditionField(n.ready_when,v=>{if(v===undefined)delete n.ready_when;else{n.ready_when=v}},
         'ready_when (JSON), e.g. {"stat": "frame", "lte": 0}'));
-      insp.appendChild(field('Criteria',area(n.criteria,v=>{if(v.trim()){n.criteria=v;promote()}else delete n.criteria}),'mechanics.endings.entries[].criteria',
+      insp.appendChild(field('Criteria',area(n.criteria,v=>{if(v.trim()){n.criteria=v}else delete n.criteria}),'mechanics.endings.entries[].criteria',
         el('div','fieldnote','JUDGE-ONLY confirmation once ready_when trips, e.g. "the scene just narrated was lethal, not merely damaging."')));
       insp.appendChild(el('h4',null,'Arc (narrator-facing once committed)'));
-      insp.appendChild(field('Arc title',textInput((n.arc&&n.arc.title)||'',v=>{n.arc=n.arc||{};if(v.trim()){n.arc.title=v;promote()}else delete n.arc.title})));
-      insp.appendChild(field('Arc description',area((n.arc&&n.arc.description)||'',v=>{n.arc=n.arc||{};if(v.trim()){n.arc.description=v;promote()}else delete n.arc.description})));
-      insp.appendChild(field('Epilogue',area(n.epilogue,v=>{if(v.trim()){n.epilogue=v;promote()}else delete n.epilogue}),'mechanics.endings.entries[].epilogue',
+      insp.appendChild(field('Arc title',textInput((n.arc&&n.arc.title)||'',v=>{n.arc=n.arc||{};if(v.trim()){n.arc.title=v}else delete n.arc.title})));
+      insp.appendChild(field('Arc description',area((n.arc&&n.arc.description)||'',v=>{n.arc=n.arc||{};if(v.trim()){n.arc.description=v}else delete n.arc.description})));
+      insp.appendChild(field('Epilogue',area(n.epilogue,v=>{if(v.trim()){n.epilogue=v}else delete n.epilogue}),'mechanics.endings.entries[].epilogue',
         el('div','fieldnote','UI-only, shown after THE END. Never reaches the narrator.')));
     }else{
       const cb=el('label','toggle');const c=el('input');c.type='checkbox';c.checked=!!n.catchAll;c.id='f_catchall';

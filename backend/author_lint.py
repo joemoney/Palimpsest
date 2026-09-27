@@ -69,6 +69,13 @@ def _schema_hint(path: str, error) -> str:
     viable_while, not a key. Both happened once in a hand-edited template."""
     if path.startswith("mechanics.endings.entries") and path.endswith(".kind") and error.instance == "failure":
         return "A Failure ending on the storyboard is kind \"terminal\"."
+    if "'failure_conditions'" in error.message:
+        return ("mechanics.failure_conditions was retired (D5): write each failure as a mechanics.endings "
+                "entry with kind \"terminal\", a ready_when condition and an arc.")
+    if path.startswith("mechanics.endings.entries") and "'trigger'" in error.message:
+        return ("`trigger` was the retired failure_conditions field. A terminal's rule is `ready_when` (a "
+                "condition; for a prose event, a declared flag whose detect text is the event), and `criteria` "
+                "is the judge's confirmation.")
     if path.startswith("mechanics.endings.entries") and "'catch_all'" in error.message:
         return ("There is no catch_all key: a destination with no viable_while is the catch-all "
                 "(the storyboard's Catch-all checkbox).")
@@ -316,8 +323,7 @@ def ending_arc_issues(raw: dict) -> list:
     act's title and description (`EndingFunnel.final_arc`). Without one the engine still ends the
     story, but the finale starts from the ending's name alone ("Bring the story to its ending:
     <name>."), so a missing arc title or description is a warning: one per ending, naming what's
-    missing. Covers destinations and terminals under `mechanics.endings`; the legacy
-    `failure_conditions` shape carries its own required `ending_prompt` instead."""
+    missing. Covers destinations and terminals under `mechanics.endings`."""
     block = (raw.get("mechanics") or {}).get("endings")
     out = []
     for e in (block.get("entries") or []) if isinstance(block, dict) else []:

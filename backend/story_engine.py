@@ -63,7 +63,6 @@ DEFAULT_SCENE_WORD_MAX = 500
 # Set generously above the largest real payload (narration + options, or a state-update JSON
 # blob) so a low provider default never becomes the binding constraint.
 OPENROUTER_MAX_TOKENS = 4096
-END_STORY_PHRASES = {"end story", "end the story", "conclude the story", "wrap up the story"}
 STEER_WARNING = (
     "*** STEERING MODE: this rewrites the plot directly, bypassing narration.\n"
     "    It can easily contradict what's already happened or break story coherence\n"
@@ -79,8 +78,7 @@ STEER_WARNING = (
 #   Tier A - cheap flagship, reasoning OFF. For calls where style/format adherence matters
 #     most and a model's reasoning phase swallowing the final answer (see the "reasoning"
 #     comment in _call_llm_openrouter) would be a visible, player-facing failure: narration
-#     (_generate_and_apply_turn's call_llm), the compressed_summary rollover, and
-#     handle_end_story_request's closing arc.
+#     (_generate_and_apply_turn's call_llm) and the compressed_summary rollover.
 #   Tier B - the SAME cheap flagship model as Tier A, but with reasoning turned ON. For
 #     rarer, judgment-heavy calls where a bit of latency/failure risk is worth it for a
 #     better decision: check_and_advance_act, generate_new_subplot, generate_steering_seed,
@@ -375,8 +373,8 @@ def call_llm(
 ) -> str:
     """Sends prompt to the given (or default) provider and returns the raw text response.
     Defaults to Tier A (TIER_AB_MODEL/TIER_AB_PROVIDER, reasoning off) - narration
-    (_generate_and_apply_turn) and the compressed_summary rollover call it exactly this way;
-    handle_end_story_request also lands on Tier A, but through call_llm_json. Tier B call
+    (_generate_and_apply_turn) and the compressed_summary rollover call it exactly this way.
+    Tier B call
     sites (generate_new_subplot, check_and_advance_act, generate_steering_seed,
     generate_character_from_relationship) pass model=TIER_AB_MODEL,
     provider=TIER_AB_PROVIDER, reasoning=True explicitly instead - see "LLM tier
@@ -434,8 +432,7 @@ def call_llm_json(
     only call site that calls this bare, every turn. Every Tier B call site
     (generate_new_subplot, check_and_advance_act, generate_steering_seed,
     generate_character_from_relationship) passes model=TIER_AB_MODEL,
-    provider=TIER_AB_PROVIDER, reasoning=True explicitly; handle_end_story_request (Tier A)
-    passes the same model/provider with reasoning left at its default False. Always requests
+    provider=TIER_AB_PROVIDER, reasoning=True explicitly. Always requests
     OpenRouter's response_format: json_object mode underneath (see _call_llm_openrouter) - a
     no-op under the google provider, which has no equivalent knob in this codebase.
     `sort` is passed straight through to call_llm - see its docstring."""
@@ -470,7 +467,6 @@ STATUS_LABELS = {
     "state_update": "Reckoning",
     "subplot_generation": "Branching",
     "act_advancement_check": "Weighing",
-    "end_story_final_arc": "Concluding",
     # CR-05's two judge calls, both Tier C and both rare: a terminal's confirmation only on a
     # turn its condition trips, the commit judge only at a check with a ready destination.
     "terminal_confirm": "Reckoning",
@@ -504,7 +500,6 @@ DEFAULT_STEP_ESTIMATE_SECONDS = {
     "state_update": 23,
     "subplot_generation": 6,
     "act_advancement_check": 4,
-    "end_story_final_arc": 15,
     "terminal_confirm": 2,
     "ending_commit_judge": 3,
     "summary_rollover": 19,
@@ -1156,8 +1151,8 @@ is a separate, manual step."""
     # the diff into typed events (§8.2), the events are appended to the save's log, and every
     # bound engine resolves against the whole stream in `resolve_order` (§6.2). The sequence
     # that used to be the physical order of statements in this function is declared data now
-    # - including "failure last", which was a comment and a statement position and is now
-    # triggered_ending's resolve_order of 90.
+    # - including "failure last", which was a comment and a statement position. (A terminal ending
+    # is now checked after this pipeline by check_ending_funnel, D5.)
     mechanics.run_observation_pipeline(ctx, diff)
 
     return diff
@@ -1383,16 +1378,13 @@ Respond with ONLY a JSON object, no other text:
     return draft
 
 
-def is_end_story_command(action: str) -> bool:
-    return action.strip().lower() in END_STORY_PHRASES
-
-
 def _begin_endgame(ctx: dict, final_arc: dict, cause: str):
-    """Shared by handle_end_story_request (cause="player_request") and 5.7's failure-
-    condition path (cause=<condition id>): locks in the ending machinery - marks
-    endgame.requested, records who/what caused it and when, and appends a finale act.
-    No new code path for endings, per SCHEMA_V2_SPEC.md §3.6 - a failure condition firing
-    is just a second way to enter the same ending machinery."""
+    """The one way a story enters its ending (D6): `check_ending_funnel` calls it for a
+    committed destination (cause "committed"), a forced commit at the budget's end ("forced") and
+    a confirmed terminal ("terminal"). Locks in the ending machinery - marks endgame.requested,
+    records what caused it and when, and appends a finale act. `endgame.requested` keeps its name
+    though nobody requests it any more: `generate_new_subplot` and `check_and_advance_act` read it
+    as "the story is ending"."""
     endgame = ctx["state"]["plot"]["endgame"]
     endgame["requested"] = True
     endgame["requested_turn"] = ctx["state"]["pacing"]["turn_count"]
@@ -1412,70 +1404,6 @@ def _begin_endgame(ctx: dict, final_arc: dict, cause: str):
     ctx["state"]["plot"]["current_act"] = new_act_number
 
 
-def handle_end_story_request(ctx: dict) -> dict:
-    """Commit the story to a finale: no more new subplots or acts, just resolution."""
-    endgame = ctx["state"]["plot"]["endgame"]
-    if endgame["requested"]:
-        return endgame["final_arc"]
-
-    subplots_view = _all_subplots(ctx)
-    active_subplots = [sp["title"] for sp in subplots_view.values() if sp["active"]]
-    main_thread = _main_thread_view(ctx)
-    summary = ctx["state"]["history"]["compressed_summary"] or "The story has just begun."
-
-    prompt = f"""The player has asked to conclude this interactive story. Design a closing arc that
-resolves it satisfyingly, tying together the threads already in motion.
-
-MAIN THREAD: {main_thread['title']} - {main_thread['description']}
-STORY SO FAR: {summary}
-ACTIVE SUBPLOTS TO RESOLVE: {', '.join(active_subplots) or 'none'}
-
-Respond with ONLY a JSON object, no other text:
-{{
-  "title": "<title for the closing arc>",
-  "description": "<2-3 sentences describing how the story should resolve>"
-}}"""
-
-    try:
-        generated = _timed(
-            "end_story_final_arc",
-            lambda: call_llm_json(prompt, model=TIER_AB_MODEL, provider=TIER_AB_PROVIDER),
-            model=TIER_AB_MODEL,
-        )
-    except (json.JSONDecodeError, ValueError):
-        generated = {}
-
-    final_arc = {
-        "title": generated.get("title", "The Reckoning"),
-        "description": generated.get(
-            "description",
-            "Bring the story's open threads to a close as gracefully as the current momentum allows.",
-        ),
-    }
-    _begin_endgame(ctx, final_arc, cause="player_request")
-    return final_arc
-
-
-def _apply_failure_effect(ctx: dict, effect):
-    """Applies the triggered_ending engine's `failure.trigger` effect (phase 4).
-
-    Registered from here rather than from backend/mechanics/failure.py, and that seam is
-    deliberate: §7.6 requires a failure to route into the *existing* endgame machinery
-    rather than a new code path, that machinery is _begin_endgame (shared with the player's
-    own end-the-story request), and duplicating it inside the engine to keep the module
-    self-contained would trade a real invariant - one ending path - for a cosmetic one.
-    The engine decides that the story ends and supplies the authored arc; this decides
-    nothing and only routes.
-
-    No LLM call: the closing description is the condition's own authored ending_prompt.
-    No-ops if the story is already ending, so whichever condition or request got there
-    first wins."""
-    if ctx["state"]["plot"]["endgame"]["requested"]:
-        return
-    _begin_endgame(ctx, effect.payload["final_arc"], cause=effect.payload["cause"])
-
-
-mechanics.register_effect("failure.trigger", _apply_failure_effect)
 
 
 def _recent_scene(ctx: dict) -> str:
@@ -1912,7 +1840,7 @@ def _section_roster(ctx: dict) -> str | None:
 
 
 def _section_main_thread(ctx: dict) -> str:
-    # CR-05: main_thread reached generate_new_subplot and handle_end_story_request, but
+    # CR-05: main_thread reached generate_new_subplot and the act generator, but
     # never the narration prompt itself - seven turns out of eight, the narrator had no
     # statement of what the story is about beyond the compressed summary. This is standing
     # context, present every turn; the pacing nudge's own act line (_section_pacing, below)
@@ -1972,7 +1900,7 @@ def _finale_pace(ctx: dict) -> str:
 
 def _section_pacing_or_endgame(ctx: dict) -> str | None:
     """The one section that's genuinely two mutually exclusive modes rather than a single
-    optional block: once the player has asked to end the story, this becomes the ENDGAME
+    optional block: once an ending is committed (D6), this becomes the ENDGAME
     instruction (every turn, not gated by nudge_frequency); otherwise it's the periodic
     pacing nudge (generate_pacing_nudge), gated on turns_since_nudge like before. Resets
     turns_since_nudge as a side effect when the nudge actually fires - same as the
@@ -1982,11 +1910,8 @@ def _section_pacing_or_endgame(ctx: dict) -> str | None:
         subplots_view = _all_subplots(ctx)
         active_titles = [sp["title"] for sp in subplots_view.values() if sp["active"]]
         final_arc = endgame["final_arc"] or {}
-        opener = ("The player has asked to conclude the story."
-                  if endgame.get("cause") == "player_request" else
-                  "The story has reached its ending.")
         return (
-            f'ENDGAME: {opener} Narrate toward a satisfying, '
+            f'ENDGAME: The story has reached its ending. Narrate toward a satisfying, '
             f'conclusive\nending for: "{final_arc.get("title", "")}" - {final_arc.get("description", "")}\n'
             f"Resolve these open threads and do not introduce any new subplots, factions, or plot "
             f"threads: {', '.join(active_titles) or 'none remaining'}.\n"
@@ -2778,15 +2703,9 @@ def take_turn(
     try:
         ctx = state_store.load_state(user_id, story_slug)
 
-        if is_end_story_command(player_action) and not ctx["state"]["plot"]["endgame"]["requested"]:
-            final_arc = handle_end_story_request(ctx)
-            state_store.save_state(ctx, user_id, story_slug)
-            print(f"\n[The story is moving toward its conclusion: {final_arc['title']}]\n")
-
-        # §4's pre-action gate check, and the only thing before it is the end-story command
-        # (which is the player asking to stop, not an action the world may refuse). Ahead of
-        # the snapshot on purpose: a refused turn takes no snapshot because there is no turn
-        # to regenerate, so `pending_regenerate` still points at the last real one.
+        # §4's pre-action gate check. Ahead of the snapshot on purpose: a refused turn takes no
+        # snapshot because there is no turn to regenerate, so `pending_regenerate` still points
+        # at the last real one.
         refusal = detect_gate_refusal(ctx, player_action)
         if refusal:
             raise ActionRefused(refusal["sentence"], refusal["gate"])
@@ -2834,7 +2753,6 @@ if __name__ == "__main__":
     print(
         '\nSpecial commands, typed at the prompt like a normal action:\n'
         '  "quit" / "exit"    - leave the session\n'
-        '  "end story"        - begin wrapping the narrative up for good\n'
         '  "steer ..."        - directly reshape the plot via plot_manager.py (e.g. '
         '"steer overview", "steer add-goal \'...\'") - can break story coherence if misused, see warning'
     )

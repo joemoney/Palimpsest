@@ -346,7 +346,6 @@
         "progression": { "$ref": "#/$defs/engine_progression" },
         "stats": { "$ref": "#/$defs/engine_stats" },
         "revelations": { "$ref": "#/$defs/engine_revelations" },
-        "failure_conditions": { "$ref": "#/$defs/engine_failure_conditions" },
         "gate": { "$ref": "#/$defs/engine_gate" },
         "endings": { "$ref": "#/$defs/engine_endings" },
         "lore": { "$ref": "#/$defs/engine_lore" },
@@ -655,31 +654,6 @@
       "additionalProperties": false
     },
 
-    "engine_failure_conditions": {
-      "type": "object",
-      "properties": {
-        "engine": { "const": "triggered_ending" },
-        "conditions": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": { "type": "string" },
-              "trigger": { "x-visibility": "judge", "x-visible-when": "every turn", "type": "string" },
-              "title": { "type": "string" },
-              "ending_prompt": { "x-visibility": "narrator", "x-visible-when": "once triggered", "type": "string" }
-            },
-            "required": ["id", "trigger", "ending_prompt"],
-            "patternProperties": { "^_": true },
-            "additionalProperties": false
-          }
-        }
-      },
-      "if": { "required": ["engine"] },
-      "then": { "required": ["conditions"] },
-      "patternProperties": { "^_": true },
-      "additionalProperties": false
-    },
 
     "engine_gate": {
       "type": "object",
@@ -974,8 +948,7 @@
           "additionalProperties": false
         },
         "epilogue": { "x-visibility": "author", "x-visible-when": "shown to the player after THE END", "type": "string" },
-        "min_turn": { "type": "integer" },
-        "trigger": { "x-visibility": "judge", "x-visible-when": "every turn", "type": "string" }
+        "min_turn": { "type": "integer" }
       },
       "required": ["id", "kind"],
       "patternProperties": { "^_": true },

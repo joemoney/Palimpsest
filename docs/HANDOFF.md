@@ -159,9 +159,10 @@ built, whether the board would rewrite anything, and canonical formatting.
    Still to do after real play: check the model actually sets them (never measured against a
    live model), and consider whether `the_missing_core`'s `detect` texts are precise enough that
    a false positive cannot prune an ending.
-2. **D5 / D6 retirement:** delete `failure_conditions` / `triggered_ending` and the player's
-   end-story path (`END_STORY_PHRASES`, `handle_end_story_request`, the help entry). Keep
-   `STATUS_LABELS` / `DEFAULT_STEP_ESTIMATE_SECONDS` mirrored (`test_status_labels.py`).
+2. ~~D5 / D6 retirement~~ **Done** (see AUTHORING_TOOL_PHASES.md S5). One part is deferred:
+   the loader does not yet *refuse* a template with no `mechanics.endings` (lint L08 errors on it
+   and keeps it off the player-facing list); that flips when `example` and `new_babel` author
+   endings.
 3. **Ending steering:** waypoints into act generation, `hint` / `plant` in nudges, drive
    nudges, carrier priority and early activation, texture-only generation. Also the
    `epilogue` display and `max_acts`.

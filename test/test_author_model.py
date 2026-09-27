@@ -145,22 +145,30 @@ assert written4["plot"]["subplots"]["subplot_new"]["starts_active"] is True
 assert written4["plot"]["subplots"]["subplot_new"]["title"] == "Brand New"
 print("OK: a brand-new thread's opens edge writes starts_active: true")
 
-# --- failure_conditions surfaces as terminal nodes and round-trips (survival fixture) -----
+# --- terminals (D5) surface as terminal nodes and round-trip (survival fixture) ------------
 survival_path = os.path.join(REPO_ROOT, "test", "fixtures", "survival.json")
 raw_s = json.load(open(survival_path, encoding="utf-8"))
 model_s = author_model.to_board_model(raw_s)
 terminals = [n for n in model_s["nodes"] if n["kind"] == "ending" and n["ekind"] == "terminal"]
 assert {n["id"] for n in terminals} == {"fail_cold", "fail_dark"}
-assert next(n for n in terminals if n["id"] == "fail_cold")["trigger"] == \
-    raw_s["mechanics"]["failure_conditions"]["conditions"][0]["trigger"]
-# Editing one terminal's title changes only that condition's title in failure_conditions.
+by_id = {e["id"]: e for e in raw_s["mechanics"]["endings"]["entries"]}
+assert next(n for n in terminals if n["id"] == "fail_dark")["ready_when"] == by_id["fail_dark"]["ready_when"]
+# Editing one terminal's title changes only that entry's name; the other is untouched.
 term = next(n for n in model_s["nodes"] if n["id"] == "fail_cold")
 term["title"] = "Windward, Renamed"
 written_s = author_model.from_board_model(raw_s, model_s)
-conds = {c["id"]: c for c in written_s["mechanics"]["failure_conditions"]["conditions"]}
-assert conds["fail_cold"]["title"] == "Windward, Renamed"
-assert conds["fail_dark"] == raw_s["mechanics"]["failure_conditions"]["conditions"][1]
-print("OK: failure_conditions terminals load, edit and write back without touching CR-05 shape")
+entries = {e["id"]: e for e in written_s["mechanics"]["endings"]["entries"]}
+assert entries["fail_cold"]["name"] == "Windward, Renamed"
+assert entries["fail_dark"] == by_id["fail_dark"]
+assert "failure_conditions" not in written_s["mechanics"], "the retired block is never written (D5)"
+# A template that still carries the retired block is not read into nodes and is left alone.
+legacy = json.loads(json.dumps(raw_s))
+legacy["mechanics"]["failure_conditions"] = {"engine": "triggered_ending", "conditions": [
+    {"id": "old", "trigger": "t", "ending_prompt": "p"}]}
+assert {n["id"] for n in author_model.to_board_model(legacy)["nodes"] if n.get("ekind") == "terminal"} == {"fail_cold", "fail_dark"}
+assert author_model.from_board_model(legacy, author_model.to_board_model(legacy))["mechanics"]["failure_conditions"] == \
+    legacy["mechanics"]["failure_conditions"]
+print("OK: terminals load, edit and write back under mechanics.endings; failure_conditions is retired")
 
 # --- synthetic destination ending: waypoints and judge/author-only fields all round-trip,
 # including fields no UI edits yet (viable_while, ready_when, hint, criteria, arc, epilogue) -

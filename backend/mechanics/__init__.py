@@ -291,10 +291,25 @@ def validate(story):
         print("WARNING: narration.scene_length_by_moment (CR-14) is authored but this build does "
               "not read it yet - every scene still uses narration.scene_length.")
 
+    # D5: `failure_conditions` / `triggered_ending` is retired. A failure ending is a
+    # `kind: "terminal"` entry in `mechanics.endings` (a `ready_when` condition plus, optionally, a
+    # judge's `criteria`). Refuse loudly rather than let a block that used to bind now bind
+    # nothing: that is the silent inertness this registry exists to remove.
+    if "failure_conditions" in (story.get("mechanics") or {}):
+        raise ValueError(
+            "mechanics.failure_conditions was retired (decision D5). Author each failure as an entry in "
+            "mechanics.endings with \"kind\": \"terminal\", a \"ready_when\" condition (a stat "
+            "threshold, or a declared flag whose detect text is the old trigger) and an \"arc\". "
+            "Delete mechanics.failure_conditions.")
+
     # CR-05's declare-to-bind case: endings authored with no engine would never be steered
     # toward or reached, and - with no player end-story command (D6) - the story could never
     # end at all.
     endings_block = (story.get("mechanics") or {}).get("endings")
+    # D6's other half - a story with no endings at all can never end either - is not said here:
+    # the plan is for the loader to refuse it, but that waits until `example` and the private
+    # stories author endings, and until then a warning would trip P-2 for every minimal template.
+    # Lint L08 errors on it now, which also keeps such a story off the player-facing list.
     if isinstance(endings_block, dict) and endings_block.get("entries") and "endings" not in declared:
         print("WARNING: this story authors mechanics.endings entries but declares no engine - "
               "no ending will ever be steered toward or reached. Add \"engine\": "
@@ -507,4 +522,4 @@ def run_observation_pipeline(ctx, diff):
 
 # Engines register by being imported. At the bottom, because each one imports names from
 # this module - the package is the contract, the modules are the implementations.
-from . import endings, failure, gate, items, ledger, pacing, resource, reveal, social, threads  # noqa: E402,F401
+from . import endings, gate, items, ledger, pacing, resource, reveal, social, threads  # noqa: E402,F401

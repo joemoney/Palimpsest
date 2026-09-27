@@ -96,7 +96,7 @@ What routes around the refusal:
 | Dashed "unlocks" edge plus condition | `plot.subplots.<id>.activate_when` (CR-10) | **Not built** (today the model activates `starts_active: false` threads) |
 | Thread `role`, delivers edge, matrix dot | `plot.subplots.<id>.role`, `.delivers` (CR-10) | **Not built** |
 | Destination ending plus waypoints | `mechanics.endings.entries[]` (CR-05) | **Not built** |
-| Failure ending | `mechanics.endings.entries[]`, `kind: "terminal"` (CR-05; D5). Replaces `mechanics.failure_conditions`. | **Not built** (today's `failure_conditions` engine is deleted in S5) |
+| Failure ending | `mechanics.endings.entries[]`, `kind: "terminal"` (CR-05; D5). Replaces `mechanics.failure_conditions`. | **Built**; the `failure_conditions` engine is deleted |
 | Cast tab | `world.characters.<name>` (`description`, `hook`, `first_contact`, `role`, `canon`) | Yes, except `first_contact`, which is new in S1 (D7) |
 | Stat tiers | `mechanics.stats.axes.<axis>.tiers` | Yes for the current shape (QUORUM uses it). `on_enter` (CR-01) is **not built**. |
 | Main thread and acts | `plot.main_thread` | Yes, not on the board. Goes in the inspector's Forms tab. |
@@ -1037,6 +1037,44 @@ to land out of order and partially, tracked here after the fact rather than plan
     names.
   - **Not measured against a live model.** The prompt follows the revelations precedent; whether
     Tier C sets the flags reliably, and how often it sets one wrongly, needs a real playthrough.
+
+- **D5 / D6 retired** (2026-09-27). `backend/mechanics/failure.py` (the `triggered_ending` engine,
+  its `failure_triggered` observation field and its `failure.trigger` effect), `END_STORY_PHRASES`,
+  `is_end_story_command`, `handle_end_story_request` and its generated-arc fallback, the
+  `end_story_final_arc` entries in `STATUS_LABELS` / `DEFAULT_STEP_ESTIMATE_SECONDS` (the mirror
+  test holds), the CLI's `end story` line, the help page's *Ending the story* entry and the
+  README's copy of it are gone. The ENDGAME prompt no longer says the player asked. In the schema,
+  `mechanics.failure_conditions` and the endings entry's legacy `trigger` are removed; in
+  `author_model` and the board the legacy `failure_conditions` terminal plumbing (the `Trigger`
+  field and the "promotion" of a node to a CR-05 terminal) is removed, so a terminal is always a
+  `mechanics.endings` entry. `mechanics.validate()` refuses a template still carrying
+  `mechanics.failure_conditions`, in either shape, naming the replacement; lint's schema hint says
+  the same. `_begin_endgame` is now the one way into an ending (causes `committed`, `forced`,
+  `terminal`), and the two fixtures that used the old engine (courtroom, survival) are migrated.
+  No real story used it. Covered by `test/test_failure_retirement.py`; the two tests of the old
+  engine were deleted (the terminal path is `test_ending_funnel.py`'s).
+  **How a prose failure migrates:** the old `trigger` was free prose judged by the state-update
+  pass; a terminal's `ready_when` is a code condition. An event failure becomes a declared flag
+  whose `detect` text is the old trigger (which now reaches the update pass, the piece above) with
+  `ready_when: {"flag": ...}`; a compound one is a flag and a negated flag; a stat failure is a
+  stat threshold, optionally with `criteria` for a judge. The old `ending_prompt` becomes the
+  terminal's `arc.description`.
+  **Decisions made in passing - flag if wrong:**
+  - **The loader does not yet refuse a template with no `mechanics.endings`**, though the plan
+    above says it should. Doing it now would fail `example` (the default story, used across the
+    suite) and `new_babel`, whose endings are the author's to write, and would break the
+    minimal-template guarantee (P-4). Lint L08 already errors on it, which keeps such a story off
+    the player-facing list. It flips to a refusal in `mechanics.validate()` when those stories have
+    endings; a warning at load was tried and dropped, since it tripped P-2 for every minimal
+    template.
+  - **A terminal with no `criteria` is the condition alone** (existing behaviour), so a migrated
+    prose failure has no judge unless the author adds `criteria`. That trades the old design's
+    one detection call (the model said the trigger happened) for the flag's, which the state-update
+    pass makes and which cannot be unset; a wrongly set failure flag ends the story. Add `criteria`
+    to any failure whose flag could be set by accident.
+  - **The `endgame.requested` flag keeps its name.** Nobody requests an ending any more, but
+    `generate_new_subplot`, `check_and_advance_act` and the saves all read it, and the saves are
+    not being migrated for a rename.
 
 **Goal.** Every "not built" chip disappears, eventually.
 

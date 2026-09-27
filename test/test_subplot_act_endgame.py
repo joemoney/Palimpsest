@@ -1,7 +1,7 @@
 """End-to-end regression test for the continuous subplot/act/endgame machinery
 added to story_engine.py: a subplot completing should auto-generate a
 replacement, an act should be able to advance past the old fixed 3-act
-ceiling, and requesting an ending should lock out further auto-generation.
+ceiling, and entering the ending should lock out further auto-generation.
 
 Run directly: python3 test/test_subplot_act_endgame.py
 """
@@ -23,8 +23,6 @@ responses = CannedResponses([
     # 3) check_and_advance_act: judge ready, hand back Act 2
     {"ready": True, "reason": "Enough has resolved.", "next_act_title": "Act 2 Test",
      "next_act_description": "The investigation deepens.", "completion_signals": ["a new signal"]},
-    # 4) handle_end_story_request: final arc
-    {"title": "The Reckoning (test)", "description": "Everything converges."},
 ])
 se.call_llm_json = responses
 
@@ -72,13 +70,15 @@ assert ctx["state"]["pacing"]["subplots_completed_this_act"] == 0
 assert len(ctx["state"]["plot"]["act_history"]) == 1
 print("OK: act auto-advanced past the old fixed Act-3 ceiling")
 
-# 4: player asks to end the story -> finale act appended, endgame locked in
-final_arc = se.handle_end_story_request(ctx)
-assert final_arc["title"] == "The Reckoning (test)"
+# 4: an ending is committed (D6: the only way a story ends; a player command no longer exists)
+# -> finale act appended, endgame locked in
+final_arc = {"title": "The Reckoning (test)", "description": "Everything converges."}
+se._begin_endgame(ctx, final_arc, cause="committed")
+assert ctx["state"]["plot"]["endgame"]["cause"] == "committed"
 assert ctx["state"]["plot"]["endgame"]["requested"] is True
 assert se._all_acts(ctx)[-1]["is_finale"] is True
 assert ctx["state"]["plot"]["current_act"] == 3
-print("OK: endgame request generates a locked-in finale act")
+print("OK: entering the endgame generates a locked-in finale act")
 
 # after endgame: no more auto-generation of subplots or acts
 assert se.generate_new_subplot(ctx) is None
@@ -86,5 +86,11 @@ ctx["state"]["pacing"]["subplots_completed_this_act"] = 5  # would normally trig
 assert se.check_and_advance_act(ctx) is None
 assert responses.remaining() == 0, f"unused canned responses left over: {responses.remaining()}"
 print("OK: endgame disables further subplot/act auto-generation")
+
+# D6: there is no player command to end the story, and no generated-arc fallback for one
+for retired in ("END_STORY_PHRASES", "is_end_story_command", "handle_end_story_request"):
+    assert not hasattr(se, retired), f"{retired} should be gone (D6)"
+assert "end_story_final_arc" not in se.STATUS_LABELS and "end_story_final_arc" not in se.DEFAULT_STEP_ESTIMATE_SECONDS
+print("OK: the player's end-story path is gone (D6)")
 
 print("\nALL CHECKS PASSED: test_subplot_act_endgame")

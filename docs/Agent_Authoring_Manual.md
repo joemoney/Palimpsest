@@ -115,7 +115,7 @@ by leaving the mechanic out.
 | `mechanics.gate` | `precondition` | Built |
 | `mechanics.subplots` | `weighted_threads` | Built |
 | `mechanics.endings` | `ending_funnel` | Built: pruning, scoring, commits, forced commit, terminals. **Not built:** steering (`hint`, `plant` in nudges), `epilogue` display, `max_acts`. |
-| `mechanics.failure_conditions` | `triggered_ending` | Built but **retired**: write terminals in `mechanics.endings` instead. |
+| `mechanics.failure_conditions` | `triggered_ending` | **Removed (D5)**: a template carrying it is refused at load. Write terminals in `mechanics.endings` instead. |
 | `mechanics.flags` | (no engine key) | Built: declared flags are readable by conditions, and the state-update pass is told each unset flag's `detect` text. |
 | `mechanics.tracked_entity` | (no engine key) | Built |
 | `plot.pacing.story_clock` | none | **Not built** (loads, with a warning; every turn still counts) |

@@ -65,13 +65,12 @@ STATE_UPDATE_MARKERS = {
     "relationships": '"social"',
     "inventory": '"inventory"',
     "subplots": '"subplot_beats"',
-    "failure_conditions": "failure_triggered",
     "progression": '"leverage"',
     "pacing_loop": '"beat"',
     "revelations": "LIVE TRIGGERS",
     # mechanics.flags.declared: the event descriptions reach the state-update pass while a
     # declared flag is unset. Not an engine slot (the block has no `engine` key), so it has
-    # no EXPECTED_ENGINES entry; courtroom authors it, regency and survival must not leak it.
+    # no EXPECTED_ENGINES entry; courtroom and survival author it, regency must not leak it.
     "flags": "DECLARED FLAGS",
 }
 
@@ -80,17 +79,17 @@ STATE_UPDATE_MARKERS = {
 # weakening the test.
 EXPECTED_ABSENT = {
     "regency.json": ["locations", "factions", "stats", "tracked_entity",
-                     "failure_conditions", "pacing_loop", "inventory", "gate", "flags"],
+                     "endings", "pacing_loop", "inventory", "gate", "flags"],
     "courtroom.json": ["locations", "factions", "tracked_entity", "stats",
                        "relationships", "progression", "pacing_loop", "inventory",
                        "subplots"],
-    "survival.json": ["relationships", "characters", "revelations", "progression", "gate", "flags"],
+    "survival.json": ["relationships", "characters", "revelations", "progression", "gate"],
 }
 EXPECTED_PRESENT = {
     "regency.json": ["relationships", "characters", "revelations", "subplots",
                      "progression"],
-    "courtroom.json": ["characters", "revelations", "failure_conditions", "gate", "flags"],
-    "survival.json": ["stats", "tracked_entity", "failure_conditions", "locations",
+    "courtroom.json": ["characters", "revelations", "endings", "gate", "flags"],
+    "survival.json": ["stats", "tracked_entity", "endings", "flags", "locations",
                       "inventory", "subplots", "pacing_loop"],
 }
 
@@ -108,8 +107,8 @@ EXPECTED_ENGINES = {
     "regency.json": ["progression", "relationships", "revelations", "subplots"],
     # courtroom authors no plot.subplots at all - it is the deliberately single-thread
     # fixture, and the reason the subplot field stopped being unconditional (P-2).
-    "courtroom.json": ["failure_conditions", "gate", "revelations"],
-    "survival.json": ["failure_conditions", "inventory", "pacing_loop", "stats",
+    "courtroom.json": ["endings", "gate", "revelations"],
+    "survival.json": ["endings", "inventory", "pacing_loop", "stats",
                       "subplots"],
 }
 ALL_ENGINE_SLOTS = sorted({slot for slot, _ in se.mechanics.registered_engines()})

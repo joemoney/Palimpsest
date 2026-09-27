@@ -122,23 +122,6 @@
       "description": "Something keeps pace at the edge of the headlamp's throw. It has never closed, and it has never fallen behind.",
       "pacing_note": "Appears rarely and never fully. It is a shape, a distance, or a sound with nothing to have made it. Never let it resolve, never let it attack directly, and never let any character explain it."
     },
-    "failure_conditions": {
-      "engine": "triggered_ending",
-      "conditions": [
-        {
-          "id": "fail_cold",
-          "trigger": "The protagonist spends a scene at WARMTH -10 without shelter or fire.",
-          "title": "Windward",
-          "ending_prompt": "Close on the cold winning. Not dramatic. The decisions simply get worse until there are none."
-        },
-        {
-          "id": "fail_dark",
-          "trigger": "The protagonist's last light source fails on the open shelf.",
-          "title": "No Fixed Point",
-          "ending_prompt": "Close in the dark, still walking, no longer certain of the direction."
-        }
-      ]
-    },
     "pacing_loop": {
       "engine": "beat_counter",
       "_authored": "A two-beat vocabulary, deliberately unlike example's cozy disquiet/comfort pair: this fixture exists to prove an author can name their own beats without touching Python (P-6), so it must not reuse that wording.",
@@ -177,6 +160,55 @@
           ],
           "directive": "PACING DIRECTIVE - THE MOUNTAIN TAKES SOMETHING BACK\n\nThe protagonist has been gaining ground for {counter_value} accumulated scenes. This scene must take something back: a supply spoiled, a route closed by weather, or a shelter that turns out not to hold.",
           "reduced_directive": "PACING DIRECTIVE - ONE THING GOES WRONG\n\nA full setback has been deferred {deferrals} times. End this scene with one concrete thing the protagonist can no longer count on."
+        }
+      ]
+    },
+    "flags": {
+      "declared": [
+        {
+          "id": "last_light_failed",
+          "detect": "The protagonist's last light source fails on the open shelf"
+        }
+      ]
+    },
+    "endings": {
+      "engine": "ending_funnel",
+      "entries": [
+        {
+          "id": "the_shelf",
+          "kind": "destination",
+          "name": "Off the Shelf",
+          "arc": {
+            "title": "Off the Shelf",
+            "description": "Close on the shelf falling behind, whatever was carried across it."
+          },
+          "waypoints": []
+        },
+        {
+          "id": "fail_cold",
+          "kind": "terminal",
+          "name": "Windward",
+          "ready_when": {
+            "stat": "warmth",
+            "lte": -10
+          },
+          "criteria": "The scene just narrated was a real spell of exposure without shelter or fire, not a bad moment.",
+          "arc": {
+            "title": "Windward",
+            "description": "Close on the cold winning. Not dramatic. The decisions simply get worse until there are none."
+          }
+        },
+        {
+          "id": "fail_dark",
+          "kind": "terminal",
+          "name": "No Fixed Point",
+          "ready_when": {
+            "flag": "last_light_failed"
+          },
+          "arc": {
+            "title": "No Fixed Point",
+            "description": "Close in the dark, still walking, no longer certain of the direction."
+          }
         }
       ]
     }

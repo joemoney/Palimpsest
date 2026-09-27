@@ -29,15 +29,10 @@ separate call path that still runs `mechanics.validate()` and still raises loudl
 engine this build doesn't have - see `playable_projection` below for the tool's way around
 that refusal.
 
-**D5 (failure endings) - deliberately NOT converted here.** `mechanics.failure_conditions`
-entries surface as their own `terminal` node kind, in their *current* shape (`title`,
-`trigger` as free prose, `ending_prompt`) - not rewritten into a CR-05 `kind: "terminal"`
-ending, because that conversion needs an author to write a real `ready_when` condition
-(a `trigger` like "the protagonist spends a scene at WARMTH -10" is not one), and the
-condition editor doesn't exist until S2. Converting anyway, with a TODO `ready_when`, would
-make the round-trip gate a lie about round-tripping. When S2 ships, promoting a failure
-condition to a CR-05 terminal becomes an explicit board action, not something this loader
-does silently underfoot.
+**D5 (failure endings) - retired.** `mechanics.failure_conditions` is gone from the engine, the
+schema and this module: a failure is a `kind: "terminal"` entry under `mechanics.endings`, read
+and written like any other ending. A template that still carries the old block is not read
+into terminal nodes; it passes through untouched inside `raw` and lint says why it is refused.
 
 **Stat tiers (S3)** round-trip through `stat_axes`: one entry per seeded axis, carrying that
 axis's `mechanics.stats.axes.<axis>.tiers` list verbatim. The writer only touches an axis whose
@@ -104,16 +99,9 @@ def to_board_model(raw: dict) -> dict:
         nodes.append(_thread_node(sid, sp))
         edges.extend(_thread_edges(sid, sp, names))
 
-    for cond in (raw.get("mechanics", {}).get("failure_conditions", {}) or {}).get("conditions", []) or []:
-        nodes.append(_terminal_node(cond))
-
     endings_cfg = raw.get("mechanics", {}).get("endings", {}) or {}
     for entry in endings_cfg.get("entries", []) or []:
         if entry.get("kind") == "terminal":
-            # A terminal authored directly under mechanics.endings (as CR-05 intends, once a
-            # story is promoted past D5's failure_conditions shape) - a second terminal
-            # source, kept separate from failure_conditions's own loop above rather than
-            # merged, so each round-trips back into the section it came from.
             nodes.append(_terminal_node_from_entry(entry))
         else:
             # Delivers edges pointing at this ending were already emitted by _thread_edges,
@@ -300,21 +288,9 @@ def _condition_label(cond, names=None) -> str:
     return text if len(text) <= 56 else text[:53] + "..."
 
 
-def _terminal_node(cond: dict) -> dict:
-    """failure_conditions' current shape (D5 deferred - see module docstring): title/trigger
-    (free prose)/ending_prompt, not yet a CR-05 `ready_when`."""
-    return _node_base(
-        cond, id=cond.get("id", ""), kind="ending", ekind="terminal",
-        title=cond.get("title", ""), theme=cond.get("ending_prompt", ""),
-        trigger=cond.get("trigger", ""),
-    )
-
-
 def _terminal_node_from_entry(entry: dict) -> dict:
-    """A CR-05 terminal already authored under mechanics.endings (post-D5-promotion). Kept
-    as a distinct constructor from `_terminal_node` (different source shape entirely) even
-    though both produce the same node kind, so each writes back into the section it read
-    from - see `from_board_model`."""
+    """A terminal (`kind: "terminal"`) under mechanics.endings: the only way a failure ending is
+    authored since D5. `source` stays stamped on the node so a board that still sends it round-trips."""
     arc = entry.get("arc") or {}
     return _node_base(
         entry, id=entry.get("id", ""), kind="ending", ekind="terminal", source="endings",
@@ -517,7 +493,6 @@ def from_board_model(raw: dict, model: dict) -> dict:
 
     _apply_forms(out, raw, model.get("forms"))
     _apply_subplots(out, nodes, edges)
-    _apply_terminals(out, nodes)
     _apply_endings(out, nodes, model.get("endings_settings"))
     _apply_flags(out, model.get("flags_declared"))
     _apply_stat_tiers(out, model.get("stat_axes"))
@@ -610,32 +585,6 @@ def _apply_subplots(out: dict, nodes: list, edges: list) -> None:
             sp.pop("cast", None)
 
 
-def _apply_terminals(out: dict, nodes: list) -> None:
-    """failure_conditions-sourced terminals only - a node whose source is `mechanics.endings`
-    (`source: "endings"`, stamped by `_terminal_node_from_entry`) is handled by
-    `_apply_endings` instead, so the two never fight over the same node."""
-    term_nodes = [n for n in nodes if n.get("kind") == "ending" and n.get("ekind") == "terminal"
-                  and n.get("source") != "endings"]
-    if not term_nodes and "failure_conditions" not in out.get("mechanics", {}):
-        return
-    mechanics = out.setdefault("mechanics", {})
-    fc = mechanics.setdefault("failure_conditions", {})
-    fc.setdefault("engine", "triggered_ending")
-    conditions = []
-    for n in term_nodes:
-        cond = _strip_node_only(n)
-        cond.pop("theme", None)
-        cond.pop("trigger", None)
-        cond["id"] = n["id"]
-        cond["title"] = n.get("title", "")
-        cond["trigger"] = n.get("trigger", "")
-        cond["ending_prompt"] = n.get("theme", "")
-        conditions.append(cond)
-    fc["conditions"] = conditions
-    if not conditions and not fc.get("_authored"):
-        mechanics.pop("failure_conditions", None)
-
-
 def _apply_flags(out: dict, declared) -> None:
     """Write the board's declared-flag list to `mechanics.flags.declared`. `None` means the
     board sent no such key (an older client): leave the template alone. An entry keeps whatever
@@ -713,8 +662,7 @@ def _apply_stat_tiers(out: dict, stat_axes) -> None:
 
 def _apply_endings(out: dict, nodes: list, settings: dict = None) -> None:
     dest_nodes = [n for n in nodes if n.get("kind") == "ending" and n.get("ekind") == "destination"]
-    term_nodes = [n for n in nodes if n.get("kind") == "ending" and n.get("ekind") == "terminal"
-                  and n.get("source") == "endings"]
+    term_nodes = [n for n in nodes if n.get("kind") == "ending" and n.get("ekind") == "terminal"]
     if not dest_nodes and not term_nodes and not settings:
         return
     mechanics = out.setdefault("mechanics", {})

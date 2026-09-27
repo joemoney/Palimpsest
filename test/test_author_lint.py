@@ -344,8 +344,11 @@ REAL_FILES = {
     # which is a warning (started by hand), not the "never becomes active" error it used to count as.
     "example": (os.path.join(REPO_ROOT, "stories", "example", "template.json"), 1),
     "regency": (os.path.join(REPO_ROOT, "test", "fixtures", "regency.json"), 1),
-    "courtroom": (os.path.join(REPO_ROOT, "test", "fixtures", "courtroom.json"), 1),
-    "survival": (os.path.join(REPO_ROOT, "test", "fixtures", "survival.json"), 1),
+    # courtroom and survival author terminals plus a catch-all (D5 moved their failure_conditions
+    # there), so they are clean; regency deliberately authors no endings (the conformance fixture
+    # that guards an absent module), so it keeps L08.
+    "courtroom": (os.path.join(REPO_ROOT, "test", "fixtures", "courtroom.json"), 0),
+    "survival": (os.path.join(REPO_ROOT, "test", "fixtures", "survival.json"), 0),
 }
 for label, (path, expected_errors) in REAL_FILES.items():
     raw = json.load(open(path, encoding="utf-8"))
@@ -354,8 +357,8 @@ for label, (path, expected_errors) in REAL_FILES.items():
     issues = author_lint.lint(raw, model)
     actual_errors = sum(1 for i in issues if i["severity"] == "error")
     assert actual_errors == expected_errors, (label, actual_errors, issues)
-    # None of these 4 files author mechanics.endings/CR-10 content yet (that's Phase S1 step 8,
-    # not done) - so every error here must be the universal "no catch-all" (L08), never L01.
+    # Whatever a file's errors are, none may be L01: a schema rejection here means the schema
+    # and a real story or fixture have drifted apart.
     assert not by_id(issues, "L01"), (label, by_id(issues, "L01"))
 
 assert len(glob.glob(os.path.join(REPO_ROOT, "test", "fixtures", "*.json"))) == 3

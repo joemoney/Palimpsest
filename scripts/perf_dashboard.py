@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Server-only performance dashboard: parses `docker logs palimpsest-web` for the
 per-call [TIMING] lines (backend/story_engine.py's _timed() wrapper - narration,
-state_update, subplot_generation, act_advancement_check, end_story_final_arc,
-summary_rollover) and the gunicorn access log's /api/turn and /api/regenerate lines,
+state_update, subplot_generation, act_advancement_check, summary_rollover, and
+the ending judges) and the gunicorn access log's /api/turn and /api/regenerate lines,
 and reports latency stats for each.
 
 Each [TIMING] line carries the model name that call actually hit (e.g. "narration
