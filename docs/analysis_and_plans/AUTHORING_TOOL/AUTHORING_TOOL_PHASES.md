@@ -1013,6 +1013,31 @@ to land out of order and partially, tracked here after the fact rather than plan
   `epilogue` shown after THE END, `max_acts`, and D5/D6 (retiring `failure_conditions` and the
   player's end-story command).
 
+- **Declared flags' `detect` reaches the state-update pass** (2026-09-27). The top of the
+  engine list: a declared flag was set only if the model happened to use its exact id, and every
+  thread, act or ending gated on a flag waited on that. `story_engine._pending_declared_flags`
+  lists the declared flags that have a `detect` and are not yet set (`active` union `archive`,
+  the reading conditions use); `update_progress_from_turn` adds them to the prompt as
+  `DECLARED FLAGS not yet set (id: event)` with an instruction to evaluate each by what happens
+  in the scene and never force a match (the revelations' lesson, PHASE_0_GATE_REPORT §4). No new
+  observation field: the answer is `flags_set`, already asked every turn, so the observation
+  budget is unchanged (measured by `scripts/measure_baseline.py`). Implemented inline rather
+  than as a registered engine: `mechanics.flags` has no `engine` key, like `tracked_entity`.
+  Cost on `the_missing_core`: about 365 tokens of Tier C prompt at turn 0 (10 flags pending),
+  falling as flags are set. Covered by `test/test_declared_flags.py` and, in both directions, by
+  `test_genre_conformance.py` (courtroom authors flags; regency and survival must not leak the
+  section).
+  **Decisions made in passing - flag if wrong:**
+  - **A declared flag reported `false` is dropped, not stored.** A `flag` condition reads a flag as
+    set once it is in `active` or `archive` whatever its value, and a declared flag gates ending
+    pruning permanently, so "the model said false" must not open that door. Undeclared flags are
+    unchanged, false included.
+  - **Declared flags with a blank `detect` are never asked about** (lint already warns).
+  - **Undeclared flags stay free-form.** Only declared ids get event text; nothing rejects other
+    names.
+  - **Not measured against a live model.** The prompt follows the revelations precedent; whether
+    Tier C sets the flags reliably, and how often it sets one wrongly, needs a real playthrough.
+
 **Goal.** Every "not built" chip disappears, eventually.
 
 Order, as `Story_Mechanics_Update.md` §5 justifies (reference, not a build queue - see above):

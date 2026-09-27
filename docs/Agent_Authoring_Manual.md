@@ -116,7 +116,7 @@ by leaving the mechanic out.
 | `mechanics.subplots` | `weighted_threads` | Built |
 | `mechanics.endings` | `ending_funnel` | Built: pruning, scoring, commits, forced commit, terminals. **Not built:** steering (`hint`, `plant` in nudges), `epilogue` display, `max_acts`. |
 | `mechanics.failure_conditions` | `triggered_ending` | Built but **retired**: write terminals in `mechanics.endings` instead. |
-| `mechanics.flags` | (no engine key) | Declared flags are readable by conditions. **Gap:** the state-update pass is not yet told each flag's `detect` text, so a declared flag is set only if the model happens to use its exact id. |
+| `mechanics.flags` | (no engine key) | Built: declared flags are readable by conditions, and the state-update pass is told each unset flag's `detect` text. |
 | `mechanics.tracked_entity` | (no engine key) | Built |
 | `plot.pacing.story_clock` | none | **Not built** (loads, with a warning; every turn still counts) |
 | `narration.scene_length_by_moment` | none | **Not built** (loads, with a warning; every scene still uses `scene_length`) |
@@ -551,6 +551,15 @@ Conditions test a fragment with `{"revealed": id}`.
 `"flags": {"declared": [{"id": "lamp_nine_lit", "detect": "The protagonist lit lamp nine and it
 stayed lit"}]}`. Declare every flag a condition names (L10). A flag with no `detect` can never
 be set.
+
+Each turn the state-update model is shown every declared flag that has a `detect` and is not
+yet set, as `DECLARED FLAGS not yet set (id: event)`, and asked to set the ones whose event
+happened, judging by what happens in the scene rather than by wording. So write `detect` as an
+observable event ("Lark has left the story for good"), not a meaning or a state, and keep it one
+sentence: the list is sent every turn until the flag is set (about 35 tokens a flag). A flag
+the model reports as `false` is ignored, because a stored false still reads as set. A flag can
+never be unset, so prefer a `detect` that is hard to satisfy by accident: a wrongly set flag can
+prune an ending for good.
 
 ### Tracked entity (no engine key)
 

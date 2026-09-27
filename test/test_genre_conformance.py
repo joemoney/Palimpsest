@@ -69,6 +69,10 @@ STATE_UPDATE_MARKERS = {
     "progression": '"leverage"',
     "pacing_loop": '"beat"',
     "revelations": "LIVE TRIGGERS",
+    # mechanics.flags.declared: the event descriptions reach the state-update pass while a
+    # declared flag is unset. Not an engine slot (the block has no `engine` key), so it has
+    # no EXPECTED_ENGINES entry; courtroom authors it, regency and survival must not leak it.
+    "flags": "DECLARED FLAGS",
 }
 
 # What each fixture deliberately does NOT author. Kept here rather than derived from the
@@ -76,16 +80,16 @@ STATE_UPDATE_MARKERS = {
 # weakening the test.
 EXPECTED_ABSENT = {
     "regency.json": ["locations", "factions", "stats", "tracked_entity",
-                     "failure_conditions", "pacing_loop", "inventory", "gate"],
+                     "failure_conditions", "pacing_loop", "inventory", "gate", "flags"],
     "courtroom.json": ["locations", "factions", "tracked_entity", "stats",
                        "relationships", "progression", "pacing_loop", "inventory",
                        "subplots"],
-    "survival.json": ["relationships", "characters", "revelations", "progression", "gate"],
+    "survival.json": ["relationships", "characters", "revelations", "progression", "gate", "flags"],
 }
 EXPECTED_PRESENT = {
     "regency.json": ["relationships", "characters", "revelations", "subplots",
                      "progression"],
-    "courtroom.json": ["characters", "revelations", "failure_conditions", "gate"],
+    "courtroom.json": ["characters", "revelations", "failure_conditions", "gate", "flags"],
     "survival.json": ["stats", "tracked_entity", "failure_conditions", "locations",
                       "inventory", "subplots", "pacing_loop"],
 }

@@ -578,7 +578,11 @@ A **Flag** leaf only offers flags the story has declared. To declare one:
 3. Give it an **id** (e.g. `lark_departed`) and **detect** text describing
    what on the page sets it (e.g. *"Lark has left the story for good"*). A
    flag with no detect text can never be set, so the health panel warns
-   about it.
+   about it. While a flag is unset, each turn's update pass is shown its
+   detect text and asked whether that just happened, so write it as an
+   event you could point to in a scene, in one sentence, and make it hard to
+   trigger by accident: a flag can't be unset, and one set wrongly can rule
+   an ending out for good.
 
 A condition that names an undeclared flag, or an unknown stat, fragment or
 character, is a save-blocking error (L10). Typos are caught here rather than

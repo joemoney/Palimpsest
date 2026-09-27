@@ -154,9 +154,11 @@ built, whether the board would rewrite anything, and canonical formatting.
 
 ### 3.3 Engine (Phase S5, demand-driven), roughly by likely demand
 
-1. **Declared flags' `detect` text is never passed to the state-update pass**, so a declared
-   flag is set only if the model happens to use its exact id. Every thread, act or ending
-   gated on a flag depends on this. Top of the list.
+1. ~~Declared flags' `detect` text is never passed to the state-update pass~~ **Done**
+   (see AUTHORING_TOOL_PHASES.md S5). The pass is now shown each unset declared flag's event.
+   Still to do after real play: check the model actually sets them (never measured against a
+   live model), and consider whether `the_missing_core`'s `detect` texts are precise enough that
+   a false positive cannot prune an ending.
 2. **D5 / D6 retirement:** delete `failure_conditions` / `triggered_ending` and the player's
    end-story path (`END_STORY_PHRASES`, `handle_end_story_request`, the help entry). Keep
    `STATUS_LABELS` / `DEFAULT_STEP_ESTIMATE_SECONDS` mirrored (`test_status_labels.py`).

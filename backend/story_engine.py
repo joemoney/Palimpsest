@@ -912,6 +912,31 @@ def _waits_on_condition(ctx: dict, sid: str) -> bool:
     return bool((ctx["story"]["plot"].get("subplots", {}) or {}).get(sid, {}).get("activate_when"))
 
 
+def _declared_flags(ctx: dict) -> dict:
+    """`{id: detect}` for every flag the story declares (`mechanics.flags.declared`), or {} when
+    it authors no such block (P-2: no block, no section, no prompt text). `detect` may be blank;
+    the id is still declared, it just cannot be asked about."""
+    block = ctx["story"].get("mechanics", {}).get("flags")
+    if not isinstance(block, dict):
+        return {}
+    return {f["id"]: (f.get("detect") or "").strip()
+            for f in block.get("declared") or [] if isinstance(f, dict) and f.get("id")}
+
+
+def _pending_declared_flags(ctx: dict) -> list:
+    """`[(id, detect)]` for the declared flags the state-update pass should be asked about this
+    turn: those with an event description that are not already set.
+
+    "Set" is `active` union `archive`, the same reading `conditions` uses for a `flag` leaf
+    (`archive_stale_flags` retires a flag out of `active` after a few turns, and reading `active`
+    alone would ask about a flag again the turn after it was set). Leaving the set ones out is
+    also what keeps this bounded: the list shrinks as the story goes, rather than restating every
+    declared flag on every turn (CLAUDE.md, keeping LLM context bounded)."""
+    flags = ctx["state"]["protagonist"]["flags"]
+    known = set(flags["active"]) | set(flags["archive"])
+    return [(fid, detect) for fid, detect in _declared_flags(ctx).items() if detect and fid not in known]
+
+
 def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -> dict:
     """Separate LLM pass (kept apart from narration) that extracts a state diff from the
     turn just narrated: subplot progress, flags, revealed fragments, entity contact,
@@ -1003,8 +1028,27 @@ def update_progress_from_turn(ctx: dict, player_action: str, ai_response: str) -
     engine_instructions = "".join(field.instruction for field in engine_fields)
     schema_str = ",\n".join(schema_fields)
 
+    # `mechanics.flags.declared`: without this the model is never told what a declared flag
+    # *means*, so it is set only when the model happens to use the exact id - and every thread,
+    # act or ending gated on a flag waits on that. Same shape and same lesson as the
+    # revelations' LIVE TRIGGERS (docs/analysis_and_plans/SCHEMA_V2/PHASE_0_GATE_REPORT.md §4):
+    # a list read as context fires nothing, so the instruction says to evaluate it, by what
+    # happens in the scene rather than by wording, and never to force a match. No new
+    # observation field: the answer goes in `flags_set`, which every turn already asks for.
+    pending_flags = _pending_declared_flags(ctx)
+    flags_context = (
+        "\nDECLARED FLAGS not yet set (id: event): " + "; ".join(f"{fid}: {detect}" for fid, detect in pending_flags)
+        if pending_flags else ""
+    )
+    flags_instruction = (
+        "Check the NARRATION against each DECLARED FLAG and, for every one whose event happened this turn, "
+        'set it in flags_set with value true, using exactly that id. Judge by what happens in the scene, not '
+        "by whether the narration reuses the event's wording. Never force a match: a flag that is set wrongly "
+        "cannot be unset.\n" if pending_flags else ""
+    )
+
     prompt = f"""Given this turn of an interactive story, report what changed in the world state.
-{engine_context}
+{engine_context}{flags_context}
 CURRENT FLAGS: {json.dumps(ctx["state"]["protagonist"]["flags"]["active"])}
 EXISTING CHARACTERS (do not repeat in new_characters): {', '.join(existing_characters) or 'none'}{stats_block}
 CURRENT SCENE ({scene['location']}): {scene['summary']}{locations_hint}
@@ -1019,7 +1063,7 @@ Respond with ONLY a JSON object, no other text, in this exact shape:
 Only include flags, ids, items, character names and stats that actually changed this turn.
 Use {{}}/[] for nothing changed. Omit scene_update entirely if the protagonist's location
 and situation are unchanged from CURRENT SCENE above.
-{engine_instructions}Only add an entry to new_characters when a character is given an actual proper name for the
+{engine_instructions}{flags_instruction}Only add an entry to new_characters when a character is given an actual proper name for the
 first time this turn (e.g. "Marlowe", "Elena Cho") AND isn't already in EXISTING CHARACTERS -
 never for a generic/descriptive handle (e.g. "the guard", "the advocate", "the woman at the
 terminal"). Promoting a generic-label character to a full one later
@@ -1032,6 +1076,7 @@ is a separate, manual step."""
 
     turn_count = ctx["state"]["pacing"]["turn_count"]
     flags = ctx["state"]["protagonist"]["flags"]
+    declared = _declared_flags(ctx)
     for flag_name, flag_info in diff.get("flags_set", {}).items():
         if isinstance(flag_info, dict):
             value = flag_info.get("value", True)
@@ -1040,6 +1085,11 @@ is a separate, manual step."""
             # tolerate a bare boolean if the model doesn't follow the nested shape
             value = flag_info
             pinned = False
+        if flag_name in declared and not value:
+            # A condition reads a flag as set once it is in `active` or `archive` whatever its
+            # value (`conditions._known_flags`), and a declared flag gates threads, acts and
+            # ending pruning. "The model said false" must not open one of those doors.
+            continue
         flags["active"][flag_name] = value
         flags["meta"][flag_name] = {"turn_set": turn_count, "pinned": pinned}
 

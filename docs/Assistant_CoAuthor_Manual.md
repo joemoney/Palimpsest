@@ -253,8 +253,7 @@ condition needs one of these ids, have the author pick it in the builder by titl
    - a stat tier's **On enter: directive**.
 
    Also: **Max acts** isn't enforced, **Hint** and waypoint steering aren't used yet, and the
-   **Epilogue** isn't displayed yet. Declared flags can be named by conditions, but play
-   doesn't yet use their detect text to set them.
+   **Epilogue** isn't displayed yet.
 8. **Keep what reaches every turn short.** World rules, setting, character descriptions and
    faction lines go into every narration. Offer the short version. A fact that matters only
    when someone or somewhere is on the page is lore.
@@ -472,7 +471,10 @@ after**.
 ### 6.8 "A flag for when <event>"
 
 Produce the flag **id** (`snake_case`, past tense of the event: `lark_departed`) and its
-**detect** text (the observable event).
+**detect** text (the observable event). The detect text is what the game's update pass is
+shown each turn while the flag is unset, so write one sentence describing something that
+visibly happens in a scene, and make it hard to satisfy by accident: a flag can't be unset, and
+a wrong one can rule an ending out for good.
 
 Steps: click the health badge (top right) → **Story flags** → **+ Flag** → flag id →
 detect text. Do this before any condition names it.
