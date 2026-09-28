@@ -1047,6 +1047,7 @@ Things to notice:
 | `L13` | A lore key that's too generic or shared. |
 | `L14` | The always-on narrator prompt (rules, style, tracked entity) is over about 2,500 tokens. Warning: it is paid every turn, so move what only matters sometimes to lore or a tier. |
 | `L15` | The opening scene has an `OPTIONS` heading but its numbered `label \|\| what happens` lines don't parse to `option_count` options. Error. |
+| `L17` | The whole narration prompt, projected at RECENT_TURN_LIMIT turns of `scene_length.max` and a full `SUMMARY_MAX_WORDS` summary, is over the author's own token budget (20,000; `author_lint.NARRATION_TOKEN_BUDGET`). Warning: shorten `scene_length`, world rules or style, or lower the summary cap. |
 | `L16` | A dangling id: a `connected_to`, a gate target, the opening location, a fragment's `after`, a thread `cast`. |
 | `structural` | Endings nothing leads to, uncarried waypoints, threads that never activate, a spine thread that carries nothing. |
 | `arc` | An ending with no `arc`. |

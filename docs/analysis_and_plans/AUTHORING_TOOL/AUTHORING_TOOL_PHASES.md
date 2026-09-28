@@ -1195,6 +1195,22 @@ to land out of order and partially, tracked here after the fact rather than plan
   - **Not measured against a live model.** Whether the state-update pass reports enough for idle detection to be
     right is exactly what the `story clock` report section and the transcript are for.
 
+- **L17: a budget for the whole narration prompt, not just the always-on slice** (2026-09-27). L14
+  only ever covered rules/style/tracked entity, which stay a fixed size; `RECENT EXCHANGES` and
+  `STORY SO FAR` are the two sections that grow toward `RECENT_TURN_LIMIT` turns and
+  `SUMMARY_MAX_WORDS` as a save gets older, and L14 said nothing about them. `NARRATION_TOKEN_BUDGET`
+  (20,000) is the author's own operating ceiling, set after reading real OpenRouter usage on
+  `the_missing_core` (~16-17k input tokens observed, comfortable to 20k); `prompt_issues` now
+  projects those two sections at their authored maximum (using a flat word estimate for the
+  player's own unauthored action, sized to overestimate) and adds everything else at its real,
+  already-live size. The projection matched observed usage on `the_missing_core` almost exactly
+  (16,837 projected vs. ~16-17k real). `scripts/steering_report.py`'s `cost` section reports the
+  same budget against actual logged narration prompt sizes from the trace, so a story can be
+  checked against it both before and after real play; the two copies of the number are asserted
+  equal (the STATUS_LABELS mirror pattern, since steering_report.py stays stdlib-only and cannot
+  import author_lint). A pacing nudge's occasional text is not projected - bounded but
+  intermittent, not part of what every turn pays.
+
 **Goal.** Every "not built" chip disappears, eventually.
 
 Order, as `Story_Mechanics_Update.md` §5 justifies (reference, not a build queue - see above):

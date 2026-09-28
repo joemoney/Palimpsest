@@ -773,6 +773,23 @@ def transition_issues(raw: dict) -> list:
 ALWAYS_ON_TOKEN_BUDGET = 2500
 _ALWAYS_ON_SECTIONS = ("world_rules", "style", "tracked_entity")
 
+# L17: the whole narration prompt's own ceiling, not just the always-on slice above. Set by the
+# author (2026-09-27) after reading real OpenRouter usage on the_missing_core - ~16k input tokens
+# observed, comfortable up to 20k - so it is an operating budget, not a creative decision, the
+# same footing as ALWAYS_ON_TOKEN_BUDGET. scripts/steering_report.py mirrors this number against
+# what a played turn actually cost; test_steering_report.py asserts the two agree (CLAUDE.md's
+# STATUS_LABELS/DEFAULT_STEP_ESTIMATE_SECONDS mirror is the precedent for keeping two copies
+# honest rather than importing across the offline/stdlib-only boundary steering_report.py holds).
+NARRATION_TOKEN_BUDGET = 20000
+# English prose, rule of thumb (~4.7 letters plus a space) - used only to project the two
+# sections that grow toward a cap as play continues (RECENT EXCHANGES, STORY SO FAR) into the
+# same chars/4 estimate the rest of the codebase already uses (author_preview.tokens). A
+# player's own action has no authored length at all, so it gets a flat, generously-sized word
+# count instead of a real one - the single most speculative part of this projection, sized to
+# overestimate rather than under.
+_CHARS_PER_WORD = 6
+_PLAYER_ACTION_WORD_ESTIMATE = 25
+
 _SENTENCE_BREAK = re.compile(r"[.!?][\"')\]]*\s+(?=[A-Z\"'(])")
 _EVENT_TOKEN = re.compile(r"(?<![\w.])[a-z][a-z0-9_]{2,}\.[a-z][a-z0-9_]{2,}(?![\w.])")
 
@@ -880,6 +897,30 @@ def prompt_issues(raw: dict) -> list:
             out.append({"id": "L15", "severity": "error",
                         "message": f"plot.opening_scene.{key} has an OPTIONS heading, but only {len(options)} of the "
                                    f"{count} options parse. Each is a numbered line: 1. label || what happens."})
+
+    # L17: RECENT EXCHANGES and STORY SO FAR are turn-zero here (empty history), but they grow
+    # toward RECENT_TURN_LIMIT turns and a SUMMARY_MAX_WORDS summary as play continues, unlike
+    # every other section above, which stays at (roughly) its live size. Project those two at
+    # their authored maximum and add the rest at what it actually measured, to catch a story
+    # whose scene length, rules or style would push a mature save over budget - before it does.
+    # A pacing nudge's occasional text is not counted: it is bounded but intermittent, not part
+    # of what every turn pays (see NARRATION_TOKEN_BUDGET's comment for what this does and does
+    # not cover).
+    narration_cfg = raw.get("narration") or {}
+    scene_max = (narration_cfg.get("scene_length") or {}).get("max", story_engine.DEFAULT_SCENE_WORD_MAX)
+    fixed = sum(s["tokens"] for s in sections if s["name"] not in ("recent", "story_so_far"))
+    recent_worst = round(story_engine.RECENT_TURN_LIMIT * (scene_max + _PLAYER_ACTION_WORD_ESTIMATE)
+                          * _CHARS_PER_WORD / 4)
+    summary_worst = round(story_engine.SUMMARY_MAX_WORDS * _CHARS_PER_WORD / 4)
+    total = fixed + recent_worst + summary_worst
+    if total > NARRATION_TOKEN_BUDGET:
+        out.append({"id": "L17", "severity": "warning",
+                    "message": f"The narration prompt is projected to reach about {total} tokens once RECENT EXCHANGES "
+                               f"and STORY SO FAR fill up ({fixed} fixed + {recent_worst} for "
+                               f"{story_engine.RECENT_TURN_LIMIT} turns at up to {scene_max} words each + "
+                               f"{summary_worst} for a {story_engine.SUMMARY_MAX_WORDS}-word summary), over the "
+                               f"{NARRATION_TOKEN_BUDGET}-token budget. Shorten scene_length, world rules or style, "
+                               "or lower the summary cap."})
     return out
 
 

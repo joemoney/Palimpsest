@@ -93,6 +93,17 @@ got = ids(author_lint.prompt_issues(raw), "L14")
 assert len(got) == 1 and got[0]["severity"] == "warning" and "world_rules" in got[0]["message"], got
 print("OK: L14 warns when rules, style and the tracked entity outgrow the budget")
 
+# --- L17: the whole narration prompt's own budget, projected at RECENT/summary's authored max ------------
+lean = copy.deepcopy(BASE)
+assert ids(author_lint.prompt_issues(lean), "L17") == [], "the tiny fixture story projects well under budget"
+heavy = copy.deepcopy(BASE)
+heavy["narration"]["scene_length"] = {"min": 470, "max": 900}
+heavy["world"]["rules"] = ["A rule that goes on and on about how the world works. " * 20 for _ in range(12)]
+got = ids(author_lint.prompt_issues(heavy), "L17")
+assert len(got) == 1 and got[0]["severity"] == "warning" and "20000-token budget" in got[0]["message"], got
+assert "900 words each" in got[0]["message"] and "2000-word summary" in got[0]["message"]
+print("OK: L17 projects RECENT EXCHANGES and STORY SO FAR at their authored cap and warns over budget")
+
 # --- L15: an opening OPTIONS block that doesn't parse -----------------------------------------------
 raw = copy.deepcopy(BASE)
 good = "You wake.\n\nOPTIONS:\n1. Look || You look around.\n2. Wait || You wait.\n3. Go || You go."

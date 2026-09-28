@@ -31,7 +31,8 @@ The questions it answers, each with the count behind it (a small n is flagged, n
   nudge steering  what steering added to those nudges: carrier lines carrying a plant, how often the boost
               changed which thread led, hints (and whether they rotate), drive nudges, how often a drive
               nudge yielded to an armed pacing rule, and the characters it all added.
-  cost        seconds and prompt characters per step, and the share steering text takes of the prompts.
+  cost        seconds and prompt characters per step, the share steering text takes of the prompts, and how the
+              real narration prompt sizes compare to the author's own token budget (NARRATION_TOKEN_BUDGET).
 
 Regenerated turns: events written while re-rolling the last turn are kept and the first attempt's events
 for that turn dropped (`--keep-regen` keeps both).
@@ -47,6 +48,11 @@ import statistics
 import sys
 
 SMALL_N = 8
+# Mirrors backend/author_lint.py's NARRATION_TOKEN_BUDGET, which this script cannot import
+# without pulling in jsonschema/dotenv (its own docstring: offline, stdlib only). Two copies,
+# not one shared constant, is the same tension CLAUDE.md already names for STATUS_LABELS /
+# DEFAULT_STEP_ESTIMATE_SECONDS; test_steering_report.py asserts the two stay equal.
+NARRATION_TOKEN_BUDGET = 20000
 
 
 def load(paths):
@@ -409,11 +415,14 @@ def _cost(kinds):
             step[label]["each"].append(t.get("s", 0.0) / max(1, t.get("n", 1)))
         for label, chars in (e.get("prompt_chars") or {}).items():
             prompt[label].append(chars)
+    narration_tokens = [round(c / 4) for c in prompt.get("narration", [])]
     return {
         "seconds": {k: {"calls": v["n"], "total": round(v["s"], 1), "p50": med(v["each"]), "p90": pct(v["each"], 90)}
                     for k, v in step.items()},
         "seconds_per_turn": round(sum(v["s"] for v in step.values()) / len(turns), 2) if turns else None,
         "prompt_chars": {k: {"n": len(v), "median": med(v), "p90": pct(v, 90), "max": max(v)} for k, v in prompt.items()},
+        "narration_budget": rate(sum(1 for t in narration_tokens if t > NARRATION_TOKEN_BUDGET), len(narration_tokens)),
+        "narration_tokens_max": max(narration_tokens or [0]),
     }
 
 
@@ -535,6 +544,9 @@ def render(runs):
             w(f"  {label:24s} calls {v['calls']:>4}  total {v['total']:>8}s  p50 {v['p50']}  p90 {v['p90']}")
         for label, v in k["prompt_chars"].items():
             w(f"  prompt {label:18s} n {v['n']:>4}  median {v['median']}  p90 {v['p90']}  max {v['max']}")
+        if k.get("narration_tokens_max"):
+            w(f"  narration budget: {NARRATION_TOKEN_BUDGET} tokens; turns over it: {_fmt(k['narration_budget'])}; "
+              f"largest turn ~{k['narration_tokens_max']} tokens")
         w("")
     return "\n".join(lines)
 

@@ -52,6 +52,7 @@ python3 scripts/steering_report.py --json > run_a.json          # to diff two bu
 | 23 | The push and the lean-forward options change what a lingering player does | `story clock` | `pushes fired`, `options leaned forward on N turns`, and whether the turn after each is idle | Whether the push was *good*: read the scene it produced. |
 | 24 | A parked clock re-fires nothing | `funnel` | commit checks per idle stretch (should be zero extra), stat values across an idle run | |
 | 14 | Steering adds little wall-clock time | `cost` | `seconds per turn`, `act_advancement_check` p50/p90, prompt characters over time | |
+| 25 | The narration prompt stays inside the author's own token budget as a save matures | `cost` | `narration budget: ... turns over it`, `largest turn ~N tokens`, against `NARRATION_TOKEN_BUDGET` (20,000; see also lint L17, which projects the same ceiling before play) | |
 
 ## Reading a report
 

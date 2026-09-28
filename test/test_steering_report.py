@@ -14,6 +14,14 @@ spec = importlib.util.spec_from_file_location("steering_report", os.path.join(RO
 report = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(report)
 
+sys.path.insert(0, os.path.join(ROOT, "backend"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _llm_stubs  # noqa: E402,F401
+import author_lint  # noqa: E402
+assert report.NARRATION_TOKEN_BUDGET == author_lint.NARRATION_TOKEN_BUDGET, \
+    "steering_report's mirror of the narration token budget has drifted from author_lint's"
+print("OK: steering_report's NARRATION_TOKEN_BUDGET mirrors author_lint's")
+
 RUN, STORY = "r1", "tale"
 events = []
 
@@ -29,8 +37,10 @@ ev("run_start", 0, build="steering-1", features={"plant": True}, story_version="
    declared_flags={"f1": True, "f2": True, "f3": False})
 for t in range(1, 31):
     phase = "open" if t < 8 else "narrow" if t < 16 else "commit" if t < 30 else "forced"
+    # turn 15 alone pushes past the 20,000-token budget (a 5000-char burst): (4000+15+5000*(t==15))/4
+    chars = 4000 + t + (76000 if t == 15 else 0)
     ev("turn", t, phase=phase, timings={"narration": {"n": 1, "s": 10.0}, "state_update": {"n": 1, "s": 2.0}},
-       prompt_chars={"narration": 4000 + t, "state_update": 3000})
+       prompt_chars={"narration": chars, "state_update": 3000})
 # funnel checks at 12 and 24, with carriers
 ev("funnel", 12, phase="narrow", check=True, scores={"alpha": 0.2, "beta": 0.1}, steered=["alpha", "beta"], ready=[], viable=["alpha", "beta"],
    pruned_new={}, planted=[], done=0, viable_waypoints=3, committed=None,
@@ -161,6 +171,8 @@ assert ns["steering_chars"] == {"median": 100, "max": 200, "share_of_nudge": rou
 k = r["cost"]
 assert k["seconds"]["narration"] == {"calls": 30, "total": 300.0, "p50": 10.0, "p90": 10.0}
 assert k["seconds_per_turn"] == 12.0 and k["prompt_chars"]["state_update"]["median"] == 3000
+assert k["narration_budget"] == {"n": 30, "hits": 1, "rate": round(1 / 30, 3), "small_n": False}
+assert k["narration_tokens_max"] == round((4000 + 15 + 76000) / 4)
 print("OK: every metric matches the hand-worked value on the synthetic run")
 
 # --- regenerated turns: only the re-roll's events survive ---------------------------------------------------------------
@@ -188,6 +200,7 @@ with tempfile.TemporaryDirectory() as d:
     for heading in ("-- funnel", "-- waypoints", "-- steering association", "-- acts", "-- carriers", "-- declared flags",
                     "-- nudges and directives", "-- story clock", "-- nudge steering", "-- cost"):
         assert heading in text, heading
+    assert "narration budget:" in text
     assert "(small n)" in text and "never set: ['f2']" in text
     assert report.main([path, "--json"]) == 0
     assert report.main([path, "--story", "nope"]) == 0

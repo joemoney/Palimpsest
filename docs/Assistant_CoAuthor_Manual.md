@@ -686,6 +686,7 @@ new errors.
 | `L13` | A lore key is too generic or shared | make the key a specific word from the story |
 | `L14` | The always-on prompt (rules, style, tracked entity) is over about 2,500 tokens | shorten rules, or move situational ones to lore |
 | `L15` | The opening scene's OPTIONS lines don't parse | one numbered line per option: `1. label \|\| what happens` |
+| `L17` | The full narration prompt is projected over the author's token budget once history fills up | shorten Scene length, World rules or Style, or lower the summary cap |
 | `L16` | A dangling id (a connection, gate target, opening location, fragment order, thread cast) | re-pick it from the list on that card |
 | `structural` | Nothing leads to an ending, an uncarried waypoint, a thread that never starts, a spine thread that carries nothing | carry the waypoint from a thread (6.1 step 6), or set **Becomes active** |
 | `arc` | An ending without an arc | fill **Arc title** and **Arc description** |
