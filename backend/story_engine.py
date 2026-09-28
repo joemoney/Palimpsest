@@ -1823,15 +1823,33 @@ the next act really can't work without a specific new person - most acts don't n
         mechanics.endings.record_offers(ctx, [p["key"] for p in plants])
 
     _mark_act_completed(ctx, current_act["act_number"])
-    new_act_number = max((a["act_number"] for a in _all_acts(ctx)), default=0) + 1
-    ctx["state"]["plot"]["generated_acts"].append({
-        "act_number": new_act_number,
-        "title": verdict.get("next_act_title") or f"Act {new_act_number}",
-        "description": verdict.get("next_act_description", ""),
-        "completion_signals": verdict.get("completion_signals") or [],
-        "completed": False,
-        "optional": False,
-    })
+    # The next AUTHORED act in sequence, if one is still waiting - "author only as many as you
+    # need" (Agent_Authoring_Manual.md) only holds if advancing actually consumes them in order.
+    # The bug this replaces took max(every act number that exists) + 1 regardless of whether
+    # smaller, unplayed authored acts were still sitting there - which meant a story authoring
+    # acts 1-3 jumped straight from Act 1 to a fabricated Act 4 the first time Act 1 resolved,
+    # never touching its own Acts 2 and 3 at all. Found 2026-09-28 on a live playthrough of
+    # the_missing_core; the bug predates this session (396af0f) and was invisible until now
+    # because example/new_babel each author only Act 1.
+    authored_numbers = sorted(a["act_number"] for a in ctx["story"]["plot"]["main_thread"]["acts"])
+    next_authored = next((n for n in authored_numbers if n > current_act["act_number"]), None)
+    if next_authored is not None:
+        new_act_number = next_authored
+        # Nothing to append: the act already exists in the template, and _all_acts already
+        # surfaces it via act_completion once its runtime record is touched - see
+        # _mark_act_completed, whose setdefault does exactly that the first time.
+        ctx["state"]["plot"]["act_completion"].setdefault(
+            str(new_act_number), {"completed": False, "optional": False})
+    else:
+        new_act_number = max((a["act_number"] for a in _all_acts(ctx)), default=0) + 1
+        ctx["state"]["plot"]["generated_acts"].append({
+            "act_number": new_act_number,
+            "title": verdict.get("next_act_title") or f"Act {new_act_number}",
+            "description": verdict.get("next_act_description", ""),
+            "completion_signals": verdict.get("completion_signals") or [],
+            "completed": False,
+            "optional": False,
+        })
     ctx["state"]["plot"]["act_history"].append({
         "from_act": current_act["act_number"],
         "to_act": new_act_number,
@@ -1841,9 +1859,11 @@ the next act really can't work without a specific new person - most acts don't n
     ctx["state"]["plot"]["current_act"] = new_act_number
     pacing_state["subplots_completed_this_act"] = 0
     _maybe_insert_generated_character(ctx, verdict, origin="act")
+    new_title = next((a["title"] for a in ctx["story"]["plot"]["main_thread"]["acts"] if a["act_number"] == new_act_number),
+                     verdict.get("next_act_title"))
     engine_trace.emit(ctx, "act_check", called=True, ready=True, due="completed" if completed_recently else "cadence",
                       plants=shown, plant_chars=len(plant_block), prompt_chars=len(prompt),
-                      new_act=new_act_number, title=verdict.get("next_act_title"))
+                      new_act=new_act_number, title=new_title, authored=next_authored is not None)
 
     return new_act_number
 

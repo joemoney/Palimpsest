@@ -344,6 +344,13 @@ def _reconcile(state: dict, story: dict) -> dict:
     - a revelation id absent from the template -> drop the runtime reveal record
       silently, since there's nothing left to have revealed.
     - a stat name absent from character_creation -> no action; the value is kept.
+    - a subplot added to the template after this save started -> instantiated into the
+      runtime pool exactly as new_save_state seeds one at creation (progress 0, active only
+      if starts_active). Every reader (mechanics/threads.py's all_subplots,
+      apply_thread_conditions, the pacing nudge's SUBPLOT OPPORTUNITY line, generation)
+      only ever sees ctx["state"]["plot"]["subplots"], so a thread added mid-playthrough was
+      otherwise invisible until a fresh save - the same "engine catches up to the
+      storyboard" gap this whole reconcile step exists to close for every other kind of edit.
     """
     bound = mechanics.bound_for(story, "revelations")
     entries = bound.engine.entries(bound.cfg) if bound else []
@@ -352,6 +359,15 @@ def _reconcile(state: dict, story: dict) -> dict:
     for rev_id in list(revealed):
         if rev_id not in valid_revelation_ids:
             del revealed[rev_id]
+
+    subplots = state["plot"].setdefault("subplots", {})
+    for sid, seed in (story["plot"].get("subplots") or {}).items():
+        if sid not in subplots:
+            subplots[sid] = {
+                "progress": 0,
+                "status": "active" if seed.get("starts_active") else "not_started",
+                "active": bool(seed.get("starts_active")),
+            }
     return state
 
 

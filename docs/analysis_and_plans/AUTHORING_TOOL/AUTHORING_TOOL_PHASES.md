@@ -1211,6 +1211,29 @@ to land out of order and partially, tracked here after the fact rather than plan
   import author_lint). A pacing nudge's occasional text is not projected - bounded but
   intermittent, not part of what every turn pays.
 
+- **Two bugs found on a live playthrough of `the_missing_core`** (2026-09-28), both the same
+  shape - the engine failing to catch up when the storyboard changes after a save has already
+  started - and both predating this session, invisible until a real multi-act, actively-authored
+  story exercised them:
+  - **Act advancement skipped authored acts.** `check_and_advance_act` picked the next act number
+    as `max(every act number that exists) + 1`, never "the next authored act in sequence"
+    (`git blame`: `396af0f`, the schema-v2 migration). A story authoring acts 1-3 (the manual:
+    "author only as many as you need") got Act 1 right, then the moment it resolved, jumped
+    straight to a *generated* Act 4 - `max(1, 2, 3) + 1` - discarding its own authored Acts 2 and 3
+    for content the model invented on the spot. Never caught before, because `example` and
+    `new_babel` each author only Act 1. Fixed: advance to the smallest authored act number greater
+    than the current one, using its own title/description/`completion_signals`, and fall back to
+    generation only once none remain. Covered by `test/test_act_advancement.py`.
+  - **A subplot added to the template mid-playthrough was invisible to a save already in
+    progress.** `state["plot"]["subplots"]` is seeded once, at save creation
+    (`state_store.new_save_state`); every reader (`mechanics/threads.py`'s `all_subplots`,
+    `apply_thread_conditions`, the pacing nudge's SUBPLOT OPPORTUNITY line, generation) only ever
+    looks at that dict, so a thread the author added later needed a fresh save to ever run. Fixed
+    in `state_store._reconcile` - already the documented seam for "the template changed since this
+    save started, make the runtime state agree" (SCHEMA_V2_SPEC.md §2.3) - which now instantiates
+    a newly-seen subplot exactly as `new_save_state` would, on the save's next load. No fresh save
+    needed. Covered by `test/test_subplot_reconcile.py`.
+
 **Goal.** Every "not built" chip disappears, eventually.
 
 Order, as `Story_Mechanics_Update.md` §5 justifies (reference, not a build queue - see above):
