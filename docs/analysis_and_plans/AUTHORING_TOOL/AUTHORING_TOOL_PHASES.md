@@ -1234,6 +1234,33 @@ to land out of order and partially, tracked here after the fact rather than plan
     a newly-seen subplot exactly as `new_save_state` would, on the save's next load. No fresh save
     needed. Covered by `test/test_subplot_reconcile.py`.
 
+- **Play crash, 2026-09-29: `the_missing_core` could not generate a new narration for
+  3.5 hours, silently, three separate attempts.** Two compounding bugs, both pre-existing and
+  unrelated to this session's work, both closed:
+  - **The trigger.** `mechanics/reveal.py`'s `prompt_sections` capped `REVEALED SO FAR` by
+    *count* only (`REVEALED_PROMPT_LIMIT`, 12), on the assumption ("twelve two-line fragments
+    plus the header") that fragments would run short. `the_missing_core`'s run long (~450-530
+    chars each); 6 revealed fragments - well under the count cap - already totalled 2965 chars
+    against the engine's declared 2600 `prompt_budget`. `mechanics.prompt_sections`'s hard raise
+    on overflow (§5.4, deliberate: catches an engine that silently overspent its own declared
+    budget) fired on every subsequent narration attempt, since the raise happens before any
+    model call. Fixed: the section now trims to the character budget directly, most-recently-
+    revealed first (the same priority the count cap already used), so it can no longer overflow
+    from content volume; a single fragment whose own content alone exceeds the budget still
+    raises, since that is a real authoring mistake, not a volume problem. Covered by additions to
+    `test/test_revealed_memories.py` and `test/test_author_preview.py`.
+  - **Why it was silent.** `app.py`'s `_start_turn_job` only caught `ActionRefused` and
+    `LLMUnavailableError` from the turn's background thread; the `ValueError` above (or any other
+    unexpected exception) propagated out of the thread uncaught, so `write_turn_result` was never
+    called. `GET /api/turn/result` then found nothing after its own retries and fell through to a
+    generic "lost track of that turn's result" 503 - the player saw no indication anything had
+    crashed, on any of the three attempts. Fixed: `run()` now catches any exception, prints it in
+    full (docker logs stay the operator's record) and writes a real `ok: False` result with a
+    plain, honest message - "something went wrong, nothing was saved, the same action can be
+    tried again" - never the raw internal error text. Covered by `test/test_turn_job_errors.py`.
+  - No live-save edit was needed: the fix alone restores the next turn, the same way the
+    subplot-reconciliation fix did.
+
 **Goal.** Every "not built" chip disappears, eventually.
 
 Order, as `Story_Mechanics_Update.md` §5 justifies (reference, not a build queue - see above):

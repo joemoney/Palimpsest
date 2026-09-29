@@ -90,11 +90,22 @@ got = author_preview.preview(broken, {})
 assert "error" in got and "Could not build the preview" in got["error"], got
 print("OK: a story with no main thread reports an error instead of raising")
 
-# the engine's own budget guard surfaces as the same kind of error, naming the guard
+# CR-03/§5.4's budget guard: revealing every fragment at once (a live save found this exact
+# case, 2026-09-29 - see backend/mechanics/reveal.py) must stay inside the engine's own budget
+# by trimming to the most recent, never by raising - volume alone is not a bug.
 mc = se.state_store.load_template_raw("the_missing_core")
 every = [e["id"] for e in mc["mechanics"]["revelations"]["entries"]]
 got = author_preview.preview(mc, {"revealed": every})
+assert "error" not in got, got
+assert "revelations.revealed" in got["narrator"]["prompt"] or "REVEALED SO FAR" in got["narrator"]["prompt"]
+print("OK: revealing every fragment at once still fits the engine's own prompt budget (no crash from volume alone)")
+
+# a single fragment too long to ever fit is a real authoring mistake, and still raises - the
+# guard this budget exists for (a §5.4 engine bug, not content volume) still works.
+overlong = copy.deepcopy(mc)
+overlong["mechanics"]["revelations"]["entries"][0]["content"] = "x" * 3000
+got = author_preview.preview(overlong, {"revealed": [overlong["mechanics"]["revelations"]["entries"][0]["id"]]})
 assert "error" in got and "budget" in got["error"], got
-print("OK: a sample that overflows an engine budget is reported with the engine's own message")
+print("OK: a single fragment too long to ever fit the budget still raises, naming the guard")
 
 print("\nALL CHECKS PASSED: test_author_preview")

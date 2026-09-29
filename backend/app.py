@@ -3,6 +3,7 @@ import os
 import re
 import threading
 import time
+import traceback
 from functools import wraps
 
 from dotenv import load_dotenv
@@ -248,6 +249,22 @@ def _start_turn_job(fn, user_id: str, story_slug: str):
                                           refusal={"sentence": e.sentence, "gate": e.gate})
         except story_engine.LLMUnavailableError as e:
             state_store.write_turn_result(user_id, story_slug, ok=False, error=str(e))
+        except Exception:  # noqa: BLE001 - anything else is a bug, not an expected outcome, but
+            # the player must still be told the turn failed rather than left polling forever with
+            # no signal at all. Found 2026-09-29: an uncaught exception here (a mechanics engine's
+            # own prompt-budget guard, in that incident) killed this background thread silently -
+            # write_turn_result was never called, so /api/turn/result found nothing and fell
+            # through to its generic "lost track of that turn's result" 503 after 20 retries,
+            # with no indication anything had actually crashed. take_turn/regenerate_last_turn's
+            # own `finally` still clears the status beacon (state_store.clear_turn_status), so
+            # that half of the handoff was never the gap - this was.
+            # Logged in full here (docker logs stay the operator's view of what broke); the
+            # player gets a plain, honest message instead of the raw traceback.
+            traceback.print_exc()
+            state_store.write_turn_result(
+                user_id, story_slug, ok=False,
+                error="Something went wrong generating that turn, and nothing was saved. The "
+                      "same action can be tried again.")
 
     threading.Thread(target=run, daemon=True).start()
 

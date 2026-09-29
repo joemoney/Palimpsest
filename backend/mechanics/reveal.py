@@ -221,7 +221,22 @@ class TriggeredReveal(MechanicEngine):
     def prompt_sections(self, cfg, ctx):
         """Only revealed content ever reaches the narrator here; only unrevealed triggers
         ever reach the observation pass. Neither sees the other half, which is CR-03 and is
-        the reason a reveal cannot be spoiled by the prompt that is meant to detect it."""
+        the reason a reveal cannot be spoiled by the prompt that is meant to detect it.
+
+        REVEALED_PROMPT_LIMIT (12) assumed short, "two-line" fragments (the comment above it
+        does the arithmetic against 2600 on that basis). A story writing longer ones can blow
+        the budget on far fewer than 12 - found 2026-09-29 on a live the_missing_core save,
+        where 6 fragments already ran to 2965 chars against the 2600 budget, taking down every
+        turn from then on: `mechanics.prompt_sections`'s budget check is a hard raise (§5.4,
+        by design - an engine that silently overspent its declared budget is exactly the bug
+        that check exists to catch), and nothing upstream of it ever caught that raise, so
+        every narration attempt failed before a single model call was made. This section must
+        never let that raise fire from content growth alone: it now trims to the character
+        budget directly - most-recently-revealed first, same priority the count cap already
+        used - dropping older fragments before a newer one is ever cut. A single fragment
+        whose own content alone exceeds the budget is left as an actual raise: that is a real
+        authoring mistake (one fragment too long to ever fit), not a volume problem, and should
+        still be caught loudly rather than silently truncated mid-sentence."""
         revealed_map = self.revealed(ctx)
         ordered = sorted(
             (e for e in self.entries(cfg) if e["id"] in revealed_map),
@@ -235,10 +250,18 @@ class TriggeredReveal(MechanicEngine):
         # narrator which. Calling them all memories (the pre-overhaul wording) framed a
         # discovered fact about the world as something the protagonist remembered. What
         # each one *is* belongs in its own content, where the author wrote it.
-        lines = "\n".join(f"- {e['content']}" for e in ordered[:REVEALED_PROMPT_LIMIT])
-        return {"revealed": (
-            "REVEALED SO FAR (already on the page, so the protagonist knows these; build "
-            f"on them naturally, do not re-reveal them as though they were new):\n{lines}")}
+        header = ("REVEALED SO FAR (already on the page, so the protagonist knows these; build "
+                  "on them naturally, do not re-reveal them as though they were new):\n")
+        budget = self.prompt_budget - len(header)
+        lines, used = [], 0
+        for e in ordered[:REVEALED_PROMPT_LIMIT]:
+            line = f"- {e['content']}"
+            added = len(line) + (1 if lines else 0)  # +1 for the joining newline after the first
+            if lines and used + added > budget:
+                break
+            lines.append(line)
+            used += added
+        return {"revealed": header + "\n".join(lines)}
 
     def queued_content(self, cfg, ctx):
         """The `{queued_reveal}` interpolation, or None. FIFO, so the oldest eligible reveal

@@ -101,6 +101,48 @@ assert content_present(prompt, LIMIT + 4), "most recently revealed must survive 
 assert not content_present(prompt, 1), "oldest revealed fragment must be dropped past the cap"
 print(f"OK: revealed-fragment block capped to {LIMIT}, most recent kept")
 
+# --- 2026-09-29: fewer than LIMIT fragments, but long ones, must still fit prompt_budget -------
+# A live the_missing_core save hit this with only 6 revealed (well under LIMIT=12), each running
+# ~450-530 chars: the count cap alone let the section run to 2965 chars against a 2600 budget,
+# and mechanics.prompt_sections' hard raise (§5.4) took down every turn from then on with no
+# player-facing signal (see backend/app.py's _start_turn_job for the other half of that). The
+# section itself must now never emit more than its own declared budget.
+mechanics = se.mechanics
+bound = mechanics.bound_for(many_ctx["story"], "revelations")
+long_ctx = se.state_store.load_state("revealedmemtest2b", se.state_store.DEFAULT_STORY_SLUG)
+long_story = se.state_store.thaw(long_ctx["story"])
+long_story["mechanics"]["revelations"] = revelations(*[
+    {"id": f"long_{i}", "trigger": "t", "content": ("word " * 100) + f"marker{i}"} for i in range(1, 7)
+])
+long_ctx["story"] = se.state_store.freeze(long_story)
+long_ctx["state"]["plot"]["revelations_revealed"] = {f"long_{i}": {"turn": i} for i in range(1, 7)}
+long_bound = mechanics.bound_for(long_ctx["story"], "revelations")
+section = long_bound.engine.prompt_sections(long_bound.cfg, long_ctx)["revealed"]
+assert len(section) <= long_bound.engine.prompt_budget, (len(section), long_bound.engine.prompt_budget)
+assert "marker6" in section, "the most recently revealed survives"
+assert "marker1" not in section, "the oldest is dropped to make room, same priority as the count cap"
+# build_system_prompt must not raise - this is the actual live-save failure mode
+prompt = se.build_system_prompt(long_ctx)
+assert "REVEALED SO FAR" in prompt and "marker6" in prompt
+print("OK: fewer than the count cap but long enough to overflow the char budget still fits, oldest dropped first")
+
+# a single fragment whose own content alone exceeds the budget is a real authoring mistake and
+# still raises loudly - the guard is for a code/authoring bug, not content volume
+one_ctx = se.state_store.load_state("revealedmemtest2c", se.state_store.DEFAULT_STORY_SLUG)
+one_story = se.state_store.thaw(one_ctx["story"])
+one_story["mechanics"]["revelations"] = revelations(
+    {"id": "toolong", "trigger": "t", "content": "x" * (long_bound.engine.prompt_budget + 500)},
+)
+one_ctx["story"] = se.state_store.freeze(one_story)
+one_ctx["state"]["plot"]["revelations_revealed"] = {"toolong": {"turn": 1}}
+try:
+    se.build_system_prompt(one_ctx)
+except ValueError as e:
+    assert "over its" in str(e) and "budget" in str(e)
+else:
+    raise AssertionError("a single overlong fragment should still raise")
+print("OK: one fragment too long to ever fit the budget still raises (a real bug, not volume)")
+
 # --- with unrevealed fragments present, the state-update prompt instructs evaluation ---
 se.call_llm_json = CannedResponses([
     {"subplot_beats": {}, "flags_set": {}, "revelations": {"revealed": [], "eligible": []},
