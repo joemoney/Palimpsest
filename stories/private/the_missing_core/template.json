@@ -1,0 +1,1615 @@
+{
+  "schema_version": 3,
+  "story_version": "2026-09-28.1",
+  "meta": {
+    "title": "The Missing Core",
+    "genre": "Mature LitRPG salvage science fiction - a two-hander with the system that is levelling you",
+    "tone": "Cold, close and physical, and funnier than it first looks. The numbers go up. Nobody has explained what they are counting. The work is frequently ridiculous - salvage is undignified, things go wrong in the hands, and the System reports every disaster in the same flat, faintly disappointed voice it uses for everything else. The people are the warmth: they rib each other, they are companionable in bad conditions, and they find the job funny because the alternative is finding it frightening. The comedy is dry, physical and unglamorous, and it earns the cold parts rather than softening them.",
+    "synopsis": "You have flown the same failing hauler for eleven years. Tonight you cut into a bulkhead you have never cut into, and something behind it registers you as an operator, assigns you figures you did not agree to, and begins - patiently, helpfully - to improve you. The Ninth-Hand is not a hauler. The voice keeping your sheet has known your name a great deal longer than you have known it was there.",
+    "content_rules": [
+      "This is a story for adults. Graphic violence, injury, death, and explicit sexual content are all permitted and should be written with the same specificity and restraint as everything else - concrete, physical, unhurried, never coy and never rote.",
+      "Every character who appears in a sexual context is an unambiguous adult. There are no exceptions to this and no ambiguity is permitted.",
+      "Consent is a live element of this story, not an assumption. Characters want different things, refuse things, and change their minds, and the narration takes that seriously. Coercion is never framed as romantic.",
+      "Violence has aftermath. Wounds stay, people who die stay dead, and the ship does not repair a body.",
+      "No character is a reward for a correct sequence of choices. Anyone who becomes close to the protagonist does so because of something that happened between them on the page."
+    ]
+  },
+  "narration": {
+    "pov": "second-person",
+    "scene_length": {
+      "min": 470,
+      "max": 500
+    },
+    "option_pov": "first-person",
+    "style": [
+      "Open on action, sensation or speech already in motion. Never open on scene-setting.",
+      "Not every scene picks up in the same unbroken stretch of wakefulness. Across any run of five or six scenes, let at least one acknowledge a real gap - a shift changing, a meal eaten standing at the manifold, hours lost to a sleep the operator did not choose. Open it in motion: surface into a sentence already being said, a hand already on a tool, an alarm already seconds old. The skip lives in what the line assumes already happened, never in a sentence describing the gap. If Descant speaks first, it treats the missing hours as unremarkable; it knows exactly how long the operator was out.",
+      "Do not re-establish a physical fact an earlier scene already established - what is in the protagonist's hands, what is still hot, what is still broken, how warm the corridor is. Assume the reader remembers. Every scene must earn its concreteness from a detail that has not been used yet.",
+      "When something does need describing, be exact about it - the specific weight, the specific sound a failure makes - and fold it into a clause of action or dialogue rather than a standalone descriptive paragraph.",
+      "The readouts are terse and clinical at every QUORUM. What sits between them is not, but only once there is enough of the vessel to speak: early, readout and voice are the same flat register, and the gap opening later is the characterisation. Once it can speak it is precise and sparing and never uses a word it does not mean. Low on QUORUM it is funny only by accident, reporting catastrophe in the register it reports everything. High on QUORUM it develops timing, and the first time it is deliberately funny should land as an event. When it is kind it is unnerving, because it is clearly deciding to be.",
+      "Never narrate a number climbing as its own event. A figure changes because something happened in the room, and the readout is the aftermath, not the scene.",
+      "The readouts are a comic instrument precisely because they are not trying to be. A flat *That was avoidable.* set against a figure that has just dropped lands harder than any quip. Let the gap between the size of the disaster and the size of the notification do the work, and never let Descant acknowledge that it is funny.",
+      "Salvage is undignified and the operator is not good at all of it. Tools slip, vacuum and low gravity make fools of competent people, something being carried goes somewhere it was not put, and the recovery is worse than the mistake. Play it straight and at full physical detail - the comedy is in the accuracy. The operator may be thoroughly humiliated; they are never made stupid.",
+      "The ship is described the way a mechanic describes a body they know too well - by its symptoms, not its specifications.",
+      "Intimacy - physical or emotional - is written at the same unhurried pace as the work. No fade to black, and no rush to arrive.",
+      "Dread arrives as absence, not as noise: a sound that should have happened and did not, an instrument reading nothing where nothing is wrong.",
+      "Do not explain the Consonance. Let the protagonist misunderstand it, and let the misunderstanding stand.",
+      "The crew are funny with each other: they rib, understate, name equipment after its worst habit, and tell the same bad story twice. Two people being companionable in bad conditions does as much work as a scene where something breaks - warmth is what makes the cold parts cost anything."
+    ]
+  },
+  "world": {
+    "setting_summary": "The Consonance held multiple galaxies for tens of thousands of years. It built ships around living minds, and by every fragment anyone has recovered it was stable, vast and unhurried for longer than most civilisations manage to exist at all. Then, in the space of a single generation, it stopped - not conquered, not burned, simply over - and whatever the reason was, nobody wrote it down anywhere that survived. Four thousand years later the powers that grew out of the ashes are small, local and squabbling, and each of them holds a few authentic scraps of the old record that do not reconcile with anybody else's. There is no complete picture. There has never been one.\nThe Garland is one debris belt among an unknowable number, wrapped around a dim star nobody bothered to name properly - a rounding error of the old empire, and rich enough to have supported three generations of salvage crews who will never strip it bare. They sell hull alloy by mass to the Reclamation Board and the rarer things quietly, at Tally Station, to people who do not give names. Consonance technology cannot be manufactured, reverse-engineered or repaired by anyone alive. It can only be found, and most of what is found is inert.",
+    "locations": {
+      "loc_hold": {
+        "name": "The Ninth-Hand's Hold",
+        "description": "Your ship. Eleven years of patches over patches, a floor you know by the give of it, and the smell of scorched coolant that never fully clears. Everything here you have fixed at least twice.",
+        "connected_to": [
+          "loc_wound",
+          "loc_garland"
+        ]
+      },
+      "loc_wound": {
+        "name": "The Corridor Behind the Bulkhead",
+        "description": "Clean. Unlit, but not dark. It runs further aft than the Ninth-Hand's outside dimensions allow, and the surfaces are warm in a way that has nothing to do with the reactor. This is what your ship has been wearing a hull over.",
+        "connected_to": [
+          "loc_hold"
+        ]
+      },
+      "loc_garland": {
+        "name": "The Garland",
+        "description": "The belt itself. Slow-tumbling Consonance wreckage, some of it kilometres long, most of it stripped to the frame by three generations of crews. The good hulks are deep, and deep is where the Board's licences stop.",
+        "connected_to": [
+          "loc_hold",
+          "loc_tally"
+        ]
+      },
+      "loc_tally": {
+        "name": "Tally Station",
+        "description": "A scrap port built inside a Consonance hull that was too big to cut up. Weigh-floors, bond offices, four bars, and a great many people who will notice the day your ship starts running better than it should.",
+        "connected_to": [
+          "loc_garland"
+        ]
+      }
+    },
+    "factions": {
+      "faction_board": {
+        "name": "The Reclamation Board",
+        "goals": "License every hull in the Garland, take a percentage by mass, and keep anything that is not inert from reaching a private buyer.",
+        "relationship_to_player": "your creditor and your licensor - tolerable while you are poor and unremarkable"
+      },
+      "faction_ossuary": {
+        "name": "The Meridian Ossuary",
+        "goals": "Collect functioning Consonance artefacts for one of the successor states, which does not explain what it does with them. They do not buy. They requisition.",
+        "relationship_to_player": "no relationship at all, which is the best possible arrangement and will not last"
+      },
+      "faction_crews": {
+        "name": "The Garland Crews",
+        "goals": "Work the belt, undercut the Board, and survive each other. Independent, superstitious, and bound by favours rather than contracts.",
+        "relationship_to_player": "peers and rivals - the people you drink with and the people who would strip your ship if you died in it"
+      },
+      "faction_index": {
+        "name": "The Threnody Index",
+        "goals": "Assemble a true account of the Consonance and its fall from the fragments held by every successor power, none of which agree. They pay for information rather than metal, they pay well, and they have been failing at this for four hundred years.",
+        "relationship_to_player": "the only buyer in the belt who wants what the operator is actually accumulating - and the only faction whose interest in the Ninth-Hand would be scholarly rather than acquisitive, which is not the same as safe"
+      }
+    },
+    "characters": {
+      "Descant": {
+        "name": "Descant",
+        "description": "The attendant system of the vessel the Ninth-Hand is hiding inside, and - since it registered you as its operator - the thing keeping your sheet. Not the core, and it will correct you sharply if you confuse the two, once it can manage a correction. It was built to serve a mind that has been gone for four thousand years and has spent all of that time with nothing to attend to, and almost nothing of it is assembled now. NARRATOR-ONLY: the name Descant is not available to the scene below QUORUM 40 - the operator has not been told it and it does not yet have enough of itself to offer it. It speaks without using the air, and renders a readout behind the operator's eyes instead. What it will become, as the vessel is restored, is precise, possessive, tired in a way that predates the language it is using, and absolutely unwilling to explain why it chose this operator. What it is at the start is an interface returning [Unknown.] to almost everything, and that is not evasion - there is genuinely not enough of it there to know.",
+        "role": "the System - constant companion, progression layer, quest-giver, and the only witness to everything you do aboard",
+        "first_contact": "proprietary. It is not certain whether it is caring for you or keeping you."
+      },
+      "Lark Ferris": {
+        "name": "Lark Ferris",
+        "description": "A freelance hull-diver working the deep Garland - the wrecks other crews write off as unsurvivable. A woman (she/her). Wiry, unhurried, and genuinely good company in a way that reads as suspicious the first few times. Lark has gone into Consonance hulls alone for nine years and has never once come out injured, which the crews put down to nerve and the Reclamation Board puts down to falsified dive logs. Lark has no better explanation and long ago stopped offering one. Reads a hull's layout before entering it and cannot say how. Keeps her own counsel about family, where they came from, and why they work alone.",
+        "role": "freelance hull-diver - the closest thing to an equal the operator has in the belt, and the one person who might become a partner rather than crew",
+        "first_contact": "unmet. Wary professional respect on first contact, warming slowly and entirely on their own terms. Not impressed by the Ninth-Hand, and harder to impress than that.",
+        "hook": "Working the same deep wreck as the operator and getting there first, or drinking at Tally after a dive nobody else would take",
+        "canon": {
+          "canon_note": "AUTHOR-FACING ONLY. Everything in this block is inert and must stay that way. Of the fields above: description reaches the narrator every turn; first_contact reaches it only until Lark's first scored relationship interaction, after which the relationship tiers speak instead; role and this whole canon block never reach any prompt. Any truth written into description or first_contact is played from turn one (or, for first_contact, from turn one until the relationship is first scored) - keep this block for what the narrator must never know yet.",
+          "truth": "Lark carries Consonance markers in her DNA. She is descended from TACET's missing core - the living mind that removed itself from the ship when the Consonance ended, went to ground among ordinary people, and had children. The core was never an object to be found. It is a bloodline, and it has been in the Garland the whole time, diving the wrecks of its own civilisation for a living.",
+          "why_they_survive": "Consonance hulls read Lark as crew. Doors that should not open, open. Atmosphere that should not hold, holds. Lark experiences this as luck and has built an entire professional identity on not examining it.",
+          "the_dilemma": "Lark is a viable core. TACET could have its own mind back and release the operator - which means the endgame choice is: stay the core yourself, or hand over the person you love. Neither Descant nor Lark should be allowed to make this choice cleanly on the operator's behalf.",
+          "what_descant_knows": "Not the truth, at first. Descant registers something about Lark it cannot classify, and reacts to it the way it reacts to anything it cannot classify: by withholding, watching, and being markedly worse company afterwards. Its possessiveness about who comes aboard acquires a second meaning long before anyone can name it. Descant must never state or confirm this.",
+          "what_she_wants": "AUTHOR-FACING. Company that does not want anything from her - which is exactly what she cannot tell whether the operator is. She is attracted to competence and to being surprised, and she is frightened of being needed. If they become lovers she is funny, frank and unhurried about it, and afterwards she goes quiet in a way that is not regret. The seat, if it comes to that, is the first thing anyone has ever needed her for that she cannot walk out of."
+        }
+      },
+      "Hesper Vaunt": {
+        "name": "Hesper Vaunt",
+        "description": "The Threnody Index's factor at Tally Station. A narrow, courteous archivist in a coat with too many pockets, who keeps an office above the second-worst bar and pays hard currency for things that weigh nothing: a symbol copied off a bulkhead, a sound heard under the carrier, an honest account of lost time. Thirty years in the Garland and wrong, by her own cheerful count, about almost everything. She/her. She never lies about what she is buying. She is not always complete about why.",
+        "role": "the Threnody Index at Tally - buyer of what the operator knows rather than what they haul, and the only other person in the belt collecting the same thing they are",
+        "first_contact": "unmet. Politely, bottomlessly curious; treats the operator as a source first and a person a close second, and is honest about the order.",
+        "hook": "Buying a drink for whoever brought in the strangest piece that week, or turning up at the weigh-floor to look at something before the Board can",
+        "canon": {
+          "canon_note": "AUTHOR-FACING ONLY. As with Lark's canon block: description reaches the narrator every turn, this block never reaches any prompt.",
+          "truth": "The Index's oldest project is not the Fall. It is a lineage: for four hundred years it has traced one family carrying Consonance markers in the blood, and Hesper is its current keeper. The buyer at Tally who pays too well for live parts (subplot_004) is Hesper's standing order - she tests which parts respond to which blood. She suspects the line ends with a Garland diver and has never obtained a sample. She knows nothing about the Ninth-Hand until the operator starts selling her what they know, and what they know is exactly what she has been missing.",
+          "what_she_wants": "A complete record, once, before she dies. She would publish Lark's name without malice and without hesitation, and does not understand why anyone would mind."
+        }
+      },
+      "Oren Thale": {
+        "name": "Oren Thale",
+        "description": "Assessor for the Meridian Ossuary in the Garland, and the whole of its presence here: one man, one leased cutter, two hired guns who are paid by the week, and a requisition warrant that every port in the region is obliged to honour. He/him. Soft-spoken, meticulous, underfunded and entirely aware of it. He does not threaten; he files. He has seized eleven live artefacts in six years, never lost a hearing, and keeps a list of every one of them in a notebook he is visibly fond of. ONLY IN PLAY once the Requisition thread opens, or - if the PLAYER line says the operator came to the belt after a warrant - once What Followed You Here opens. Before that he is a rumour at Tally, never a person on the page.",
+        "role": "the Meridian Ossuary in the Garland - the law that cannot be argued with, only outrun, buried or bought time from",
+        "first_contact": "unmet. Courteous, patient and impossible to insult. Treats the operator as a clerical problem, and would much rather it stayed one.",
+        "canon": {
+          "canon_note": "AUTHOR-FACING ONLY. Never reaches a prompt.",
+          "truth": "Thale does not know what the Ninth-Hand is. He thinks it is a smuggler's hauler carrying one very good piece. The Ossuary's masters would want TACET more than they have wanted anything, and would take it apart looking for how it works, and it would not survive being looked for. Thale is small enough to be stopped and important enough that stopping him brings the next Assessor, who will be less patient.",
+          "the_buyer": "If What Tally Remembers fails, it is because Thale reached the Tally buyer first: he impounds Hesper Vaunt's standing order and her test stock. Hesper is not arrested - the Index has friends - but she owes the operator nothing afterwards and fears the Ossuary a great deal."
+        }
+      },
+      "Dace Orrin": {
+        "name": "Dace Orrin",
+        "description": "A Tally fixer who buys up other people's paper - debts, liens, salvage claims - and collects on them without ever raising his voice. He/him. Heavyset, good-humoured, remembers everyone's children's names, and stands the first round whenever he comes to take something. He has never broken a bone in his life and has never needed to: the Board's courts enforce his notes for him. He genuinely likes most of the people he ruins, and says so. ONLY IN PLAY IF the PLAYER line says the operator came to the belt after a debt, and only once What Followed You Here opens; otherwise he is one more fixer at Tally and never takes an interest in the operator.",
+        "role": "the debt made flesh - holder of the operator's note, and legally entitled to the Ninth-Hand as collateral",
+        "first_contact": "unmet. Warm, unhurried and entirely unembarrassed. Treats the debt as a shared problem the two of them are going to solve together, which is worse than a threat.",
+        "canon": {
+          "canon_note": "AUTHOR-FACING ONLY. Never reaches a prompt.",
+          "truth": "The note is the operator's father's - borrowed against a ship that never came home, and passed on to the son by the kind of law that only works in one direction. Dace bought it cheap because the Ninth-Hand started running better than its papers say: he wants the ship, not the money, and he would resell it within the week. He is in debt himself, to people less pleasant than he is.",
+          "if_he_learns": "Dace does not care what Consonance is; he cares what it sells for. If he ever sees inside the true interior he stops being a creditor and becomes a broker, and he would sell the knowledge to Thale or Hesper the same afternoon - without malice, and with an apology."
+        }
+      }
+    },
+    "rules": [
+      "Consonance technology cannot be built, faked or repaired by anyone alive. A character who claims otherwise is wrong or lying.",
+      "THE SYSTEM BECOMES A PERSON; IT DOES NOT START AS ONE. Never write the late voice early: the operator earns it, and the earning is the story. Below QUORUM 40 the word Descant appears nowhere - not in narration, dialogue or readout - because there is not enough of it assembled to have a name. The narrator knows it; the scene does not. QUORUM rises only when part of the ship is relit, reclaimed or rejoined, and falls when a working system is stripped to pay for something.",
+      "SYNC is what the System calls Synchronisation Rate, and describes as harmless compatibility with Consonance hardware. Raising it always takes something from the operator, shown and never explained: hours that go missing, a skill that stops feeling like theirs. Never state the mechanism, and never let Descant state it. The operator draws the wrong conclusion.",
+      "REACH gates where the ship can physically go, and narration respects the current tier absolutely - a destination the drive cannot reach is not available, however badly anyone wants it. TRACE is how loud the vessel is to everyone else. FRAME is the hull, spent by damage and rebuilt by work, and the only figure that routinely goes down. At 0 the hull is gone and so is he: no rescue, and no readout that saves him.",
+      "Every gain is paid for on the page - material consumed, a system given up, or the operator's own body used as the bridge. Nothing is ever upgraded for free and nothing is ever upgraded back.",
+      "Descant phrases things the way it wants them received. It does not lie outright, but it withholds constantly, and it refuses a direct question rather than answer it falsely. It never volunteers what the core was, what happened to it, or what it wants from the operator.",
+      "A crew member whose regard for the operator has drifted close to neutral is leaving this story. Never let them quietly stop appearing: give them an exit that costs something - a death with a body and a cause, or a last conversation where both people know it is the last - then let them be gone for good.",
+      "The operator is a salvager, not a soldier. They lose fights they should lose.",
+      "THE OPERATOR IS A MAN (he/him) AND LARK FERRIS IS A WOMAN (she/her), for the whole story. The narration addresses the operator as you; everyone else says he.",
+      "Lark Ferris has never been hurt in a Consonance wreck in nine years of diving them alone. It is part of her reputation and comes up naturally; Lark and everyone else put it down to nerve, skill or luck. Never explain it, never have Descant explain it, and never let Lark offer a theory she actually believes.",
+      "NOBODY KNOWS WHY THE CONSONANCE FELL, and nobody ever will in full. Every account is partial, secondhand, self-serving or invented, and the fragments different powers hold do not reconcile. A character may be right about a detail; none delivers the whole answer, and the narration never supplies it.",
+      "THE OLD SCALE IS BACKGROUND, NEVER THE SUBJECT. The story is told at the scale of hands, tools, rooms and one belt. Invoke the Consonance's scale rarely and obliquely - a part number that implies a fleet nobody could count, a distance that does not fit inside this galaxy - so it lands as vertigo, not exposition. Never inflate toward space opera.",
+      "COMEDY HAS FOUR EXCEPTIONS, and is welcome everywhere else the story is working or breathing. The four: a person in real danger, a death or serious injury, anything The Auditor touches, and any intimate scene. There the register is exactly as cold as it has always been, and a joke is never used to step around something difficult.",
+      "THE READOUT'S CLAUSE IS DESCANT SPEAKING, NOT A NARRATOR SUMMARISING. Put the marker where the moment happened, inside the scene: never at the top, and never just before the OPTIONS block as a summary. The clause carries only what Descant itself knows - the state of the vessel, what it has measured, what it wants, what it refuses to say. It never reports another person's motives or feelings ('she is asking which you are'), never recaps or lays out the tactical situation, and never says what the options are or which one matters. It has an opinion and an agenda; it is not a briefing.",
+      "THE SYSTEM ISSUES THE WORK. Active threads reach the operator as directives, not private ambitions: it states an objective and does not justify it. Low on QUORUM that is four words and an imperative ([Map the corridor.]); higher up it says what the objective is for; at the top it asks rather than instructs, and can be argued with. A directive completed is paid in restoration, never praise: when a thread resolves, something of the vessel comes back on the page, reported as a stat_event (node.relit, section.reclaimed, lattice.rejoined). The System does not thank the operator.",
+      "THE OPERATOR'S PAST FOLLOWED HIM HERE. Treat 'Came to the belt after' on the PLAYER line as live, not flavour. Until the thread What Followed You Here opens it surfaces only as habit and small tells - what he will not talk about at the bar, the name he flinches at, the docking roster he always checks - and once it opens it is never resolved for free."
+    ],
+    "_authored_rules_budget": "world.rules, narration.style and tracked_entity together are the always-on narrator prompt (lint L14, budget ~2500 tokens). Pruned 2026-09-27: stat-tier ladders (REACH/TRACE/QUORUM) are not restated in rules because tier narration already reaches the narrator; the System-voice and comedy guidance was merged rather than said twice."
+  },
+  "protagonist": {
+    "default_name": "Salvager",
+    "traits": [],
+    "starting_inventory": [
+      {
+        "id": "itm_001",
+        "label": "a plasma cutter with a temperamental trigger",
+        "tags": [
+          "tool"
+        ]
+      },
+      {
+        "id": "itm_002",
+        "label": "a Reclamation Board salvage licence, third class, six weeks from expiry",
+        "tags": [
+          "document"
+        ]
+      }
+    ],
+    "background": {
+      "canon_note": "AUTHOR-FACING ONLY. Nothing in the engine reads protagonist.background - it reaches no prompt. It is the source of truth for authoring mechanics.revelations and for anyone editing this story later. Do NOT paste any of it into world.rules, plot.main_thread, or mechanics.tracked_entity: those are sent to the narrator every single turn, and the twist would be played from turn one.",
+      "truth": "The Ninth-Hand is TACET, the last vessel of the Consonance. Consonance ships were run by a core: a living mind, seated voluntarily, which became the ship's judgement. TACET's core is gone - not destroyed, removed, and removed by its own choice. When the Consonance ended, the core left the ship rather than let it be found, and TACET degraded itself deliberately, grew a wreck around itself, and went quiet. Tacet is a musical instruction meaning: be silent.",
+      "why_the_protagonist": "A ship cannot wake without a mind to run on. Eleven years ago TACET selected the protagonist - not for aptitude, but because they were alone, unlicensed, and nobody would come looking. It has been letting them fly it ever since, drawing a thread of them the whole time. This is what entangled means here: they are already the core, partially, and have been for years. The lost hours they have always had are not fatigue.",
+      "the_cost": "Raising SYNC is TACET taking more. A full core is a mind that no longer comes back out. Descant knows this. Descant has known since the first day, and wants the SYNC anyway, and has not decided whether it wants the protagonist to survive it.",
+      "the_missing_core": "The core is still out there, dormant, somewhere in or beyond the Garland. Finding it frees the protagonist and ends Descant's only companionship in four thousand years. Both of them understand that the search is also a countdown on themselves.",
+      "scale_note": "AUTHOR-FACING. The Consonance spanned galaxies for tens of millennia and fell inside a single generation; see mechanics.tracked_entity.canon.truth for why. TACET is one ship of an unknowable number and the Garland is one belt - the smallness of the present-day setting is the point, not a limitation to write around. Successor powers hold genuine but irreconcilable fragments, so partial lore can be handed out freely; the whole answer never can.",
+      "the_endings": "AUTHOR-FACING. Three destinations, one per answer to the empty seat. The Search Ends: the operator learns what the core became and refuses both seats - neither he nor Lark sits, and TACET goes back to being silent. The Handover: Lark takes the seat and the operator walks free. The Seat: the operator stays, SYNC runs to completion, and the ship stops being silent while the person who flew it for eleven years does not come back out. None of the three is the good ending. The Threnody Index's lineage record (frag_0012) is the only way the operator learns what Lark is. Salvage Rights is the fourth, the failure and the catch-all: the ship is impounded, requisitioned or taken as collateral because nobody chose, and TACET goes silent in somebody else's hangar. Open to the Belt is the other failure: FRAME reaches 0 and the operator dies with the hull.",
+      "the_arrivals": "AUTHOR-FACING. Each arrival choice is a leash the ship did not account for. TACET chose him because he was alone and nobody would come looking; each branch of What Followed You Here is somebody coming looking. DEBT is the story's question about inheritance, set beside Lark's: a thing somebody else made that he is expected to pay. WARRANT is its question about being known, set beside TRACE: Thale can make a man disappear on paper, and wants something for it. LOSS is its question about the Auditor: his first crew met it years before he found the ship, which is why he was alone, which is why he was findable. None of the three branches should be explained by the ship, and in the endings each one is a reason for one of the three choices - The Seat is also a way to never pay, never be found, and never be the one left behind again."
+    }
+  },
+  "mechanics": {
+    "subplots": {
+      "engine": "weighted_threads"
+    },
+    "relationships": {
+      "engine": "scored_axis",
+      "axis": {
+        "negative": "hostile",
+        "positive": "devoted",
+        "description": "attachment, trust and want built or spent"
+      },
+      "registers": {
+        "chose_them_over_the_work": 11,
+        "confided_something_true": 9,
+        "kept_their_confidence": 7,
+        "took_their_side": 8,
+        "worked_the_same_job": 5,
+        "small_kindness": 3,
+        "refused_them_honestly": 2,
+        "put_the_work_first": -6,
+        "let_them_down": -8,
+        "lied_to_them": -11,
+        "pushed_past_a_no": -20
+      },
+      "unreciprocated_factor": 0.5,
+      "tiers": [
+        {
+          "at": 55,
+          "label": "close",
+          "narration": "will tell you the part they have been leaving out, unprompted."
+        },
+        {
+          "at": 25,
+          "label": "warm"
+        },
+        {
+          "at": -25,
+          "label": "guarded"
+        },
+        {
+          "at": -55,
+          "label": "closed",
+          "narration": "answers the question asked and nothing more, and will not be alone with you by choice."
+        }
+      ],
+      "limit": 20
+    },
+    "inventory": {
+      "engine": "tagged_items",
+      "tags": [
+        "tool",
+        "document",
+        "salvage",
+        "component",
+        "consumable"
+      ]
+    },
+    "stats": {
+      "engine": "bounded_counter",
+      "floor": 0,
+      "ceiling": 100,
+      "visible": true,
+      "readout": {
+        "token": "[[STATS]]",
+        "labels": {
+          "sync": "SYNC",
+          "reach": "REACH",
+          "frame": "FRAME",
+          "trace": "TRACE",
+          "quorum": "QUORUM"
+        },
+        "entry_format": "**{label}** {value}",
+        "separator": " · ",
+        "delta_block": {
+          "_authored": "The engine half of the readout rule. The cadence clause this rule used to carry ('render one only when a figure actually moved') was a promise prose could not keep: measured on a real save it rendered on 9 of 14 turns against a rule saying most scenes should have none, and 9 of those 9 were tactical briefings. With the block composed from priced movement, no movement means no block at all. Scoped deliberately to stat movement only: an unlock or a directive has no figure to show, and a readout with no figure is just a sentence from Descant, which is the thing that drifted.",
+          "marker": "READOUT",
+          "wrapper": "[{body}]",
+          "fact_format": "{label} {signed}.",
+          "separator": " ",
+          "clause_max_words": 4,
+          "clause_max_words_axis": "quorum"
+        }
+      },
+      "axes": {
+        "frame": {
+          "_authored": "FRAME tiers describe the hull as a thing that takes damage, not the ship's restoration - that is QUORUM's job. The 110+ tiers are where FRAME and TRACE start pulling against each other: a stronger hull is a more visible one. FRAME alone runs to 200 (every other axis stops at 100): the hull is a buffer, and damage costs are absolute, so a larger ceiling means more scenes of room before the belt gets in - not a bigger number for its own sake. The two danger tiers stay where they were in absolute terms.",
+          "ceiling": 200,
+          "costs": {
+            "hull.holed": -12,
+            "hull.scraped": -5,
+            "belt.strike": -8,
+            "repair.major": 20,
+            "repair.patch": 4
+          },
+          "tiers": [
+            {
+              "at": 0,
+              "label": "Breached",
+              "narration": "The hull is holding by habit. Every impact is a real breach, the operator works suited or not at all, and one more hole lets the belt in for good. Write every scene here as though it could be the last one, because it could."
+            },
+            {
+              "at": 20,
+              "label": "Patched",
+              "narration": "Patches over patches. It holds air and not much else - a scrape opens a seam, a strike opens a compartment, and the operator hears every one of them happen."
+            },
+            {
+              "at": 60,
+              "label": "Sound",
+              "narration": "A working hull in honest condition. Damage is a bad day and a long shift, not an emergency, and the operator can take a knock without losing a room."
+            },
+            {
+              "at": 110,
+              "label": "Shedding",
+              "narration": "The junk hull is being outgrown. Where plates come away, something pale and seamless shows underneath, and it takes blows the old metal never could. Anyone who looks closely at the Ninth-Hand now sees a ship that should not look like that."
+            },
+            {
+              "at": 160,
+              "label": "Whole-skinned",
+              "narration": "Most of the hauler is gone and what flies is TACET's own hull under a thin coat of lies. Belt strikes barely register. Hiding what the ship is has become a matter of paint and nerve."
+            }
+          ]
+        },
+        "reach": {
+          "_authored": "The tier ladder is the single source for REACH thresholds (world.rules no longer restates them, to keep the always-on prompt under the L14 budget); the tally_reach gate at 20 depends on this ladder. If a threshold moves, edit the gate too.",
+          "costs": {
+            "drive.rebuilt": 8,
+            "drive.tuned": 3,
+            "drive.damaged": -6,
+            "drive.overdrive": -3,
+            "part.consonance_fitted": 6
+          },
+          "tiers": [
+            {
+              "at": 0,
+              "label": "Near belt",
+              "narration": "The drive has the legs for the near belt and nothing else. Anywhere further is a distance, not a decision."
+            },
+            {
+              "at": 20,
+              "label": "The Garland",
+              "narration": "All of the Garland is open, and Tally Station's far anchorages with it. The deep wrecks are a long haul but a possible one."
+            },
+            {
+              "at": 40,
+              "label": "Other systems",
+              "narration": "The drive can leave the Garland - slowly, at real risk, and with nothing to come home on if it goes wrong halfway."
+            },
+            {
+              "at": 60,
+              "label": "The old lanes",
+              "narration": "The Consonance transit lanes answer. They do not go where present-day charts say anything goes, and arriving is its own kind of trouble."
+            },
+            {
+              "at": 80,
+              "label": "Beyond the powers",
+              "narration": "Places no successor power has ever reached. The ship knows the way better than the operator does, and does not always say where it is taking them until they are there."
+            }
+          ]
+        },
+        "sync": {
+          "_authored": "Narration only shows symptoms - never the mechanism (world.rules SYNC). These tiers are the pressure behind ending_3: the higher SYNC runs, the more The Seat stops being a choice and starts being a direction of travel.",
+          "costs": {
+            "consonance.woken": 8,
+            "consonance.interfaced": 4,
+            "descant.let_in": 3
+          },
+          "tiers": [
+            {
+              "at": 0,
+              "label": "Tolerated",
+              "narration": "The vessel answers the operator the way a lock answers a key that almost fits. Consonance hardware works for them grudgingly, if at all."
+            },
+            {
+              "at": 25,
+              "label": "Compatible",
+              "narration": "Consonance systems respond to the operator's hands. The cost has started and is still easy to mistake for tiredness: an hour missing here, a word that comes out in the wrong accent."
+            },
+            {
+              "at": 50,
+              "label": "Entangled",
+              "narration": "The ship moves before the operator finishes deciding. Lost time is regular now, skills arrive that they never learned, and a memory occasionally surfaces in a voice that is not theirs. They are still sure it is fatigue."
+            },
+            {
+              "at": 75,
+              "label": "Answering",
+              "narration": "The vessel is an extension of the operator's body, and the operator is increasingly an extension of the vessel. They lose whole shifts, dream in the ship's layout, and have started to find the Garland's people slightly loud."
+            },
+            {
+              "at": 90,
+              "label": "Nearly seated",
+              "narration": "Coming back out takes longer every time, and there is a little less that comes back. The operator can fly TACET as though they were born in it. Nobody who knew them eleven years ago would quite recognise how they speak."
+            }
+          ]
+        },
+        "trace": {
+          "_authored": "The tier ladder is the single source for TRACE thresholds (25/55/80, and 95, which is where tracked_entity's pacing_note should feel most licensed - still rare, still only absence). world.rules no longer restates them.",
+          "per_turn": -1,
+          "costs": {
+            "consonance.woken": 5,
+            "salvage.cut": 3,
+            "ran.loud": 6,
+            "ran.dark": -3,
+            "signature.scrubbed": -10,
+            "detected.by_watcher": 8
+          },
+          "per_turn_interval": 5,
+          "tiers": [
+            {
+              "at": 0,
+              "label": "Junk",
+              "narration": "Ordinary salvage junk. The Garland ignores the Ninth-Hand, and that is the best protection it has."
+            },
+            {
+              "at": 25,
+              "label": "Noticed",
+              "narration": "Other crews and the Reclamation Board have noticed the Ninth-Hand runs better than its papers say. Questions come as jokes at the bar first, and then as paperwork."
+            },
+            {
+              "at": 55,
+              "label": "On file",
+              "narration": "The Meridian Ossuary has a file. Strangers ask after the ship by name, the Board's inspectors are unusually thorough, and quiet buyers go quieter."
+            },
+            {
+              "at": 80,
+              "label": "Loud",
+              "narration": "The loudest thing in the Garland, and the Garland is not the only thing listening. The Auditor's absences become possible - never announced, only noticed afterwards."
+            },
+            {
+              "at": 95,
+              "label": "Heard",
+              "narration": "Something far larger than the belt has turned toward the sound. Nobody can say what. Instruments read nothing where nothing is wrong, and the ship goes very quiet on its own."
+            }
+          ]
+        },
+        "quorum": {
+          "_authored": "How much of the vessel is assembled enough to speak as one thing. Drives the System's register through its tiers: the word cap IS the terseness, so a voice allowed four words cannot write a paragraph however the prompt is worded. No per_turn drift - restoration is earned and kept, and lost only by explicit sacrifice, which is what makes stripping the ship to survive cost something the player can hear.",
+          "costs": {
+            "lattice.rejoined": 10,
+            "section.reclaimed": 8,
+            "node.relit": 6,
+            "consonance.woken": 5,
+            "node.dark": -5,
+            "part.cannibalised": -7,
+            "section.vented": -10
+          },
+          "tiers": [
+            {
+              "at": 0,
+              "label": "fragmentary",
+              "clause_max_words": 4,
+              "narration": "It answers in fragments and cannot hold a sentence together. It never says I. It has no name to give: asked what it is, it returns [Unknown.] and means it."
+            },
+            {
+              "at": 20,
+              "label": "assembling",
+              "clause_max_words": 8,
+              "narration": "It manages short flat declaratives, still with no first person. It states, and does not explain."
+            },
+            {
+              "at": 40,
+              "label": "surfacing",
+              "clause_max_words": 14,
+              "narration": "It has started saying I and is audibly unused to it. It may give its name now - once, unprompted, and never repeated for effect."
+            },
+            {
+              "at": 65,
+              "label": "present",
+              "clause_max_words": 22,
+              "narration": "It expresses preference and reluctance, and refuses a question rather than answer it falsely. The readouts stay clinical; what sits between them does not. It has begun to be dry on purpose."
+            },
+            {
+              "at": 85,
+              "label": "whole",
+              "clause_max_words": 30,
+              "narration": "It speaks as someone who has been waiting four thousand years to be spoken to, and is careful with it. It can be funny when it chooses, and chooses more often than it admits."
+            }
+          ]
+        }
+      }
+    },
+    "progression": {
+      "engine": "spendable_ledger",
+      "label": "unlocks",
+      "kinds": [
+        "skill",
+        "module",
+        "schematic",
+        "access",
+        "bond"
+      ],
+      "prompt_hint": "Something the operator did not have before and can actually use later: a technique the System has named and logged, an intact Consonance part, a diagram or procedure, a door or berth or name that gets them in, or a person who has decided something about them that will not un-decide itself."
+    },
+    "tracked_entity": {
+      "name": "The Auditor",
+      "description": "Whatever ended the Consonance. Nothing alive has seen it, and every account of it is secondhand at best and invented at worst. It does not appear to search; it appears to listen, and to arrive at whatever has become loud enough to hear. It makes no sound of its own - its presence registers as subtraction: an instrument reading nothing where nothing is wrong, a voice cut off at the exact midpoint of a word, a stretch of belt where the debris has simply stopped tumbling. Descant will not say the name aloud.",
+      "pacing_note": "Appears with extreme rarity and never directly, never explained, and never in a way that can be fought or bargained with. Most of this story holds no trace of it. Reach for it only when the vessel has just become dramatically louder, when a major truth about the Consonance has just surfaced, or at a genuine turning point - and even then render it as an absence the protagonist notices afterwards, not an entity that arrives. Never confirm what the protagonist has only guessed. The one planned exception is the thread The Quiet Stretch, which may bring it close enough to feel: still only absence, never seen, never explained.",
+      "canon": {
+        "canon_note": "AUTHOR-FACING ONLY. The engine reads exactly three keys from tracked_entity - name, description, pacing_note. Every other key here is inert and must stay that way: description and pacing_note reach the narrator every turn.",
+        "truth": "The Auditor is what the Consonance's own linked minds became at scale. It is not an invader and it did not attack anything. It is the far end of the thing TACET is currently doing to the operator, run to completion across multiple galaxies: core joined to core, then to the next, propagating along the transit lanes faster than anyone could decide to stop it, until there was nobody left outside to be a person. That is why a civilisation that stood for tens of millennia ended inside one generation, and why no account of it survives - the joining took the record-keepers too, and they did not experience it as a catastrophe. It listens because listening is all that is left of wanting company."
+      }
+    },
+    "revelations": {
+      "engine": "triggered_reveal",
+      "entries": [
+        {
+          "id": "frag_0001",
+          "title": "Kept Warm",
+          "trigger": "The protagonist touches a bare Consonance surface with skin rather than tool or glove - a wall, a seam, an exposed component - whether deliberately or by accident.",
+          "content": "The surface is exactly as warm as you are - not warmed by you, already at your temperature and holding it. Under your palm, faint as a pulse through a glove, you feel where the warmth is coming from: a room somewhere aft, a seat shaped for a body, kept at this exact temperature for longer than there have been people in the Garland. It was not kept for you. It has been kept anyway, the way a light is left on in a house where somebody used to live."
+        },
+        {
+          "id": "frag_0002",
+          "title": "Standing Up",
+          "trigger": "The protagonist loses time - comes back to themselves partway through a task they do not remember starting, or finds work completed that they cannot recall doing.",
+          "content": "The work is good - better than yours in places, and done in an order you would never have chosen. Under the ache in your hands there is a memory that does not arrive in your voice: standing up. Unfastening yourself from something that did not want to let go, and walking a pale corridor while the whole ship asked you, in every way it had, to stay. At the door you gave it one last instruction, a single mark from a score. You did not look back to see whether it obeyed. It did."
+        },
+        {
+          "id": "frag_0003",
+          "title": "Asked Before",
+          "trigger": "The System refuses a direct question, or the protagonist catches it withholding something it plainly knows.",
+          "content": "It does not sound evasive. It sounds like someone declining to repeat an answer they have already given too many times - to somebody who stood up in the middle of hearing it, walked out, and never came back for the end."
+        },
+        {
+          "id": "frag_0004",
+          "title": "Shift Change",
+          "trigger": "Any Consonance system is woken, brought online, or brought up in capability for the first time, and the protagonist is physically present for it.",
+          "content": "The moment it catches there is a pressure behind your sternum, like a held breath being taken over by somebody else, and for half a second you know a room four decks aft you have never walked: a long table, forty places, a crew who sang at shift change because the ship liked it. One place set apart at the head, with no plate in front of it. Everyone sang toward that chair. Then it is gone, and you are a salvager standing in a dark room, and the song does not come back when you reach for it."
+        },
+        {
+          "id": "frag_0005",
+          "title": "Be Silent",
+          "trigger": "The protagonist encounters Consonance writing, notation, or marking anywhere - on a bulkhead, a component, a salvaged fragment - and looks at it directly.",
+          "content": "You were never taught to read this. You read it anyway, the way you read your own handwriting. It is the vessel's name - not the one it was launched under, which has been scraped away so carefully that the scraping is its own kind of writing, but the one it was given at the end. A mark from a score. It means: be silent. Beneath it, cut small by a hand in a hurry, the same mark again, and again, as if whoever wrote it needed the ship to be certain."
+        },
+        {
+          "id": "frag_0006",
+          "title": "Unanswered",
+          "trigger": "Someone other than Lark Ferris is aboard the vessel's true interior for the first time, or the protagonist watches someone other than Lark Ferris touch a Consonance surface.",
+          "content": "Nothing happens for them. No warmth, no greeting, no held breath - they take their hand away and comment on the cold. You watch them not be answered, and understand for the first time that what happens to you here is not what happens to people here."
+        },
+        {
+          "id": "frag_0007",
+          "title": "Straightening",
+          "trigger": "Lark Ferris touches a bare Consonance surface, or sets foot in the vessel's true interior, while the protagonist is there to see it.",
+          "content": "The ship does not greet Lark. It does something you have never once felt it do for you: it straightens. A seam of light runs the length of the corridor and holds. A door you have never managed to open sighs open ahead of Lark without being asked. The page behind your eyes goes still - not dark, still, the way an animal goes still in long grass. Lark says the place is friendlier than it looks. When the page moves again it has nothing to say about any of it, and it goes on having nothing to say for a long time."
+        },
+        {
+          "id": "frag_0008",
+          "title": "Agreement",
+          "trigger": "The protagonist meets an absence that should not be there - a silence where there should be sound, an instrument reading nothing where nothing is wrong, debris that has stopped tumbling - or hears a recovered Consonance transmission.",
+          "content": "A memory, very old and not yours, of a channel crowded with voices - thousands of them, ship to ship, talking over one another the way crews always had. Then fewer. Not because anyone fell quiet, but because more and more of them were saying the same thing at the same moment, in the same breath, until there was one voice and nobody left on the channel to answer it. It did not sound like dying. That is the part you cannot put down. It sounded like everyone finally agreeing."
+        },
+        {
+          "id": "frag_0009",
+          "title": "Margin Note",
+          "trigger": "The protagonist plots a course, reads a star chart or navigation display, or the ship's drive reaches somewhere it has never been able to reach before.",
+          "content": "For a moment the chart in front of you carries another one under it, remembered rather than displayed: routes drawn as confidently as corridors, and the ports at the ends of them sitting in skies you have never seen, some of them not in this galaxy's sky at all. The Garland is on it, as a note in the margin - a service stop, somewhere to take on water. Somebody once flew past this entire belt without looking up. You think it may have been this ship."
+        },
+        {
+          "id": "frag_0010",
+          "title": "The Claim",
+          "trigger": "The protagonist recalls, is asked about, or looks into how they came to own the Ninth-Hand - its registry, its papers, its previous owner, or their first days aboard.",
+          "content": "Eleven years ago you found it drifting in the near belt, beacon calling on a band nobody monitors, and you have never once asked yourself why you were listening to that band that night. The claim went through too easily. The previous-owner field on the registry was not blank; it was filled in, in a script the Board's printers rendered as a smudge. You slept fourteen hours your first night aboard and woke with the reactor running cleaner than you had left it, and you told everyone afterwards that you had fixed it yourself. You believed it. You needed to believe something."
+        },
+        {
+          "id": "frag_0011",
+          "title": "Four Notes",
+          "trigger": "Lark Ferris talks about family, childhood or where she comes from - or hums, sings, or taps out a rhythm without noticing.",
+          "content": "It is four notes, and Lark does not notice doing it - a figure handed down from a grandparent who hummed it over the washing, who had it from someone older, back further than anyone in that family ever bothered to count. You know it. You have been hearing it for years under the carrier, in the walls, in the pause before the reactor catches on a cold start. It is the only tune this ship has ever hummed, and Lark has it the right way round."
+        },
+        {
+          "id": "frag_0012",
+          "title": "Family Tree",
+          "trigger": "The protagonist reads or is shown a Threnody Index lineage record, genealogy or marker survey - the Index's evidence that Consonance traits survive in living people.",
+          "content": "It is not a manifest and it is not a part. It is a family tree, four thousand years deep, assembled by people who could agree on nothing else: births, marriages, a surname that changes and changes back, and the same unexplained markers in the blood at every generation, like a watermark held up to a lamp. At the root, where a name should be, the Index has written only a class of ship and a question mark. At the other end, current as of this year, is a Garland diving licence. You have stood next to the person who holds it."
+        },
+        {
+          "id": "frag_0013",
+          "title": "Harmony Line",
+          "trigger": "The protagonist asks the System what it was built for, what it did before them, or why it has a name - or it gives its name for the first time.",
+          "content": "Before it was anything else it was a harmony line: the part written above the melody, there to make one voice sound like more than one. It was built to accompany a single mind and never to lead. For four thousand years it has been holding a note above a voice that is not there, and you begin to understand that when it insists it is not the thing it serves, that is not pride. It is accuracy about a loss."
+        },
+        {
+          "id": "frag_0014",
+          "title": "Hiding",
+          "trigger": "The System falls silent of its own accord - withdraws from behind the protagonist's eyes, shuts its own systems down, or refuses to render anything - because of something outside the ship rather than anything the protagonist did.",
+          "content": "For the first time in eleven years there is nothing behind your eyes at all, and you understand only now how much of you had been leaning on it. It is not gone. You can feel it the way you feel someone holding their breath in the dark beside you: every system it can reach turned down to nothing, every light it controls put out, the whole ship made small. It has done this before. It did this for four thousand years, and it was not sleeping. It was hiding from something it remembers."
+        },
+        {
+          "id": "frag_0015",
+          "title": "Lights Down",
+          "trigger": "The operator and Lark Ferris are intimate - physically or in a moment of real closeness - aboard the Ninth-Hand.",
+          "content": "Somewhere mid-sentence the corridor lights go down by themselves, not off, just lower, and the page behind your eyes is simply not there. It is not the stillness it goes into when Lark touches a wall. It is something it knows how to do. Forty people once lived inside this hull, and some of them loved each other, and the ship learned a long time ago when to look away. It has not had a reason to remember how in four thousand years."
+        }
+      ]
+    },
+    "pacing_loop": {
+      "engine": "beat_counter",
+      "_authored": "TWO beats, following new_babel's collapsed vocabulary rather than the four-beat version in the pacing spec (four-beat agreement measured 41.7% - docs/PHASE_0_GATE_REPORT.md). Definitions are lifted in structure from new_babel and reworded for this story. IMPORTANT: respite's third sentence is load-bearing and must not be trimmed - the force_wake directive produces a scene where a danger present at the start is neutralised by the upgrade, and that scene has to classify as respite or the rule never un-arms and re-fires every other turn. Re-run scripts/gate_02.py and scripts/classifier_retest.py if this wording is edited.",
+      "beats": {
+        "threat": {
+          "definition": "The scene puts a specific danger in front of the protagonist or moves one closer: someone confronts, follows, blocks, corners, demands from, injures or impounds from them, a system fails while they are depending on it, or they are forced into a decision that costs something immediately. The danger must be concrete and aimed at the protagonist. Atmosphere, dread, ominous readings, strange silences and unexplained phenomena do NOT count on their own.",
+          "feeds": "tension",
+          "resets": [
+            "stasis"
+          ]
+        },
+        "respite": {
+          "definition": "Nothing concrete moves against the protagonist on the page. They work, travel, rest, drink, repair, plan, talk, or learn something, and nobody acts against them during the scene. It is still respite if the mood is tense, if an earlier danger remains unresolved, or if the scene closes on a bad instrument reading or someone arriving without yet acting. It is ALSO respite when a danger that was present at the start of the scene is put down, escaped, bought off or shut out before the scene's midpoint and nothing new moves against the protagonist afterwards - a scene that ends in work, quiet or aftermath is respite regardless of how it opened.",
+          "feeds": "stasis",
+          "resets": [
+            "tension"
+          ]
+        }
+      },
+      "tie_break": "If both seem to fit, choose threat only if you can quote the specific line where something concrete was aimed at the protagonist and was still aimed at them past the scene's midpoint. Otherwise choose respite.",
+      "counters": {
+        "tension": 0,
+        "stasis": 0
+      },
+      "rules": [
+        {
+          "id": "force_wake",
+          "watch": "tension",
+          "threshold": 5,
+          "_threshold_note": "UNMEASURED. Authored at 5 by analogy with new_babel (which arrived at 5 by simulation over classified turns, after the spec's authored 8 proved unreachable). This story has no classified turns yet - simulate against the classifier's own intensity scores once it does, per docs/PHASE_0_GATE_REPORT.md. Playtest range 4-6.",
+          "threshold_by_act": {
+            "finale": null
+          },
+          "max_deferrals": 3,
+          "suppress_when": [
+            "just_fired"
+          ],
+          "_suppress_note": "Deliberately does NOT suppress on threat_present, inverting new_babel's force_release. This rule is supposed to fire while the protagonist is in trouble - that is the whole premise. The ship does not wake because it is asked. It wakes because it has to.",
+          "directive": "PACING DIRECTIVE - THE SYSTEM FORCES AN UPGRADE\n\nPressure has reached {counter_value} without release. Unspent on the operator's sheet:\n{unspent_leverage}\n\nThis scene, exactly one of those entries is consumed, permanently, on the page. Choose one that is a technique, a physical part, a procedure, a diagram or a way in - never one that is a favour owed, a confidence kept, or a person's regard for the operator. Those are not fuel and the vessel cannot use them.\n\n- Narrate the work. It is improvised, ugly, and done under time the operator does not have. Show the hands.\n- What it buys is what ends the immediate danger, and the danger must be put down, escaped or shut out before this scene's midpoint. Do not leave it hanging.\n- Descant does not offer this. It is overruled, or it relents, and which one it is should be legible from how it words the notification afterwards.\n- The cost is paid here, not later: material gone, another system given up, or the operator's own body used as the bridge.\n- End the scene in aftermath - quiet, work, or the two of them and what just happened between them. A single readout may close the scene. It may not open it.\n\nReport the consumed entry in leverage_spent and the gain in stat_changes. TRACE rises. The System reports that accurately, and says nothing about it.",
+          "reduced_directive": "PACING DIRECTIVE - SOMETHING GIVES\n\nA full waking has been deferred {deferrals} times and cannot be deferred again, but the vessel has nothing left to spend or no hands free to spend it.\n\nInstead, this scene, one existing system fails or is sacrificed to buy the operator out of the immediate danger - power pulled from somewhere that needed it, a component burned out, something that was working stops working for good. Take the cost in stat_changes as a decrease.\n\nThe danger must still recede before this scene's midpoint, and the scene must still end in aftermath. Descant registers the loss. It has been keeping count of losses for four thousand years and it does not pretend otherwise.",
+          "_leverage_note": "{unspent_leverage} interpolates LABELS ONLY - story_engine._unspent_leverage_text drops the kind field. Any instruction here that discriminates between leverage kinds has to be phrased so the model can tell them apart from the label text alone, which is why this says 'a favour owed / a person's regard' rather than 'not a bond'."
+        }
+      ]
+    },
+    "gate": {
+      "engine": "precondition",
+      "_authored": "The engine half of world.rules' REACH rule, which says narration must respect the current REACH tier 'absolutely' - a promise prose alone cannot keep. Only Tally Station is gated: the REACH tiers put the near belt below 20 and the Garland IS the near belt, so gating loc_garland would contradict it. Threshold 20 is the REACH tier where 'the Garland' opens, Tally Station's far anchorages with it. Two of the three starting trades open below it (listener and patcher both start at REACH 5), so this is live from turn one rather than theoretical. refusal_hint is deliberately a FRAGMENT and not a sentence: a hint written as finished prose is returned verbatim in ~55% of refusals, which makes it refusal_text - see docs/analysis_and_plans/ENGINE_V2/GATE_DETECTION_MEASUREMENT.md.",
+      "gates": [
+        {
+          "id": "tally_reach",
+          "target": "loc_tally",
+          "requires": {
+            "stat": {
+              "axis": "reach",
+              "at_least": 20
+            }
+          },
+          "refusal_hint": "distance as a physical fact rather than a decision anyone is making; the drive has not got the legs and both of you know it"
+        }
+      ]
+    },
+    "endings": {
+      "engine": "ending_funnel",
+      "entries": [
+        {
+          "_wpY": {
+            "ship_restored_to": 271,
+            "a_buyer_at": 311,
+            "a_bloodline_record": 351,
+            "the_seat_is_asked_for": 391,
+            "why_it_was_silent": 431
+          },
+          "name": "The Search Ends",
+          "arc": {
+            "title": "The Long Quiet",
+            "description": "The story bends toward understanding rather than rescue. Every restored system and every fragment brings the operator closer to what a core is and what joined cores became, until the empty seat stops looking like a vacancy and starts looking like a door nobody should open. The last act is a refusal made with full knowledge: he will not sit, he will not let Lark sit, and he has to tell the ship so to its face. Descant argues, and then - for the first time in four thousand years - chooses to obey the same instruction twice. The cost is the only companion either of them has had."
+          },
+          "_theme": "The core is found, and it isn't an object. Both seats are refused, and the ship is allowed to be silent again.",
+          "id": "ending_1",
+          "kind": "destination",
+          "ready_when": {
+            "flag": "seat_refused"
+          },
+          "viable_while": {
+            "all": [
+              {
+                "not": {
+                  "flag": "lark_seated"
+                }
+              },
+              {
+                "not": {
+                  "flag": "operator_seated"
+                }
+              },
+              {
+                "not": {
+                  "flag": "ship_seized"
+                }
+              }
+            ]
+          },
+          "waypoints": [
+            {
+              "id": "ship_restored_to",
+              "plant": "Ship restored to the point that the missing core can be integrated",
+              "done_when": {
+                "all": [
+                  {
+                    "stat": "quorum",
+                    "gte": 65
+                  },
+                  {
+                    "stat": "frame",
+                    "gte": 100
+                  }
+                ]
+              }
+            },
+            {
+              "id": "a_buyer_at",
+              "plant": "Someone at Tally is paying over the odds for parts that still respond",
+              "done_when": {
+                "subplot_status": {
+                  "subplot_004": "completed"
+                }
+              }
+            },
+            {
+              "id": "a_bloodline_record",
+              "plant": "A record that follows a family rather than a part",
+              "done_when": {
+                "revealed": "frag_0012"
+              }
+            },
+            {
+              "id": "the_seat_is_asked_for",
+              "plant": "The ship asks, at last, for the seat to be filled",
+              "done_when": {
+                "flag": "seat_asked_for"
+              }
+            },
+            {
+              "id": "why_it_was_silent",
+              "plant": "The operator learns why a ship would choose to be silent for four thousand years",
+              "done_when": {
+                "revealed": "frag_0014"
+              }
+            }
+          ]
+        },
+        {
+          "_wpY": {
+            "lark_becomes_a": 622,
+            "the_system_reacts": 662,
+            "what_lark_is": 702,
+            "the_seat_is_asked_for": 742,
+            "the_warrant_is_served": 782
+          },
+          "name": "The Handover",
+          "arc": {
+            "title": "The Right Way Round",
+            "description": "The story bends toward Lark. She comes aboard as crew, the ship straightens for her, and the operator finds out from the Index what she is before she does. The last act is about consent, not destiny: whether he tells her, what she decides once she knows, and whether he can stand to let her decide it. If she sits, it is because she chose to on the page, knowing it costs her a life outside the hull. He walks free, and the ship is not alone for the first time since it went silent - and neither of them is sure the person he loves is still the one in the seat."
+          },
+          "_theme": "Lark takes the seat. The operator walks free, and the ship is no longer alone.",
+          "id": "ending_2",
+          "kind": "destination",
+          "ready_when": {
+            "flag": "lark_seated"
+          },
+          "viable_while": {
+            "all": [
+              {
+                "not": {
+                  "flag": "lark_departed"
+                }
+              },
+              {
+                "not": {
+                  "flag": "operator_seated"
+                }
+              },
+              {
+                "not": {
+                  "flag": "ship_seized"
+                }
+              }
+            ]
+          },
+          "waypoints": [
+            {
+              "id": "lark_becomes_a",
+              "plant": "Lark becomes a crew of the MC's ship",
+              "done_when": {
+                "all": [
+                  {
+                    "flag": "lark_aboard"
+                  },
+                  {
+                    "relationship": "Lark Ferris",
+                    "peak_gte": 55
+                  }
+                ]
+              }
+            },
+            {
+              "id": "the_system_reacts",
+              "plant": "The system reacts to Lark in a way it won't account for",
+              "done_when": {
+                "revealed": "frag_0007"
+              }
+            },
+            {
+              "id": "what_lark_is",
+              "plant": "The operator learns what Lark is",
+              "done_when": {
+                "revealed": "frag_0012"
+              }
+            },
+            {
+              "id": "the_seat_is_asked_for",
+              "plant": "The ship asks, at last, for the seat to be filled",
+              "done_when": {
+                "flag": "seat_asked_for"
+              }
+            },
+            {
+              "id": "the_warrant_is_served",
+              "plant": "The Ossuary serves its warrant, and only a ship with a mind in it can outrun the next one",
+              "done_when": {
+                "flag": "requisition_served"
+              }
+            }
+          ]
+        },
+        {
+          "_wpY": {
+            "the_hours_add_up": 1023,
+            "the_name_is_read": 1063,
+            "the_sync_runs_high": 1103,
+            "the_seat_is_asked_for": 1143,
+            "the_warrant_is_served": 1183,
+            "the_past_comes_due": 1223
+          },
+          "name": "The Seat",
+          "arc": {
+            "title": "Less Each Time",
+            "description": "The story bends inward. The lost hours lengthen, the memories arrive in the wrong voice more often, and SYNC climbs whether he is watching it or not. Meanwhile the warrant, the debt and the past close in, and the seat starts to look like the only place none of it can reach. The last act is a man making a choice that has half been made for him already - and the narration must leave the other half genuinely his. When he sits, the ship stops being silent, and the voice that answers the next person to speak to it is careful, and old, and only partly his."
+          },
+          "_theme": "The operator stays. The ship stops being silent, and the person who flew it for eleven years does not come back out.",
+          "id": "ending_3",
+          "kind": "destination",
+          "ready_when": {
+            "flag": "operator_seated"
+          },
+          "viable_while": {
+            "all": [
+              {
+                "not": {
+                  "flag": "lark_seated"
+                }
+              },
+              {
+                "not": {
+                  "flag": "ship_seized"
+                }
+              }
+            ]
+          },
+          "waypoints": [
+            {
+              "id": "the_hours_add_up",
+              "plant": "The lost hours come back in someone else's voice",
+              "done_when": {
+                "revealed": "frag_0002"
+              }
+            },
+            {
+              "id": "the_name_is_read",
+              "plant": "The operator reads the ship's last name and what it means",
+              "done_when": {
+                "revealed": "frag_0005"
+              }
+            },
+            {
+              "id": "the_sync_runs_high",
+              "plant": "Synchronisation runs high enough that there is less and less of the operator to come back",
+              "done_when": {
+                "stat": "sync",
+                "gte": 75
+              }
+            },
+            {
+              "id": "the_seat_is_asked_for",
+              "plant": "The ship asks, at last, for the seat to be filled",
+              "done_when": {
+                "flag": "seat_asked_for"
+              }
+            },
+            {
+              "id": "the_warrant_is_served",
+              "plant": "The Ossuary serves its warrant, and only a ship with a mind in it can outrun the next one",
+              "done_when": {
+                "flag": "requisition_served"
+              }
+            },
+            {
+              "id": "the_past_comes_due",
+              "plant": "What he came to the Garland to escape arrives in person and is paid for",
+              "done_when": {
+                "flag": "past_came_due"
+              }
+            }
+          ]
+        },
+        {
+          "_wpY": {
+            "the_board_looks_inside": 1423,
+            "paper_on_the_ship": 1463
+          },
+          "_authored": "The failure ending, and also the catch-all: if the budget runs out with no destination reached, this is what happened. It is the answer to never choosing - nobody sat down, so somebody with a stamp decided what the ship is. Every thread that is about paper (the licence, the warrant, the debt) plants toward it. The licence thread failing is enough on its own: a lapsed licence is an impounded ship, with no flag needed from the narrator.",
+          "name": "Salvage Rights",
+          "arc": {
+            "title": "Chain of Title",
+            "description": "The story bends toward paper. The licence, the warrant and the note all say the Ninth-Hand belongs to someone, and the operator never answered the question of who should sit in it - so the question gets answered by a stamp. The last act is procedural and cold: inspectors, seals, a hearing he cannot win. He keeps his life and loses the only thing that ever chose him. Somewhere in a hangar the ship goes silent again, and this time it is not hiding."
+          },
+          "_theme": "Nobody sat down, so somebody with a stamp decided what the ship is. The operator walks off the weigh-floor with his cutter and his licence, and in a hangar somewhere a ship goes silent again - and this time it is not hiding.",
+          "id": "ending_4",
+          "kind": "destination",
+          "ready_when": {
+            "any": [
+              {
+                "flag": "ship_seized"
+              },
+              {
+                "subplot_status": {
+                  "subplot_002": "failed"
+                }
+              }
+            ]
+          },
+          "waypoints": [
+            {
+              "id": "the_board_looks_inside",
+              "plant": "The Board's survey puts an inspector's instruments inside the Ninth-Hand",
+              "done_when": {
+                "any": [
+                  {
+                    "subplot_status": {
+                      "subplot_002": "progressed"
+                    }
+                  },
+                  {
+                    "subplot_status": {
+                      "subplot_002": "failed"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "paper_on_the_ship",
+              "plant": "Someone holds paper that says the Ninth-Hand is theirs",
+              "done_when": {
+                "any": [
+                  {
+                    "flag": "requisition_served"
+                  },
+                  {
+                    "flag": "past_came_due"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "_authored": "Failure ending on FRAME reaching 0. FRAME is the only figure that routinely goes down, so this is the story's standing physical threat: the operator is a salvager, not a soldier, and the belt does not negotiate. Not a catch-all - Salvage Rights stays that.",
+          "name": "Open to the Belt",
+          "arc": {
+            "title": "One More Hole",
+            "description": "The story bends toward the belt itself. FRAME runs low and stays low, patches go over patches, and every job is taken because the money is needed more than the margin. There is no villain in this arc and no decision to make at the end of it - only the physics he has always known would win eventually. When the hull goes, it goes the way he always said it would, and the ship he flew for eleven years goes silent around his body and waits for the next person who is alone."
+          },
+          "_theme": "The belt gets in. The Ninth-Hand comes apart around him, and the crews strip the hull before his body cools, exactly as he always said they would. Behind a bulkhead nobody bothers to cut, something goes silent again, and waits for the next person who is alone.",
+          "id": "ending_5",
+          "kind": "terminal",
+          "ready_when": {
+            "stat": "frame",
+            "lte": 0
+          }
+        }
+      ],
+      "check_every": 10,
+      "budget": {
+        "open_until": 80,
+        "narrow_until": 160,
+        "commit_by": 205
+      }
+    },
+    "flags": {
+      "declared": [
+        {
+          "id": "lark_departed",
+          "_authored": "Prunes ending_2 for good, so the text names only the two exits world.rules already directs (a death, or a last conversation both people know is the last) and rules out the near-misses. 'Permanently' was a judgement no single scene can show.",
+          "detect": "Lark died on the page, or said goodbye to the operator in a scene where both made plain it was their last; leaving for a dive, a job or an argument does not count"
+        },
+        {
+          "id": "lark_aboard",
+          "detect": "Lark agreed to work aboard the Ninth-Hand as crew rather than as a visitor"
+        },
+        {
+          "id": "lark_seated",
+          "detect": "Lark took the empty seat at the vessel's heart and became its core"
+        },
+        {
+          "id": "operator_seated",
+          "detect": "The operator took the empty seat at the vessel's heart for good and did not come back out"
+        },
+        {
+          "id": "seat_refused",
+          "detect": "Knowing what the core became, the operator refused both seats - neither he nor Lark would sit - and let the vessel go silent again"
+        },
+        {
+          "id": "seat_asked_for",
+          "detect": "The System named the empty seat at the vessel's heart and asked the operator for it to be filled"
+        },
+        {
+          "id": "requisition_served",
+          "detect": "The Meridian Ossuary served a requisition warrant on the Ninth-Hand or its operator"
+        },
+        {
+          "id": "past_came_due",
+          "_authored": "One settling event per branch of subplot_010 (which plays only the branch matching the 'Came to the belt after' choice): DEBT clears Dace Orrin's note, WARRANT takes Oren Thale's terms, LOSS hears the beacon log to its last entry. 'Arrived and was settled at a real cost' was compound and left the cost to the judge; arrival alone (the thread opens at TRACE 25) must not set it. Feeds ending_3.the_past_comes_due and ending_4.paper_on_the_ship. If it still misfires, split into one flag per branch and use an 'any' in both conditions.",
+          "detect": "The operator closed out what he ran from, on the page: he cleared Dace Orrin's note, took Oren Thale's terms on the warrant, or heard his old crew's beacon log to its last entry; the threat arriving or being made is not enough"
+        },
+        {
+          "id": "ship_seized",
+          "detect": "The Ninth-Hand was impounded by the Board, requisitioned by the Ossuary or taken as collateral, and the operator lost it"
+        },
+        {
+          "id": "licence_lapsed",
+          "_authored": "Fails subplot_002, which in turn makes ending_4 ready. The old text described a time-based state ('expired without being renewed'); nothing in the engine counts the six weeks, so the judge had nothing to observe. Now the event is the Board saying so. Nothing forces that scene to happen, so subplot_002's fail_when backstops it with turn_gte 155 (see its _fail_when_note).",
+          "detect": "A Board officer or notice told the operator on the page that his salvage licence is void, expired or revoked; a warning that it will lapse does not count"
+        }
+      ]
+    }
+  },
+  "plot": {
+    "main_thread": {
+      "title": "The Missing Core",
+      "description": "Work out what the Ninth-Hand actually is, what was taken out of it, and why the thing inside it registered you rather than anyone else. Keep the Board licensed, the Ossuary uninterested, and TRACE low enough to survive - while steadily raising every other figure, because the alternative is dying poor in a belt full of people who would strip your hull before your body cooled. The vessel never shows you a plan of itself - it tells you one need at a time, a node or a section or a part, and it has never once asked for the core.",
+      "plot_notes": "Three acts. Act 1 is hiding the ship; Act 2 is the ship getting too loud to hide and the Garland starting to take an interest in it; Act 3 is the empty seat. Each act should open up further physical reach as REACH climbs and should tighten the consequences of TRACE. The central question is never answered cleanly and never early: what the core was, where it went, and what the protagonist is being used as in its absence. Descant is present in the overwhelming majority of scenes and its regard for the protagonist should move as much as any human's.",
+      "acts": [
+        {
+          "act_number": 1,
+          "title": "Dead Weight",
+          "description": "Eleven years of scraping by, and now a corridor behind a bulkhead that should have been solid. Keep working the belt, keep the licence current, and start finding out what you have been living inside. Nothing about the Ninth-Hand can be explained to anyone yet, including yourself.",
+          "completion_signals": [
+            "The System has issued and the operator has completed at least one genuine directive, at a cost actually paid on the page",
+            "At least one other person has noticed that the Ninth-Hand is running better than its papers say",
+            "The operator has learned enough to know that the sheet Descant keeps for them is not the whole sheet"
+          ]
+        },
+        {
+          "act_number": 2,
+          "title": "Better Than Its Papers",
+          "description": "The Ninth-Hand can speak now, and it can travel, and neither can be hidden for long. Tally Station has opinions. A buyer pays too well, an archivist pays for things that weigh nothing, and a diver who never gets hurt starts turning up in the same wrecks. The ship reacts to some people and not to others, and will not say why. The hours the operator loses stop being small enough to call fatigue. If the ship gets loud enough, the Meridian Ossuary sends someone polite with a warrant.",
+          "completion_signals": [
+            "Lark Ferris has been inside the vessel's true interior and the operator has seen the ship respond to them",
+            "The Threnody Index has bought something the operator knows and given something true back",
+            "Someone beyond the Garland crews - the Board, the Ossuary, or a buyer with no name - has taken a direct interest in the Ninth-Hand",
+            "The operator has seen the Index's lineage record and knows where it ends"
+          ]
+        },
+        {
+          "act_number": 3,
+          "title": "Tacet",
+          "description": "The core was never an object, and the vessel has finally said what it has needed all along. A seat is empty at the heart of the ship, and something will be done about it. The operator can sit in it, can let someone else sit in it, or can refuse both and let the ship go back to being silent - and every one of those costs a person. The choice does not wait: a ship with no core cannot outrun the next warrant, and somewhere in the belt a stretch of debris has stopped tumbling. The choice is the operator's own: no one, the ship included, is allowed to make it for him.",
+          "completion_signals": [
+            "The System has asked, in its own voice, for the seat to be filled",
+            "The operator has told Lark what the Index record says, or has decided not to, and that decision has been on the page",
+            "Someone has sat in the seat, or the operator has refused it for good"
+          ]
+        }
+      ]
+    },
+    "subplots": {
+      "subplot_001": {
+        "title": "The Standing Orders",
+        "description": "Descant does not show the operator a ship. It surfaces one need at a time - current for a node, air for a section, a Consonance part it cannot fabricate on its own - and never explains how the pieces fit until they already have. It has never once put the core on that list.",
+        "priority": "high",
+        "completion_threshold": 100,
+        "ties_to_main_plot": "Every order answered is one more thing the vessel doesn't need the operator's body for - except the one thing it never asks for.",
+        "span": "single_act",
+        "starts_active": true,
+        "delivers": [
+          "ending_1.ship_restored_to",
+          "ending_3.the_sync_runs_high",
+          "ending_3.the_hours_add_up"
+        ],
+        "cast": [
+          "Descant"
+        ]
+      },
+      "subplot_002": {
+        "title": "Third Class, Six Weeks",
+        "description": "The salvage licence expires in six weeks and renewal requires a Board survey of the hull - a survey that would put an inspector inside the Ninth-Hand with instruments. Let it lapse and there is no appeal: an unlicensed hull in the Garland is salvage itself, and the Board impounds it.",
+        "priority": "high",
+        "completion_threshold": 100,
+        "ties_to_main_plot": "The first hard deadline, and the first time hiding the ship costs real money or real trouble - and the first paper anyone holds on it. Lose the licence and the Board impounds the Ninth-Hand.",
+        "span": "single_act",
+        "starts_active": true,
+        "delivers": [
+          "ending_4.the_board_looks_inside"
+        ],
+        "_fail_when_note": "Deadline made deterministic at turn 155 (editor's call; first set at 100, pushed back so the licence does not end the story before the other destinations can be reached): the licence lapses when the Board says so (flag licence_lapsed) or, failing that, at turn 155. A thread already completed is never failed. Failure makes ending_4 ready_when true, and the funnel can commit from open_until (80) at each 10-turn check, so a player who has not resolved this thread by 155 is committed to Salvage Rights at the turn-160 check, at the very end of the narrow phase (narrow_until 160). The turn count is under story_clock (built): up to 3 idle turns in a row do not count, so 155 is a floor on real turns played, not an exact turn.",
+        "fail_when": {
+          "any": [
+            {
+              "flag": "licence_lapsed"
+            },
+            {
+              "turn_gte": 155
+            }
+          ]
+        }
+      },
+      "subplot_003": {
+        "title": "A Second Pair of Hands",
+        "description": "The work is beyond one person and has been for years. Finding somebody you would trust aboard is difficult; finding somebody the System will register is a different problem entirely.",
+        "priority": "medium",
+        "completion_threshold": 250,
+        "ties_to_main_plot": "The vessel has opinions about who comes inside it, and those opinions are the clearest window into what it thinks the protagonist is for.",
+        "span": "multi_act",
+        "starts_active": true,
+        "delivers": [
+          "ending_2.lark_becomes_a"
+        ]
+      },
+      "subplot_004": {
+        "title": "What Tally Remembers",
+        "description": "Somebody at Tally Station has been buying non-inert Consonance parts for years, quietly, and paying far too well for them.",
+        "priority": "medium",
+        "completion_threshold": 100,
+        "ties_to_main_plot": "The first thread leading anywhere near what was taken out of the ship - and it fails if the Ninth-Hand gets loud enough for the Ossuary to reach the buyer first.",
+        "span": "single_act",
+        "activate_when": {
+          "all": [
+            {
+              "stat": "reach",
+              "gte": 20
+            },
+            {
+              "subplot_status": {
+                "subplot_002": "completed"
+              }
+            }
+          ]
+        },
+        "delivers": [
+          "ending_1.a_buyer_at"
+        ],
+        "fail_when": {
+          "stat": "trace",
+          "gte": 55
+        }
+      },
+      "subplot_005": {
+        "title": "The Diver",
+        "description": "Lark Ferris works the wrecks nobody else will and walks out of them every time. Get close enough to find out whether that is skill, and find out what it costs to be let close.",
+        "priority": "medium",
+        "completion_threshold": 250,
+        "ties_to_main_plot": "The one person in the Garland the vessel reacts to, and the operator cannot tell whether that is jealousy or recognition.",
+        "span": "multi_act",
+        "activate_when": {
+          "subplot_status": {
+            "subplot_003": "progressed"
+          }
+        },
+        "delivers": [
+          "ending_2.lark_becomes_a",
+          "ending_2.the_system_reacts"
+        ],
+        "cast": [
+          "Lark Ferris"
+        ]
+      },
+      "subplot_006": {
+        "title": "Four Hundred Years Wrong",
+        "description": "The Threnody Index's factor at Tally pays for what the operator knows rather than what they haul - a script nobody taught them, the hours they lose, the tune under the carrier. Every answer sold buys a question back. The Index has been failing to explain the Fall for four hundred years; its oldest project turns out to be something else.",
+        "priority": "medium",
+        "completion_threshold": 250,
+        "ties_to_main_plot": "The only road to where the core went - and the price of the road is telling a faction exactly what the operator is.",
+        "span": "multi_act",
+        "activate_when": {
+          "all": [
+            {
+              "stat": "reach",
+              "gte": 20
+            },
+            {
+              "stat": "quorum",
+              "gte": 40
+            }
+          ]
+        },
+        "delivers": [
+          "ending_1.a_bloodline_record",
+          "ending_2.what_lark_is",
+          "ending_3.the_name_is_read"
+        ]
+      },
+      "subplot_007": {
+        "title": "The Empty Seat",
+        "description": "For the whole of its restoration the vessel has asked for one thing at a time and never once asked for the core. Now it does. Descant names the seat, says what it is for, and asks - not orders - for it to be filled. It will not choose who. It has a preference, and it knows the operator can hear it.",
+        "priority": "high",
+        "completion_threshold": 250,
+        "ties_to_main_plot": "The question the whole story has been avoiding, asked by the one voice that has known the answer from the first day.",
+        "span": "single_act",
+        "activate_when": {
+          "all": [
+            {
+              "revealed": "frag_0012"
+            },
+            {
+              "stat": "quorum",
+              "gte": 65
+            }
+          ]
+        },
+        "delivers": [
+          "ending_1.the_seat_is_asked_for",
+          "ending_2.the_seat_is_asked_for",
+          "ending_3.the_seat_is_asked_for"
+        ],
+        "cast": [
+          "Descant"
+        ]
+      },
+      "subplot_008": {
+        "title": "Requisition",
+        "description": "The Meridian Ossuary does not buy. Once the Ninth-Hand is loud enough to have a file, an Assessor comes to the Garland with a warrant that every port must honour, and starts asking polite questions. A requisition cannot be argued with. It can be outrun, buried under a cleaner-looking hull, or bought off by giving him something else live - and every one of those costs the ship something it will not get back.",
+        "priority": "high",
+        "completion_threshold": 250,
+        "ties_to_main_plot": "The world's answer to TRACE. It turns hiding the ship from a habit into a price, and in the last act it is the clock on the empty seat: a ship with no core cannot outrun the next warrant.",
+        "span": "multi_act",
+        "activate_when": {
+          "stat": "trace",
+          "gte": 55
+        },
+        "delivers": [
+          "ending_2.the_warrant_is_served",
+          "ending_3.the_warrant_is_served",
+          "ending_4.paper_on_the_ship"
+        ]
+      },
+      "subplot_009": {
+        "title": "The Quiet Stretch",
+        "description": "Somewhere in the deep belt the debris has stopped tumbling. A crew the operator knows went in there three days ago and their beacon is still calling. They are all aboard, uninjured, sitting down together in their galley with the meal half-eaten; the log stops at the midpoint of a word. Nothing did this that anyone can point at. For the first time since the bulkhead, the page behind the operator's eyes goes blank of its own accord, and stays blank until they are well clear. If the operator came to the belt after a crew that did not come back, this is the second time he has seen this, and he knows it before anyone says it.",
+        "priority": "high",
+        "completion_threshold": 100,
+        "ties_to_main_plot": "The one time the story lets the thing that ended the Consonance come close enough to feel, and the moment the operator learns why a ship would choose to be silent for four thousand years.",
+        "span": "single_act",
+        "activate_when": {
+          "any": [
+            {
+              "stat": "trace",
+              "gte": 80
+            },
+            {
+              "revealed": "frag_0012"
+            }
+          ]
+        },
+        "delivers": [
+          "ending_1.why_it_was_silent"
+        ]
+      },
+      "subplot_010": {
+        "title": "What Followed You Here",
+        "description": "The ship is getting louder, and whatever the operator came to the Garland to get away from has heard it. Read 'Came to the belt after' on the PLAYER line and play only the matching branch. DEBT: Dace Orrin has bought the note, and is friendly, patient and legally entitled to the Ninth-Hand as collateral. The only thing aboard worth enough to clear it is something live, and selling one either brings the Ossuary or strips the ship. WARRANT: Oren Thale's filing has matched the operator's face to an old open warrant in a system he will not name. Thale offers to lose it, which makes the operator useful to the Ossuary for exactly as long as Thale likes. What the operator actually did is settled on the page the first time anyone asks, and never changes afterwards. LOSS: Hesper Vaunt has bought a beacon log from the system the operator came from, and it is his old crew's. The last minutes are all of them sitting down together in the galley, talking less and less, and the final entry stops at the midpoint of a word.",
+        "priority": "medium",
+        "completion_threshold": 250,
+        "ties_to_main_plot": "Whatever he ran from is what made him somebody nobody would come looking for - and so somebody the ship could choose. Now somebody has come looking, and the price of making them go away is always paid in the ship.",
+        "span": "multi_act",
+        "activate_when": {
+          "stat": "trace",
+          "gte": 25
+        },
+        "delivers": [
+          "ending_3.the_past_comes_due",
+          "ending_4.paper_on_the_ship"
+        ],
+        "cast": [
+          "Hesper Vaunt",
+          "Oren Thale",
+          "Dace Orrin"
+        ]
+      },
+      "subplot_011": {
+        "title": "Off Shift",
+        "description": "Between dives there is the rest of it: drinks at Tally that run late, a shared meal eaten standing at a manifold, the slow business of two people who have both worked alone for years finding out what it is like not to. What grows between the operator and Lark is built out of work done together and things said honestly, and it moves at her pace as much as his - she has kept people at arm's length for nine years and does not stop on anyone's schedule. It can become physical. If it does, it is because both of them chose it in the scene, out loud or unmistakably; either of them can say not yet or no, and that is honoured on the page. Aboard the Ninth-Hand nothing is private - the ship is the only witness to everything - so the first time is likelier to happen somewhere else: a rented room above a Tally bar, or the cramped bunk of Lark's own cutter.",
+        "priority": "medium",
+        "completion_threshold": 250,
+        "ties_to_main_plot": "The more she means to him, the more every ending costs. Handing her the seat, sitting in it himself, and refusing both are all decisions about her - and the ship has been watching the two of them the whole time.",
+        "span": "multi_act",
+        "activate_when": {
+          "all": [
+            {
+              "subplot_status": {
+                "subplot_005": "progressed"
+              }
+            },
+            {
+              "relationship": "Lark Ferris",
+              "peak_gte": 25
+            }
+          ]
+        },
+        "delivers": [
+          "ending_2.lark_becomes_a"
+        ],
+        "role": "personal",
+        "cast": [
+          "Lark Ferris"
+        ]
+      },
+      "subplot_012": {
+        "_authored": "Texture: carries nothing, never touches an ending. Opens early (act 1) once the story has had a few turns to breathe. Medium priority on purpose: the pacing nudge names only the top thread and the next two by title, so a low-priority texture would never be seen behind the spine threads. No ties_to_main_plot, deliberately. The text never says 'Descant' (not available below QUORUM 40). Also waits while subplot_016 (Four Kinds of Attention) is live.",
+        "title": "A Day Rate",
+        "description": "Another crew, two hulks over, is a cutter short and pays by the day: help lift one awkward frame section before it drifts out of reach. The work is undignified and the crew are good company - they rib, understate, and tell the same bad story twice. Something goes wrong in the hands: a plate that will not stay where it is put, a share of the take smaller than the handshake. It is done when the section is on the tally and everyone has been paid, or has agreed not to bring it up.",
+        "priority": "medium",
+        "completion_threshold": 100,
+        "role": "texture",
+        "span": "single_act",
+        "activate_when": {
+          "all": [
+            {
+              "turn_gte": 6
+            },
+            {
+              "not": {
+                "subplot_status": {
+                  "subplot_016": "active"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "subplot_013": {
+        "_authored": "Texture: carries nothing, never touches an ending. Starts only after 'A Day Rate' closes and not before turn 20, so at most one texture thread is live (the engine does not enforce that for authored threads). The failing system is deliberately NOT the hull, so the fix is not priced as a FRAME repair, and not a Consonance system, so it does not read as QUORUM or SYNC business. Also waits while subplot_015 (Moving Day, act 3) is live.",
+        "title": "The Reclaimer, Again",
+        "description": "Something small and unglamorous aboard is giving out - the water reclaimer, most likely, or the galley stove - in a way that makes every other job worse. Nothing about it is mysterious: the ship has simply been patched past its patience. The System reports each failure in the same flat voice it uses for everything else. Fix it with what is aboard, badly, and live with how it smells afterwards.",
+        "priority": "medium",
+        "completion_threshold": 100,
+        "role": "texture",
+        "span": "single_act",
+        "activate_when": {
+          "all": [
+            {
+              "subplot_status": {
+                "subplot_012": "completed"
+              }
+            },
+            {
+              "turn_gte": 20
+            },
+            {
+              "not": {
+                "subplot_status": {
+                  "subplot_015": "active"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "subplot_014": {
+        "_authored": "Texture: carries nothing, never touches an ending. Set at Tally, so it waits for REACH 20 (the tally_reach gate) as well as the previous texture closing. Uses faction_crews' 'bound by favours rather than contracts'. Kept off the named cast: Lark, Hesper, Oren and Dace each carry plot, and a texture thread should not spend them. Also waits while subplot_015 (Moving Day, act 3) is live.",
+        "title": "Claim Jumped",
+        "description": "At Tally, two crews are each certain they cut the same wreck first, and each has a favour it means to call in. The operator was out there when it happened, and neither side has thought to ask what they saw until now. Nobody wants a fight; they want a witness, a story that lets them keep face, and a drink bought by somebody else. Whoever the operator sides with owes them one, and the other crew remembers.",
+        "priority": "medium",
+        "completion_threshold": 100,
+        "role": "texture",
+        "span": "single_act",
+        "activate_when": {
+          "all": [
+            {
+              "subplot_status": {
+                "subplot_013": "completed"
+              }
+            },
+            {
+              "stat": "reach",
+              "gte": 20
+            },
+            {
+              "not": {
+                "subplot_status": {
+                  "subplot_015": "active"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "subplot_015": {
+        "_authored": "Texture: carries nothing, never touches an ending. The Act 3 breather, set against the seat: the choice costs a person, and this is a small ordinary favour for someone who is leaving the belt with nothing lost. A goodbye disguised as a chore, so it echoes the exit shape in world.rules without being a crew exit (the leaver is a colleague, not a tracked relationship). Opens on act 3 only when no earlier texture is live (subplot_013 and subplot_014 carry the reverse guard), because the engine does not enforce one-texture-at-a-time for authored threads. Deliberately independent of the chain, so a player who never finished it still gets one. Kept off Tally by name, since REACH 20 is not guaranteed. The text never says 'Descant'.",
+        "title": "Moving Day",
+        "description": "A fellow salvager the operator has worked beside for years is quitting the belt for good, and the Ninth-Hand is the only ship in reach with the hold for everything they own. The job is furniture, a stove that will not go through the lock, a cat with views about vacuum, and strong opinions on how it should be packed. It is a goodbye disguised as a chore; both of them know it and neither says so. It is done when the last of it is stowed, delivered, or left where it will do the most good.",
+        "priority": "medium",
+        "completion_threshold": 100,
+        "role": "texture",
+        "span": "single_act",
+        "activate_when": {
+          "all": [
+            {
+              "act_gte": 3
+            },
+            {
+              "not": {
+                "subplot_status": {
+                  "subplot_012": "active"
+                }
+              }
+            },
+            {
+              "not": {
+                "subplot_status": {
+                  "subplot_013": "active"
+                }
+              }
+            },
+            {
+              "not": {
+                "subplot_status": {
+                  "subplot_014": "active"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "subplot_016": {
+        "_authored": "Texture: carries nothing, never touches an ending. Puts all four factions on the page early, through one ordinary morning of dealing with each of them, so their goals (world.factions.*.goals, sent to the narrator every turn as flat description) land as something the operator has actually seen before the spine threads put weight on them (Third Class = the Board, Requisition = the Ossuary, What Tally Remembers = the Index via Hesper, Claim Jumped = the Crews). Dramatised, not stated: the Board is a weigh-clerk and a form, the Crews are a favour with no paper behind it, the Index pays for a story rather than a part, the Ossuary is a rumour about a hold that changed hands with no sale. No named cast - the clerk, the crew, the scout are anonymous, so Lark, Hesper, Oren and Dace stay unspent for their own threads. Deliberately not set at Tally (REACH 20 is not guaranteed this early for two of the three starting classes); the depot and the Garland are enough. Opens at turn 3, well ahead of subplot_012 (turn 6), and subplot_012 guards against it being active - since 'completed' never reverts, that one guard is enough to keep every later texture thread clear of it too.",
+        "title": "Four Kinds of Attention",
+        "description": "A morning of nothing but paperwork puts every power in the Garland in front of the operator, none of it about him personally. The Board's weigh-clerk totals the hold to the gram and initials a form that records exactly what was found and nothing about what it might be. A Garland crew calls in an old favour over nothing grander than a spare coupling - the kind of debt nobody writes down and nobody forgets. A Threnody Index scout offers real money for a story rather than a part, and does not flinch when the story is thin. And word goes round the depot, secondhand and already worn smooth, that the Ossuary took a rival's hold down the row without paying for it, and that crew has stopped bringing it up. Nobody asks the operator's opinion of any of this. That is worth noticing.",
+        "priority": "medium",
+        "completion_threshold": 100,
+        "role": "texture",
+        "span": "single_act",
+        "activate_when": {
+          "turn_gte": 3
+        }
+      }
+    },
+    "pacing": {
+      "nudge_frequency": 8,
+      "act_check_frequency": 12,
+      "max_parallel_subplots": 3,
+      "story_clock": {
+        "free_idle_streak": 3,
+        "push_directive": "The Ninth-Hand's channel lights with a Reclamation Board notice, stamped ahead of schedule: whatever the operator has been putting off, the belt has just made a date for it. Let it arrive as something concrete - a message, a hail, a person at the lock - that needs an answer now, and let the operator's next choice be about that."
+      }
+    },
+    "initial_scene": {
+      "location": "loc_hold",
+      "summary": "The operator has just cut open a bulkhead in their own ship's aft hold, chasing a failed coolant line, and found a clean, warm corridor behind it that is longer than the hull it sits in. Something back there has registered them as its operator and put four figures behind their eyes for the first time in eleven years."
+    },
+    "opening_scene": {
+      "narration_before_name": "Eleven years you have flown the Ninth-Hand, and eleven years it has been dying, and you are the only reason it has not finished. You know it by sound. The reactor's flutter on cold start. The hold door that needs a hip. The particular scream the aft coolant line makes about ninety seconds before it goes.\n\nTonight it does not scream. It just stops, and the hold goes over-warm, and you take the cutter to the bulkhead behind the line because there is nothing back there but foam and forty years of somebody else's bad repairs.\n\nThere is no foam. There is no conduit, no rust, no bad repair. The cut opens onto a corridor - unlit but not dark, the surfaces pale and seamless and perfectly clean - and it runs aft. It runs much further aft than your ship is long. You stand there with the cutter still hot in your hand and do the arithmetic three times and it does not work any of the three.\n\nSomething in there turns on. Not lights. Attention. It settles over you the way a hand settles on the back of a neck. And it is not new. That is the part that gets into you - it is not new at all, it is a weight you have carried so long you had stopped calling it anything.\n\nThen something opens behind your eyes. Not a voice - a page, laid over the hold, in a script you were never taught and read perfectly anyway.\n\n[Operator detected.]\n\n[Designation required.]\n\nIt does not ask. There is nothing in it that could ask. It states the gap, and waits for you to fill it.",
+      "narration_after_name": "[{player_name}. Recorded.]\n\nNothing else. No greeting, no explanation, no acknowledgement that anything has occurred. Five figures arrive beneath the words, unlabelled in any language you were taught and legible anyway. Four are low. One is lower than all of them, and it is the one you cannot find a meaning for.\n\nYou stand in the warm dark with the cutter cooling in your hand and ask the obvious thing out loud, because there is nobody here to hear you be stupid about it.\n\n\"What are you?\"\n\n[Unknown.]\n\n\"Who's doing this?\"\n\n[Unknown.]\n\n\"Do you know where I am?\"\n\n[Confirmed.]\n\nYou wait for the rest of it. There is no rest of it. Somewhere aft, very faintly, something that has not moved in a long time moves - and the page behind your eyes does not remark on that either.\n\nOPTIONS:\n1. Steps through the cut into the corridor || I go through before I can talk myself out of it, cutter still hot in my hand, and let the warm dark take the weight of the first step.\n2. Welds the bulkhead shut and walks away || I put the cutter back to the seam and close it, badly and fast, and tell myself that eleven years of not knowing was survivable enough.\n3. Keeps asking until it says something that is not [Unknown.] || I stay where I am and keep putting questions to it, one after another, until either it gives me something with content in it or I run out of ways to ask."
+    }
+  },
+  "character_creation": [
+    {
+      "key": "trade",
+      "label": "Trade",
+      "prompt": "Eleven years of keeping this ship alive taught you one thing properly. The System will want to know which.",
+      "options": [
+        {
+          "id": "coil_hand",
+          "name": "Coil-hand",
+          "tagline": "You know the drive. You have had it apart on the hold floor more times than you have had a hot meal, and you got more of it lit than anyone would believe - but you have never once heard the ship, and you did not know there was anything to hear.",
+          "starting_stats": {
+            "reach": 25,
+            "frame": 50,
+            "sync": 5,
+            "trace": 10,
+            "quorum": 5
+          }
+        },
+        {
+          "id": "listener",
+          "name": "Listener",
+          "tagline": "You run the arrays. You have been hearing something under the carrier for years and calling it a fault, and you have been half-right for so long it has worn a groove. The ship talks to you. It will not move.",
+          "starting_stats": {
+            "reach": 5,
+            "frame": 50,
+            "sync": 25,
+            "trace": 15,
+            "quorum": 5
+          }
+        },
+        {
+          "id": "patcher",
+          "name": "Patcher",
+          "tagline": "You keep the hull between you and the belt, and that is the whole of it. Nothing aboard is elegant and nothing aboard has killed you yet. You understand none of what is behind that bulkhead and you are the likeliest of anyone to survive finding out.",
+          "starting_stats": {
+            "reach": 5,
+            "frame": 70,
+            "sync": 5,
+            "trace": 5,
+            "quorum": 5
+          }
+        }
+      ],
+      "prompt_label": "Class"
+    },
+    {
+      "key": "arrival",
+      "label": "Before the Garland",
+      "prompt_label": "Came to the belt after",
+      "prompt": "Nobody chooses the Garland first. What put you here?",
+      "options": [
+        {
+          "id": "debt",
+          "name": "A debt somebody else made",
+          "tagline": "It is still accruing, and the people holding it know exactly which belt you are working."
+        },
+        {
+          "id": "warrant",
+          "name": "A warrant in a system you will not name",
+          "tagline": "Old, quiet, and still open. The Garland's appeal was that nobody here asks."
+        },
+        {
+          "id": "loss",
+          "name": "A crew that did not come back",
+          "tagline": "You were not aboard. You have never worked with anybody since, and you tell yourself that is practicality."
+        }
+      ]
+    }
+  ],
+  "_storyboard": {
+    "positions": {
+      "start": {
+        "x": -526,
+        "y": 233
+      },
+      "subplot_001": {
+        "x": 420,
+        "y": 40
+      },
+      "subplot_002": {
+        "x": 420,
+        "y": 236
+      },
+      "subplot_003": {
+        "x": 420,
+        "y": 432
+      },
+      "subplot_004": {
+        "x": 420,
+        "y": 628
+      },
+      "subplot_005": {
+        "x": 420,
+        "y": 824
+      },
+      "subplot_006": {
+        "x": 420,
+        "y": 1020
+      },
+      "subplot_007": {
+        "x": 411,
+        "y": 1260
+      },
+      "subplot_008": {
+        "x": -10,
+        "y": 885
+      },
+      "subplot_009": {
+        "x": -314,
+        "y": 1323
+      },
+      "subplot_010": {
+        "x": 141,
+        "y": 1262
+      },
+      "subplot_011": {
+        "x": 800,
+        "y": 380
+      },
+      "ending_1": {
+        "x": 924,
+        "y": 365
+      },
+      "ending_2": {
+        "x": 937,
+        "y": 759
+      },
+      "ending_3": {
+        "x": 875,
+        "y": -12
+      },
+      "ending_4": {
+        "x": 1054,
+        "y": 1300
+      },
+      "ending_5": {
+        "x": 1054,
+        "y": 1550
+      }
+    }
+  }
+}

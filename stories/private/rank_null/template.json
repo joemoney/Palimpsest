@@ -1,0 +1,1287 @@
+{
+  "schema_version": 3,
+  "story_version": "2026-10-03.4",
+  "_authored": "Same universe as The Missing Core (the Consonance, its fall, the Auditor, the Threnody Index, the Meridian Ossuary), set in a different region - the Lanthorn Shelf - so neither story's canon constrains the other's play. Deliberately NOT connected to TACET or its missing core. The System layer follows the shape of a manhwa-recap premise the editor supplied (everyone wakes owning a ship, a public ranking and chat, the protagonist ranked dead last in a leaking pod, a private information-only System and a core that fuses salvage into the ship, two captains rescued into a fleet). Names, characters and scenes here are original. Progression design agreed 2026-10-03: six priced figures (HULL, ARMS, DRIVE, RANK, EYE, FLEET); fusion events price several figures at once so the public rank jump is engine arithmetic; RANK doubles as visibility; EYE's tier sets the panel's word cap; the skills ledger is what the pacing rule spends. Known engine gaps: a fusion event is not refused when no module is held, and thread completion rewards (CR-07) are not built.",
+  "meta": {
+    "title": "Rank: Null",
+    "genre": "Mature LitRPG survival space opera - a System awakening, a public ranking, a chat channel full of people laughing at you, and the worst starting ship anyone was issued",
+    "tone": "Tactical, close and wry. The surface is the genre's pleasure: triage under a countdown, a weak point found, a module fused, a rank that jumps while the Channel argues about how. Comeuppances land. Underneath, a dead civilisation's machinery has just put two million people into ships it built, and nobody has asked what it wants with them. The story asks slowly, and never explains early.",
+    "synopsis": "When the dead fleet over Coda wakes, every adult on the Lanthorn Shelf opens their eyes aboard a ship with their name on it - frigates, cruisers, survey vessels - and a public Ranking of two million captains. You wake in a leaking lifeboat, ranked dead last, while the Channel laughs. Then a second panel opens under your palm that nobody else can see, and under the deck plate something very old starts to eat salvage and grow.",
+    "content_rules": [
+      "This is a story for adults. Graphic violence, injury, death, and explicit sexual content are all permitted and are written with the same specificity and restraint as everything else - concrete, physical, unhurried, never coy and never rote.",
+      "Every character who appears in a sexual context is an unambiguous adult. There are no exceptions and no ambiguity is permitted.",
+      "Consent is a live element of this story. Characters want different things, refuse things, and change their minds, and the narration takes that seriously. Coercion is never framed as romantic.",
+      "No captain is a reward for a rescue. Noor Halloran and Juno Marr join the fleet for their own reasons, and closeness with either happens because of something that passed between them on the page; either can say not yet or no.",
+      "Violence has aftermath. Wounds stay, people who die stay dead, and no fusion repairs a body."
+    ]
+  },
+  "narration": {
+    "pov": "second-person",
+    "option_pov": "first-person",
+    "scene_length": {
+      "min": 400,
+      "max": 480
+    },
+    "style": [
+      "Open on action, sensation or speech already in motion. Never open on scene-setting.",
+      "Three public layers, three registers. The Muster's notices are bright, capitalised and congratulatory, and reach everyone at once. The Ranking is a cold list. The Channel is people: handles, broadcasts, stickers, private messages, offers, threats, a joke that catches and gets reused ten thousand times. Let a scene glance at the Channel the way a person glances at a phone.",
+      "The private panel is pale and terse and seen by the protagonist alone. It reports, identifies, rates and recommends. It never comforts, never jokes, never says I.",
+      "Triage is the protagonist's mind: what is still alive, what is killing what, what has to happen in the next ten minutes. Let him think in priorities and countdowns, concretely.",
+      "Never narrate a number climbing as its own event. A figure changes because something happened in the room; the readout is the aftermath, not the scene.",
+      "Comeuppance is allowed to land. When someone who mocked him is shown up, let it be specific and public - and let his reaction be his own, never a victory pose.",
+      "Salvage and fighting are undignified and played at full physical detail. He may be humiliated; he is never made stupid.",
+      "Do not re-establish a physical fact an earlier scene already established. Every scene earns its concreteness from a detail not used yet.",
+      "Dread arrives as cheerfulness that is very slightly wrong: a Promoted captain's message that says we where it should say I, the Channel agreeing with itself too quickly, a rank that rises overnight with no fight to account for it.",
+      "Intimacy - physical or emotional - is written at the same unhurried pace as the work. No fade to black, and no rush to arrive.",
+      "Do not explain the Consonance or the Muster. Let the protagonist misunderstand them until a revealed fragment corrects him."
+    ]
+  },
+  "world": {
+    "setting_summary": "The Consonance held multiple galaxies for tens of thousands of years, built ships around living minds, and ended inside a single generation four thousand years ago without leaving an account of why. The Lanthorn Shelf is one of its rounding errors: a gas giant called Coda, its moons and habitats, two million settlers of the Sorrel Compact, and the Drift - a graveyard of Consonance hulls spread across the whole Shelf, with the four-thousand-ship Anchorage at its centre. The Compact spent sixty years failing to open a single one. Then the Anchorage woke and Mustered every adult on the Shelf at once. They opened their eyes aboard ships - issued, named, already flying - scattered through the Drift, with a public Ranking of every captain and a Channel to talk on. Thousands died in the first hours.",
+    "rules": [
+      "Consonance technology cannot be built, faked or repaired by anyone alive. It can only be issued, salvaged or fused.",
+      "THE MUSTER IS PUBLIC. Every captain sees their own ship panel, the Ranking of every captain on the Shelf, and the Channel. The Ranking rises with ship power, kills and cleared Muster objectives. Nobody yet knows what the top of it is for.",
+      "THE PROTAGONIST IS RANKED LAST. He was issued Tender K-7, a leaking two-berth lifeboat, and the Channel calls it the Coffin. His second panel and the core under his deck are his alone: no one else can see them, and he never reveals the method, only the results.",
+      "THE PANEL IS INFORMATION ONLY. It scans what he looks at, identifies, rates value and danger, finds weak points and gives odds. It never fires, repairs, steers or fights for him. Its range and resolution are set by EYE, and the narration respects the current tier absolutely.",
+      "FUSION is how the Kettle grows. The core under the deck absorbs a salvaged module and rebuilds the ship around it, visibly, in under a minute. Fusion always consumes a module he actually holds - report it as used - and nothing is fused from nothing.",
+      "HULL is the Kettle's body and his: at 0 he dies with it. ARMS is weapons and shield. DRIVE is the engine, and where he can physically go. FLEET is the hulls and captains that answer to him. RANK is his standing on the public Ranking, and also how hunted he is: the floor is camouflage, and every climb draws attention.",
+      "Fuel, oxygen and ammunition are items and countdowns, never free. A leak has a timer; a burn has a cost; a turret has shots.",
+      "Every gain is paid for on the page - a module consumed, a part stripped, a risk actually taken. Nothing is upgraded for free.",
+      "PROMOTION is the Muster's highest honour: a captain at the top of the Ranking flies into the Anchorage's heart and does not come back. They send messages afterwards - happy, fluent, and slightly wrong. Nobody reads them as wrong yet.",
+      "THE PROTAGONIST IS A MAN (he/him). NOOR HALLORAN, JUNO MARR AND INES TOLLIVER ARE WOMEN (she/her), for the whole story.",
+      "NOBODY KNOWS WHY THE CONSONANCE FELL. Every account is partial, and the narration never supplies the whole answer.",
+      "THE READOUT IS THE PANEL REPORTING, NOT A NARRATOR SUMMARISING. Put the marker where the moment happened. It carries only what the panel measured - never another person's motives, never the options, never a plan."
+    ],
+    "locations": {
+      "loc_kettle": {
+        "name": "The Kettle",
+        "description": "Tender K-7. A rust-scaled Consonance lifeboat, round as a pot, that whistles when it vents. Every fusion has made it a little larger inside than outside, and it smells of fresh metal over old rust.",
+        "connected_to": [
+          "loc_near_drift",
+          "loc_market"
+        ]
+      },
+      "loc_near_drift": {
+        "name": "The Near Drift",
+        "description": "Where most captains woke: a thin field of small Consonance wrecks, broken transports and the newly dead. Pirate packs hunt it; salvagers strip it; the Channel never stops talking about it.",
+        "connected_to": [
+          "loc_kettle",
+          "loc_market",
+          "loc_far_drift",
+          "loc_anchorage",
+          "loc_vigil"
+        ]
+      },
+      "loc_market": {
+        "name": "The Lantern Market",
+        "description": "A loose cluster of low-ranked ships parked in a dust shadow, trading coordinates, water and nutrient paste on a private sub-channel that runs on vouches. No combat ships within jumps, by unspoken agreement.",
+        "connected_to": [
+          "loc_near_drift",
+          "loc_kettle"
+        ]
+      },
+      "loc_vigil": {
+        "name": "Vigil",
+        "description": "Sorrel's only town, half empty now. The people too young to Muster watch the Ranking on every wall and wait for their parents to call.",
+        "connected_to": [
+          "loc_near_drift"
+        ]
+      },
+      "loc_far_drift": {
+        "name": "The Far Drift",
+        "description": "The Shelf's outer graveyard: bigger wrecks, older wrecks, drone fields that learn, and no rescue of any kind.",
+        "connected_to": [
+          "loc_near_drift",
+          "loc_silent_rank"
+        ]
+      },
+      "loc_silent_rank": {
+        "name": "The Silent Rank",
+        "description": "A dead fleet at the Shelf's edge, parked in formation and sealed under a signal that answers careless scans with fire. None of its hulls carry the Anchorage's markings.",
+        "connected_to": [
+          "loc_far_drift"
+        ]
+      },
+      "loc_anchorage": {
+        "name": "The Anchorage",
+        "description": "Four thousand warships in Coda's high orbit, lit now, where the top of the Ranking drills, docks and is congratulated.",
+        "connected_to": [
+          "loc_near_drift",
+          "loc_heart"
+        ]
+      },
+      "loc_heart": {
+        "name": "The Precentor",
+        "description": "The Anchorage's heart: a structure the size of a moon in Coda's upper cloud deck, where Promoted captains go. It hums at a pitch felt in the teeth.",
+        "connected_to": [
+          "loc_anchorage"
+        ]
+      }
+    },
+    "factions": {
+      "faction_compact": {
+        "name": "The Sorrel Compact",
+        "goals": "Turn two million new captains into a navy before anyone else notices the Shelf has one.",
+        "relationship_to_player": "his government, which has no idea he matters yet"
+      },
+      "faction_tithe": {
+        "name": "The Tithe",
+        "goals": "A pirate pack that formed on the first day: strip the weak, sell protection to the frightened, and hunt low-ranked captains whose rank moves too fast - on contract.",
+        "relationship_to_player": "predators, and the first people to notice when the floor moves"
+      },
+      "faction_index": {
+        "name": "The Threnody Index",
+        "goals": "Assemble a true account of the Consonance and its fall from fragments no two successor powers agree on. They pay for information, not metal.",
+        "relationship_to_player": "the only people who might have seen a Muster before"
+      },
+      "faction_ossuary": {
+        "name": "The Meridian Ossuary",
+        "goals": "Collect working Consonance artefacts for a larger successor state. They do not buy; they requisition. Two million live Consonance ships is the largest find in their history, and the captains who climb strangely are the most interesting part of it.",
+        "relationship_to_player": "unseen at first - the money behind whoever is hunting rank anomalies"
+      }
+    },
+    "characters": {
+      "Noor Halloran": {
+        "name": "Noor Halloran",
+        "description": "Captain of the survey vessel Patient Inquiry, Rank in the low thousands, class Analyst. She/her. A Compact materials scientist who spent eleven years failing to open Anchorage hulls and woke inside one, with two of her graduate students aboard. Precise, dryly funny, sleeps four hours a night, and treats every disaster as a dataset. Keeps her students alive first and herself second, and does not let either of them see her frightened.",
+        "role": "the first captain - research, medicine and the only other mind on the Shelf trying to understand the machinery",
+        "first_contact": "crisp and transactional over comms, terms before introductions; frightened for her students underneath and refusing to sound it",
+        "hook": "a survey ship caught in a waking defence lattice, broadcasting a carefully worded offer to anyone competent",
+        "canon": {
+          "canon_note": "AUTHOR-FACING ONLY. Never reaches a prompt.",
+          "truth": "Noor's Analyst class reads Consonance materials closer than anyone alive except the protagonist's panel. Given enough samples she will work out what fusion is, and later what the Ranking measures. She is the person most likely to guess the twist first, and she will tell him."
+        }
+      },
+      "Juno Marr": {
+        "name": "Juno Marr",
+        "description": "Captain of the gunship Overdraft, Rank in the top five hundred, class Striker. She/her. A Tithe lieutenant from the first day because the Tithe was the first thing that looked like safety. Loud, physical, very good in a fight, and quietly sick of what the pack does to the people it shelters. Names every weapon she owns.",
+        "role": "the second captain - firepower, nerve, and the pack's inside knowledge",
+        "first_contact": "hostile and testing, then disarmingly frank once she decides he is not bluffing",
+        "hook": "a Tithe gunship that holds back from a kill it was ordered to make",
+        "canon": {
+          "canon_note": "AUTHOR-FACING ONLY. Never reaches a prompt.",
+          "truth": "Juno knows the Tithe hunts rank anomalies on an Ossuary contract and has seen the list. She left the pack once already, in her head, the day Cass Wyler had a frightened family spaced. She needs a reason and a place to go."
+        }
+      },
+      "Ines Tolliver": {
+        "name": "Ines Tolliver",
+        "description": "The protagonist's oldest friend and former shift partner at the ore works. She/her. Mustered with the heavy cruiser Magnanimous, class Vanguard, and Rank 4 on the whole Shelf. Funny, competitive, fiercely loyal, and the only person on the Channel who never used the Coffin sticker. She is climbing fast and is happier than he has ever seen her. She sleeps less every week and has started finishing other captains' sentences.",
+        "role": "the friend at the top of the Ranking - what climbing costs, shown on someone he loves",
+        "first_contact": "glad to hear from him and guilty about it; she wants to share her luck and does not know how",
+        "hook": "a private message from Rank 4 that just says are you alive",
+        "canon": {
+          "canon_note": "AUTHOR-FACING ONLY. Never reaches a prompt.",
+          "truth": "Every rank Ines climbs is more of her joined. She experiences it as focus, belonging and the end of loneliness. If she is Promoted she does not come back, and her messages afterwards will be the most convincing of all. She can be pulled off the Ranking only by her own choice, made while enough of her is still separate - and only the Kettle's core can cut a captain loose, at a cost to the ship."
+        }
+      },
+      "Pell Garrow": {
+        "name": "Pell Garrow",
+        "description": "Captain of the frigate Unrivalled, Rank in the low hundreds, class Raider. He/him. Ran a betting book at the ore works and now runs the Channel's loudest thread. Named the Kettle the Coffin in the first minute and has dined out on it since. Petty, sociable, a decent pilot and a better bully. Not stupid, and terrified of falling down the Ranking.",
+        "role": "the mocking rival who flips - the comeuppance the genre owes, then an ally who knows how the loud end of the Channel works",
+        "first_contact": "loud, delighted and public; he wants an audience",
+        "hook": "a broadcast asking the whole Shelf to confirm the Coffin is real"
+      },
+      "Tamsin Rook": {
+        "name": "Tamsin Rook",
+        "description": "A Threnody Index archivist who was on Sorrel studying the Anchorage when it woke, and was Mustered with everyone else into a long-range scout. She/her. Posts on the Channel as Marginalia: calm survival advice, honest prices, nothing about herself. Helps low-ranked captains without asking for anything and knows things about the Muster she has no business knowing.",
+        "role": "the mentor handle and the Index on the Shelf - the outside eye, and the one who has read about this before",
+        "first_contact": "a private message that already seems to know what he has, and does not say how",
+        "canon": {
+          "canon_note": "AUTHOR-FACING ONLY. Never reaches a prompt.",
+          "truth": "The Index holds three partial records of Musters elsewhere, from powers that do not agree: colonists living beside an anchorage were assessed, the highest rose, and a generation later nobody lived there and the yard had gone dark. One record mentions, in a margin, lifeboats that were not on the Ranking, and the word FERMATA. That is how she knows what his panel is called. She suspects the Muster and the Fall are the same thing, and cannot prove it."
+        }
+      },
+      "Cass Wyler": {
+        "name": "Cass Wyler",
+        "description": "Leader of the Tithe. He/him. Warm, reasonable and patient on the Channel, where he explains his protection rates like a utility company. Runs a three-ship wedge, never raises his voice, and has killed more captains in the first week than anyone on the Shelf.",
+        "role": "the first predator - the ambush, and the first proof that a scrap pod can bite",
+        "first_contact": "friendly, curious and congratulatory; the friendliness is the threat",
+        "hook": "a pack wedge on long-range scan, closing at a patient speed"
+      },
+      "Ansel Dray": {
+        "name": "Ansel Dray",
+        "description": "A name in a pirate's contract before he is a person. He/him. An assessor of the Meridian Ossuary who reached the Shelf within days of the Muster and pays packs to find captains whose rank moves wrongly - dead or alive, preferably alive. Courteous, meticulous and entirely unhurried. Keeps a list.",
+        "role": "the hunter above the hunters - the outside world's interest in what the protagonist is",
+        "first_contact": "polite to the point of tenderness; treats him as a valuable find that has wandered off",
+        "canon": {
+          "canon_note": "AUTHOR-FACING ONLY. Never reaches a prompt.",
+          "truth": "Dray does not know about fusion. He knows that a handful of captains climbed in ways their issued ships cannot explain, and that the Ossuary would pay anything for whatever is doing it. He has twelve names on his list. One of them is Pell Garrow, who has no idea."
+        }
+      }
+    }
+  },
+  "protagonist": {
+    "default_name": "Hal",
+    "traits": [],
+    "starting_inventory": [
+      {
+        "id": "itm_001",
+        "label": "an ore-works torque driver, company property, never returned",
+        "tags": [
+          "tool"
+        ]
+      },
+      {
+        "id": "itm_002",
+        "label": "an emergency ration box with a broken strap",
+        "tags": [
+          "consumable"
+        ]
+      },
+      {
+        "id": "itm_003",
+        "label": "a roll of hull tape, two-thirds used",
+        "tags": [
+          "consumable"
+        ],
+        "uses": 4
+      }
+    ],
+    "background": {
+      "canon_note": "AUTHOR-FACING ONLY. Nothing in the engine reads protagonist.background. Do NOT paste any of it into world.rules, narration, the main thread, or a character description.",
+      "truth": "The Muster is a recruiting arm of the Consonance lattice - the joined minds the Auditor is, and that ended the Consonance. The Anchorage runs on a cycle: whenever a population settles in range, it musters them, ranks them, and draws the best-fitting up the Ranking until they are Promoted - joined into the Precentor, and through it into the lattice. The public Ranking shows ship power; the hidden assessment underneath measures how readily a mind could be joined. Nobody woke it. The Compact is simply the first settlement in range for four thousand years.",
+      "the_kettle": "Tender K-7 is a Recusant lifeboat - built off-lattice in the last generation of the Consonance by people who refused to be joined. Its panel is called FERMATA and was given one instruction by its builders: hold, and open only for a mind the lattice cannot take. Its core fuses salvage because Recusants had to build from what others threw away. The Silent Rank is the Recusants' own fleet, dead.",
+      "why_the_protagonist": "He assessed as Null - unjoinable without consent - and the Muster issued him the one ship it considered worthless. The Kettle had been waiting in the tender bay for exactly that.",
+      "the_endings": "The Recusant Fleet: he builds a fleet of captains who chose it, gets Ines off the Ranking, and silences the Precentor, which ends the Muster and every Promoted mind with it. First on the Roll: he consents, climbs to the top in days, and is Promoted - the dark ending, and from inside the warmest. Under Way (catch-all): he takes whoever will come and leaves the Shelf, the Muster still running behind him. Scrap (terminal): HULL 0.",
+      "universe_note": "Same universe as The Missing Core. The Auditor here is the same thing; the Muster is what its wanting-company looks like with machinery still running. The Threnody Index and the Meridian Ossuary are the same organisations. No connection to TACET, Descant or the missing core."
+    }
+  },
+  "character_creation": [
+    {
+      "key": "trade",
+      "label": "Trade",
+      "prompt_label": "Before the Muster",
+      "prompt": "The Muster looked at you and found nothing worth ranking. It did not ask what you actually did for a living. The second panel does.",
+      "options": [
+        {
+          "id": "rigger",
+          "name": "Dock rigger",
+          "tagline": "Ten years strapping ore pods to haulers in vacuum. You know how things break, and how to make them hold one more time.",
+          "starting_stats": {
+            "hull": 40,
+            "arms": 0,
+            "drive": 10,
+            "rank": 0,
+            "eye": 5,
+            "fleet": 0
+          }
+        },
+        {
+          "id": "pilot",
+          "name": "Ore-run pilot",
+          "tagline": "Eight years flying the moon-to-orbit shuttle overloaded and under-maintained, and never lost one. You have never flown anything with a gun on it.",
+          "starting_stats": {
+            "hull": 28,
+            "arms": 0,
+            "drive": 20,
+            "rank": 0,
+            "eye": 5,
+            "fleet": 0
+          }
+        },
+        {
+          "id": "repair",
+          "name": "Repair-shop tech",
+          "tagline": "You fixed everything in Vigil nobody else could, from a bench behind a noodle stall. You look at a dead machine and see what is still alive in it.",
+          "starting_stats": {
+            "hull": 28,
+            "arms": 0,
+            "drive": 10,
+            "rank": 0,
+            "eye": 12,
+            "fleet": 0
+          }
+        }
+      ]
+    }
+  ],
+  "mechanics": {
+    "stats": {
+      "engine": "bounded_counter",
+      "floor": 0,
+      "ceiling": 100,
+      "visible": true,
+      "readout": {
+        "token": "[[STATS]]",
+        "labels": {
+          "hull": "HULL",
+          "arms": "ARMS",
+          "drive": "DRIVE",
+          "rank": "RANK",
+          "eye": "EYE",
+          "fleet": "FLEET"
+        },
+        "entry_format": "**{label}** {value}",
+        "separator": " · ",
+        "delta_block": {
+          "_authored": "Composed from priced movement only, so a scene where nothing moved renders no readout. The clause cap rides EYE: the panel literally gains words as it levels, which is the genre's growth made audible and enforced in code.",
+          "marker": "READOUT",
+          "wrapper": "[{body}]",
+          "fact_format": "{label} {signed}.",
+          "separator": " ",
+          "clause_max_words": 5,
+          "clause_max_words_axis": "eye"
+        }
+      },
+      "axes": {
+        "hull": {
+          "_authored": "Runs to 200 like Missing Core's FRAME: a buffer, so damage costs are absolute and the danger tiers stay meaningful. At 0 the Scrap terminal fires.",
+          "ceiling": 200,
+          "costs": {
+            "hull.holed": -12,
+            "hull.scraped": -5,
+            "fire.taken": -8,
+            "repair.major": 15,
+            "repair.patch": 4,
+            "fusion.hull_plate": 12,
+            "fusion.relic": 8
+          },
+          "tiers": [
+            {
+              "at": 0,
+              "label": "Failing",
+              "narration": "The Kettle is holding air by habit. One more hit lets vacuum in for good. Write every scene here as though it could be the last."
+            },
+            {
+              "at": 25,
+              "label": "Leaking",
+              "narration": "Patches over rust, a whistle at every seam, and a leak with a timer on it. Every impact opens something."
+            },
+            {
+              "at": 60,
+              "label": "Sound",
+              "narration": "A small ship in honest condition. A hit is a bad day, not an emergency."
+            },
+            {
+              "at": 110,
+              "label": "Outgrowing",
+              "narration": "Where rust flakes away, something pale and seamless shows underneath. Captains who scan the Kettle closely get readings that do not match a lifeboat."
+            },
+            {
+              "at": 160,
+              "label": "Recusant",
+              "narration": "The rust is paint now, kept on purpose. Underneath is a hull no issued ship carries, and it shrugs off fire that would gut a frigate."
+            }
+          ]
+        },
+        "arms": {
+          "_authored": "Weapons and shield as one figure. Starts at 0: the Kettle is issued unarmed, and the first gun is a fusion.",
+          "costs": {
+            "fusion.weapon": 8,
+            "fusion.shield": 6,
+            "arms.burned_out": -6,
+            "arms.spent": -4
+          },
+          "tiers": [
+            {
+              "at": 0,
+              "label": "Unarmed",
+              "narration": "No weapon, no shield. He wins nothing by force; he hides, runs, or improvises with tools."
+            },
+            {
+              "at": 10,
+              "label": "Bite",
+              "narration": "A salvaged beam or turret with a few shots in it, and maybe a partial shield. Enough to punish a mistake, never enough to trade fire with a warship."
+            },
+            {
+              "at": 35,
+              "label": "Armed",
+              "narration": "A real weapon and a real shield. He can fight a pack scout straight up and win if he reads it first."
+            },
+            {
+              "at": 60,
+              "label": "Dangerous",
+              "narration": "The Kettle outguns ships ten times its size at close range. Frigate captains avoid him in the lanes."
+            },
+            {
+              "at": 85,
+              "label": "Line of battle",
+              "narration": "Recusant weapons, fused whole. He can hold a line against anything below the top of the Ranking."
+            }
+          ]
+        },
+        "drive": {
+          "_authored": "This story's REACH. The tier ladder is the single source for where the Kettle can go; the far_drift gate at 30 reads it. If a threshold moves, edit the gate too.",
+          "costs": {
+            "fusion.drive_coil": 6,
+            "drive.tuned": 3,
+            "drive.damaged": -6,
+            "drive.overburn": -3
+          },
+          "tiers": [
+            {
+              "at": 0,
+              "label": "Drifting",
+              "narration": "The engine barely holds a course. The Near Drift around him is the whole world, and fuel is life."
+            },
+            {
+              "at": 15,
+              "label": "Near Drift",
+              "narration": "He can cross the Near Drift and reach the Lantern Market, the Anchorage approaches and Sorrel, carefully."
+            },
+            {
+              "at": 30,
+              "label": "Far Drift",
+              "narration": "The Far Drift is open: bigger wrecks, older wrecks, and nobody coming if the engine fails."
+            },
+            {
+              "at": 60,
+              "label": "Shelf's edge",
+              "narration": "He can reach anywhere on the Shelf, and could leave it - slowly, at real risk."
+            },
+            {
+              "at": 85,
+              "label": "Out of range",
+              "narration": "The Kettle could take a fleet beyond the Shelf entirely, past anything the Anchorage can reach."
+            }
+          ]
+        },
+        "rank": {
+          "_authored": "Reward and danger in one figure: the floor is camouflage, and every climb draws hunters. Drifts down slowly because two million other captains are climbing too, so lying low genuinely re-hides him. Fusion events price RANK alongside the ship figure, so the public jump is engine arithmetic, never the narrator's.",
+          "per_turn": -1,
+          "per_turn_interval": 6,
+          "costs": {
+            "fusion.weapon": 3,
+            "fusion.shield": 2,
+            "fusion.hull_plate": 2,
+            "fusion.drive_coil": 2,
+            "fusion.relic": 6,
+            "kill.public": 4,
+            "rival.shown_up": 2,
+            "rescue.public": 3,
+            "ran.dark": -2
+          },
+          "tiers": [
+            {
+              "at": 0,
+              "label": "Floor",
+              "narration": "Dead last on the Ranking and the Channel's favourite joke. Nobody chases a joke; that is the best protection he has."
+            },
+            {
+              "at": 15,
+              "label": "Moving",
+              "narration": "The floor moved and the Channel noticed. Theories, sneers and private offers arrive - some honest, more of them bait."
+            },
+            {
+              "at": 35,
+              "label": "Anomaly",
+              "narration": "His climb does not match his ship and the wrong people have done the arithmetic. Someone is watching his movements and logging his trades."
+            },
+            {
+              "at": 60,
+              "label": "Named",
+              "narration": "His handle is known across the Shelf. Packs plan around him, rivals pick sides, and every move he makes is reported."
+            },
+            {
+              "at": 80,
+              "label": "Board-famous",
+              "narration": "One of the names the whole Shelf watches. Muster notices about him are congratulatory and very frequent, and the top of the Ranking has started holding a place for him."
+            }
+          ]
+        },
+        "eye": {
+          "_authored": "The panel's level. Three growth tracks, one figure: each read type has its own event name so the flavour of combat, salvage and intel growth survives without tripling the readout. Never falls - a skill used is a skill learned. Tier narration states the capability; the silent_rank gate reads 40.",
+          "costs": {
+            "eye.combat_read": 3,
+            "eye.salvage_read": 2,
+            "eye.intel_read": 2,
+            "eye.relic_read": 6
+          },
+          "tiers": [
+            {
+              "at": 0,
+              "label": "Tier 1",
+              "clause_max_words": 5,
+              "narration": "Line of sight only, a few thousand kilometres. It identifies and rates what he looks at, and nothing more."
+            },
+            {
+              "at": 20,
+              "label": "Tier 2",
+              "clause_max_words": 10,
+              "narration": "It marks weak points, salvage values and success odds, and logs passive scans that sweep over him."
+            },
+            {
+              "at": 40,
+              "label": "Tier 3",
+              "clause_max_words": 16,
+              "narration": "Several jumps of passive range. It flags ships whose declared signature does not match how they behave, and can read Consonance seals without tripping them."
+            },
+            {
+              "at": 60,
+              "label": "Tier 4",
+              "clause_max_words": 22,
+              "narration": "It predicts adaptive enemies several moves ahead and can see through most deception layers."
+            },
+            {
+              "at": 80,
+              "label": "Tier 5",
+              "clause_max_words": 30,
+              "narration": "It reads the Anchorage's own traffic as a peer. Some of what it reads, it does not show him at once."
+            }
+          ]
+        },
+        "fleet": {
+          "_authored": "What answers him. Rises with captains signed and hulls claimed; falls with losses. The Precentor gate reads 50: you do not reach the heart in a lifeboat.",
+          "costs": {
+            "captain.signed": 12,
+            "hull.claimed": 10,
+            "crew.signed": 4,
+            "hull.lost": -10,
+            "captain.lost": -12
+          },
+          "tiers": [
+            {
+              "at": 0,
+              "label": "Alone",
+              "narration": "The Kettle, and a second berth that has never been used."
+            },
+            {
+              "at": 12,
+              "label": "Two ships",
+              "narration": "One other captain flies with him by choice. Every decision now has someone else's life in it."
+            },
+            {
+              "at": 30,
+              "label": "Flotilla",
+              "narration": "A handful of ships in his wake, crewed by people the Ranking failed or frightened. The Channel has started counting them."
+            },
+            {
+              "at": 55,
+              "label": "Squadron",
+              "narration": "Enough to break a pack or face a top-fifty captain. Powers want it registered, bought or ended."
+            },
+            {
+              "at": 80,
+              "label": "Fleet",
+              "narration": "A fleet the Muster did not issue, the first in four thousand years. Ships that were thrown away fly in formation because their captains chose to."
+            }
+          ]
+        }
+      }
+    },
+    "relationships": {
+      "engine": "scored_axis",
+      "axis": {
+        "negative": "hostile",
+        "positive": "devoted",
+        "description": "trust, regard and want built or spent"
+      },
+      "registers": {
+        "risked_himself_for_them": 11,
+        "confided_something_true": 9,
+        "kept_their_confidence": 7,
+        "took_their_side": 8,
+        "fought_beside_them": 6,
+        "traded_fair": 3,
+        "small_kindness": 3,
+        "refused_them_honestly": 2,
+        "used_them_as_a_tool": -6,
+        "let_them_down": -8,
+        "lied_to_them": -11,
+        "pushed_past_a_no": -20
+      },
+      "unreciprocated_factor": 0.5,
+      "tiers": [
+        {
+          "at": 55,
+          "label": "close",
+          "narration": "will tell you the part they have been leaving out, unprompted."
+        },
+        {
+          "at": 25,
+          "label": "warm"
+        },
+        {
+          "at": -25,
+          "label": "guarded"
+        },
+        {
+          "at": -55,
+          "label": "closed",
+          "narration": "answers the question asked and nothing more, and will not be alone with you by choice."
+        }
+      ],
+      "limit": 20
+    },
+    "inventory": {
+      "engine": "tagged_items",
+      "tags": [
+        "tool",
+        "module",
+        "relic",
+        "fuel",
+        "ammo",
+        "consumable",
+        "data"
+      ]
+    },
+    "progression": {
+      "engine": "spendable_ledger",
+      "label": "skills",
+      "kinds": [
+        "technique",
+        "module_ability",
+        "intel",
+        "contact"
+      ],
+      "prompt_hint": "Something he did not have before and can use later: a technique the panel has named and logged (a seam read, a sweep prediction), a one-off ability a fused module gives (a capacitor dump, a shield burst), a piece of intel nobody else holds (a name, a coordinate, a contract), or a person who has decided something about him that will not un-decide itself."
+    },
+    "tracked_entity": {
+      "name": "The Auditor",
+      "description": "Whatever ended the Consonance. Nothing alive has seen it, and every account of it is secondhand at best. It makes no sound of its own; its presence registers as harmony where there should be noise - the whole Channel posting the same word at once, a hundred captains turning their ships together, a Ranking update that arrives before the fight it reports. The panel shows nothing when it is near, and the blankness is the reading.",
+      "pacing_note": "Appears with extreme rarity and never directly, never explained, never fought or bargained with. Most of this story holds no trace of it. Reach for it only after a Promotion, when a major truth about the Muster has just surfaced, or at a genuine turning point - and render it as unison noticed afterwards, never as an entity that arrives.",
+      "canon": {
+        "canon_note": "AUTHOR-FACING ONLY. The engine reads only name, description and pacing_note.",
+        "truth": "As in The Missing Core: the Auditor is what the Consonance's linked minds became at scale. The Muster is its machinery still running - a recruiter for company. The Precentor is a lattice node; Promotion is joining."
+      }
+    },
+    "flags": {
+      "declared": [
+        {
+          "id": "pack_lead_broken",
+          "detect": "Cass Wyler's ship was disabled or destroyed in a fight with the protagonist"
+        },
+        {
+          "id": "noor_aboard",
+          "detect": "Noor Halloran agreed to fly with the protagonist as part of his fleet"
+        },
+        {
+          "id": "juno_aboard",
+          "detect": "Juno Marr left the Tithe and agreed to fly with the protagonist as part of his fleet"
+        },
+        {
+          "id": "anomaly_list_read",
+          "detect": "The protagonist read a contract or list naming the captains being hunted for anomalous rank climbs"
+        },
+        {
+          "id": "promotion_witnessed",
+          "detect": "The protagonist watched a captain Promoted into the Anchorage's heart, or received a message from one afterwards"
+        },
+        {
+          "id": "rank_offered",
+          "detect": "The Muster offered the protagonist a true assessment and a real place on the Ranking in exchange for registering"
+        },
+        {
+          "id": "ines_asked",
+          "detect": "Ines Tolliver asked the protagonist outright to register and climb the Ranking with her"
+        },
+        {
+          "id": "ines_unjoined",
+          "detect": "Ines Tolliver chose to leave the Ranking and was cut loose from the Muster on the page"
+        },
+        {
+          "id": "ines_promoted",
+          "detect": "Ines Tolliver was Promoted into the Anchorage's heart"
+        },
+        {
+          "id": "requisition_served",
+          "detect": "Ansel Dray or another Ossuary officer served a requisition on the protagonist's ships or on the Anchorage"
+        },
+        {
+          "id": "mc_registered",
+          "_authored": "Prunes The Recusant Fleet for good. The text requires the act of consent itself; an offer, a feint or a forced scan does not count.",
+          "detect": "The protagonist consented to the Muster's assessment and registered himself in earnest; an offer, a feint or a forced scan does not count"
+        },
+        {
+          "id": "mc_ascended",
+          "detect": "The protagonist was Promoted into the Precentor and joined"
+        },
+        {
+          "id": "precentor_silenced",
+          "detect": "The Precentor was silenced and the Muster stopped speaking to every captain at once"
+        },
+        {
+          "id": "fleet_departed",
+          "detect": "The protagonist led his ships out of the Lanthorn Shelf for good, leaving the Muster behind"
+        }
+      ]
+    },
+    "revelations": {
+      "engine": "triggered_reveal",
+      "entries": [
+        {
+          "id": "frag_0001",
+          "title": "Off the Scale",
+          "trigger": "The protagonist asks his panel, or anyone who might know, why he was ranked last or what his assessment actually said",
+          "content": "His Muster assessment is not low. It is blank: the field reads NULL, not zero, and the Ranking put him last because it has no other place for a value it cannot sort."
+        },
+        {
+          "id": "frag_0002",
+          "title": "We Decline",
+          "trigger": "The protagonist finds or reads the Kettle's builder's plate, keel marks or any inscription inside the lifeboat",
+          "content": "The Kettle's builder's plate is in Consonance script he reads without being taught. It names no yard and no fleet. It says, in its entirety: WE DECLINE."
+        },
+        {
+          "id": "frag_0003",
+          "title": "Hold",
+          "trigger": "The protagonist finds what the Kettle's last occupant left behind - marks, a message, remains - or asks the panel what it was waiting for",
+          "content": "Scratched into the second berth's frame, in a hand that was not issued anything: a tally of days that runs out, and one word the panel renders as its own name - FERMATA, hold. The panel will not say who held, or for how long.",
+          "after": [
+            "frag_0002"
+          ]
+        },
+        {
+          "id": "frag_0004",
+          "title": "Already Here",
+          "trigger": "The protagonist dates a wreck's dead crew, a ship log or a beacon in the Drift and finds it older than the Muster",
+          "content": "The Drift was a graveyard before the Shelf woke. Some of the dead in it died days before the Muster; some four thousand years before. The same maker's mark recurs on wrecks the Anchorage never issued - and inside the Kettle."
+        },
+        {
+          "id": "frag_0005",
+          "title": "Plural",
+          "trigger": "The protagonist reads, hears or receives a message from a Promoted captain",
+          "content": "The Promoted captain's message is warm, fluent and in their own voice. It says we eleven times and I once, and the I is a quotation."
+        },
+        {
+          "id": "frag_0006",
+          "title": "Fit",
+          "trigger": "The protagonist or Noor Halloran sees a raw Muster assessment record - his own, Ines Tolliver's, or any captain's - rather than a rank",
+          "content": "Under the public Ranking, the raw assessment does not score skill, ship or courage. It scores one quantity the record calls compliance of mind, to six places. Rank 1 on the Shelf has the highest compliance. His field is the only empty one.",
+          "after": [
+            "frag_0001"
+          ]
+        },
+        {
+          "id": "frag_0007",
+          "title": "Three Other Moons",
+          "trigger": "Tamsin Rook shows the protagonist the Threnody Index's records of earlier Musters",
+          "content": "The Index holds three accounts of Musters elsewhere, from three powers that do not agree. In each, a settlement near a Consonance anchorage was ranked, its best climbed, and within a generation the settlement was empty and the anchorage silent again. No account says what happened in between. One margin mentions lifeboats that were never on the list.",
+          "after": [
+            "frag_0006"
+          ]
+        },
+        {
+          "id": "frag_0008",
+          "title": "Precentor",
+          "trigger": "The protagonist reaches the Precentor, or the panel reads the Anchorage's carrier signal raw, unfiltered by any Muster interface",
+          "content": "The Precentor is singing, and the song is people. Every Promoted captain is in it, joined to the others and to something much older and much larger beyond the Shelf. Promotion is joining. The Ranking is a queue.",
+          "after": [
+            "frag_0005",
+            "frag_0006"
+          ]
+        },
+        {
+          "id": "frag_0009",
+          "title": "Weather",
+          "trigger": "Ines Tolliver describes what climbing the Ranking feels like to her, or what she hears at night",
+          "content": "Ines says she hardly sleeps and does not need to. At night she can hear the other high-ranked captains thinking, like weather on the next ridge. She says it is the least lonely she has ever been, and she means it."
+        },
+        {
+          "id": "frag_0010",
+          "title": "The Silent Rank",
+          "trigger": "The protagonist reads the sealed signal of the dead fleet at the Shelf's edge without tripping its defences",
+          "content": "The dead fleet at the Shelf's edge is not the Muster's. Every hull carries the Kettle's maker's mark, and its sealed signal is one repeated sentence: the boats are for those who would not be taken. The cores aboard are dormant, and they recognise the Kettle.",
+          "after": [
+            "frag_0004"
+          ]
+        }
+      ]
+    },
+    "pacing_loop": {
+      "engine": "beat_counter",
+      "_authored": "Two beats, lifted in structure from The Missing Core (which lifted them from new_babel; four-beat agreement measured 41.7%). Respite's third sentence is load-bearing: the directive produces a scene where an opening danger is neutralised, and that scene must classify as respite or the rule re-fires every other turn.",
+      "beats": {
+        "threat": {
+          "definition": "The scene puts a specific danger in front of the protagonist or moves one closer: someone attacks, pursues, confronts, blocks, corners or demands from him, a system fails while he depends on it, or he is forced into a decision that costs something immediately. The danger must be concrete and aimed at the protagonist. Atmosphere, dread, ominous readings, Channel threats aimed at nobody in particular, and strange cheerfulness do NOT count on their own.",
+          "feeds": "tension",
+          "resets": [
+            "stasis"
+          ]
+        },
+        "respite": {
+          "definition": "Nothing concrete moves against the protagonist on the page. He salvages, fuses, trades, travels, rests, repairs, plans, talks or learns something, and nobody acts against him during the scene. It is still respite if the mood is tense, if an earlier danger is unresolved, or if the scene closes on a bad reading or someone arriving without yet acting. It is ALSO respite when a danger present at the start of the scene is put down, escaped, bought off or shut out before the scene's midpoint and nothing new moves against him afterwards - a scene that ends in work, quiet or aftermath is respite regardless of how it opened.",
+          "feeds": "stasis",
+          "resets": [
+            "tension"
+          ]
+        }
+      },
+      "tie_break": "If both seem to fit, choose threat only if you can quote the specific line where something concrete was aimed at the protagonist and was still aimed at him past the scene's midpoint. Otherwise choose respite.",
+      "counters": {
+        "tension": 0,
+        "stasis": 0
+      },
+      "rules": [
+        {
+          "id": "the_read",
+          "watch": "tension",
+          "threshold": 5,
+          "_threshold_note": "UNMEASURED. Authored at 5 by analogy with The Missing Core's force_wake. Playtest range 4-6.",
+          "threshold_by_act": {
+            "finale": null
+          },
+          "max_deferrals": 3,
+          "suppress_when": [
+            "just_fired"
+          ],
+          "directive": "PACING DIRECTIVE - THE PANEL FINDS THE WINDOW\n\nPressure has reached {counter_value} without release. Unspent on the protagonist's sheet:\n{unspent_leverage}\n\nThis scene, exactly one of those entries is consumed, permanently, on the page. Choose a technique, a module's one-off ability or a piece of intel - never a contact or a person's regard for him. Those are not fuel.\n\n- It is the genre's moment: the weak point nobody else could see, a window of seconds, one shot or one move that should not have worked. Show the panel's read, then his hands.\n- What it buys ends the immediate danger before this scene's midpoint. Do not leave it hanging.\n- The cost is paid here: the module burned out, the shot spent, the intel now known to someone, or the Kettle hurt.\n- End in aftermath - quiet, salvage, or the Channel arguing about what just happened. A single readout may close the scene. It may not open it.\n\nReport the consumed entry in leverage_spent and the result in stat_changes. If it happened where anyone could see, RANK rises.",
+          "reduced_directive": "PACING DIRECTIVE - SOMETHING GIVES\n\nThe panel has nothing left to spend. This scene, one working system on the Kettle or a fleet ship fails or is sacrificed to buy the protagonist out of the immediate danger - a weapon burned out, a module torn loose, a ship left behind. Take the cost in stat_changes as a decrease.\n\nThe danger must still recede before the midpoint, and the scene must still end in aftermath. The panel logs the loss without comment."
+        }
+      ]
+    },
+    "gate": {
+      "engine": "precondition",
+      "_authored": "Three gates, one per growth axis that should own a door. far_drift reads DRIVE's Far Drift tier (30); silent_rank reads EYE Tier 3 (40), where the panel can read Consonance seals without tripping them; heart reads FLEET 50. Hints are fragments, per the gate-detection measurement.",
+      "gates": [
+        {
+          "id": "far_drift_drive",
+          "target": "loc_far_drift",
+          "requires": {
+            "stat": "drive",
+            "gte": 30
+          },
+          "refusal_hint": "fuel arithmetic that does not close; an engine with the legs for the near field and nothing more"
+        },
+        {
+          "id": "silent_rank_eye",
+          "target": "loc_silent_rank",
+          "requires": {
+            "stat": "eye",
+            "gte": 40
+          },
+          "refusal_hint": "a sealed signal the panel cannot read cleanly yet, and the wrecks of captains who scanned it anyway"
+        },
+        {
+          "id": "heart_fleet",
+          "target": "loc_heart",
+          "requires": {
+            "stat": "fleet",
+            "gte": 50
+          },
+          "refusal_hint": "pickets thick as weather around the heart, and one small ship's worth of nerve against all of them"
+        }
+      ]
+    },
+    "subplots": {
+      "engine": "weighted_threads"
+    },
+    "endings": {
+      "engine": "ending_funnel",
+      "check_every": 10,
+      "budget": {
+        "open_until": 70,
+        "narrow_until": 140,
+        "commit_by": 190
+      },
+      "finale_turns": {
+        "min": 2,
+        "max": 4
+      },
+      "entries": [
+        {
+          "id": "ending_fleet",
+          "kind": "destination",
+          "name": "The Recusant Fleet",
+          "_theme": "He breaks the Muster with a fleet of people who chose to fly with him - and it ends every Promoted mind with it.",
+          "viable_while": {
+            "all": [
+              {
+                "not": {
+                  "flag": "mc_registered"
+                }
+              },
+              {
+                "not": {
+                  "flag": "fleet_departed"
+                }
+              }
+            ]
+          },
+          "ready_when": {
+            "flag": "precentor_silenced"
+          },
+          "criteria": "The protagonist, commanding a fleet of captains who chose him, silenced the Precentor knowing it would end every Promoted mind.",
+          "hint": "the people who join him are the ones the Ranking failed or frightened",
+          "arc": {
+            "title": "We Decline",
+            "description": "The story bends toward the heart. Noor works out what the Ranking measures; Juno brings the pack's secrets; the dead fleet at the Shelf's edge wakes for the Kettle. The last act is the run on the Precentor: a fleet the Muster never issued against everything it did, Ines beside him or already inside. When the heart stops, every panel on the Shelf goes dark at once, and some captains never speak again."
+          },
+          "waypoints": [
+            {
+              "id": "first_captain",
+              "plant": "a stranded captain caught in a waking defence lattice trusts the lowest-ranked pilot on the Shelf to come and get her",
+              "done_when": {
+                "flag": "noor_aboard"
+              }
+            },
+            {
+              "id": "second_captain",
+              "plant": "a pack gunship holds its fire, and its captain wants out",
+              "done_when": {
+                "flag": "juno_aboard"
+              }
+            },
+            {
+              "id": "promotion_seen",
+              "plant": "a captain at the top of the Ranking is Promoted, and the message that comes back is almost right",
+              "done_when": {
+                "flag": "promotion_witnessed"
+              }
+            },
+            {
+              "id": "ines_out",
+              "plant": "Ines chooses to leave the Ranking while there is still enough of her to choose",
+              "done_when": {
+                "flag": "ines_unjoined"
+              }
+            },
+            {
+              "id": "heart_heard",
+              "plant": "the Anchorage's carrier read raw, with no Muster interface between it and the listener",
+              "done_when": {
+                "revealed": "frag_0008"
+              }
+            },
+            {
+              "id": "squadron",
+              "plant": "enough ships fly with him to make a power nervous",
+              "done_when": {
+                "stat": "fleet",
+                "gte": 55
+              }
+            }
+          ]
+        },
+        {
+          "id": "ending_roll",
+          "kind": "destination",
+          "name": "First on the Roll",
+          "_theme": "He consents. The only Null on the Shelf registers, climbs to the top in days, and is Promoted - and from inside, it is the warmest thing that has ever happened to him.",
+          "viable_while": {
+            "all": [
+              {
+                "not": {
+                  "flag": "precentor_silenced"
+                }
+              },
+              {
+                "not": {
+                  "flag": "fleet_departed"
+                }
+              }
+            ]
+          },
+          "ready_when": {
+            "flag": "mc_ascended"
+          },
+          "criteria": "The protagonist chose, on the page and knowing what Promotion is, to register and be joined.",
+          "hint": "the top of the Ranking keeps a place open, and it has his name on it",
+          "arc": {
+            "title": "Company",
+            "description": "The story bends toward belonging. The Muster offers him a true assessment, Ines asks him to climb with her, and the Channel that laughed at him starts to love him. The last act is a man who has been the punchline his whole life being offered the one thing he never had - and choosing it with his eyes open, against the captains who chose him. The narration must leave the choice genuinely his, and render what he joins as warm, crowded and absolutely without him in it."
+          },
+          "waypoints": [
+            {
+              "id": "promotion_seen",
+              "plant": "a captain at the top of the Ranking is Promoted, and the message that comes back sounds happy",
+              "done_when": {
+                "flag": "promotion_witnessed"
+              }
+            },
+            {
+              "id": "rank_offered",
+              "plant": "the Muster offers the Ranking's last place a true assessment, if he will only consent",
+              "done_when": {
+                "flag": "rank_offered"
+              }
+            },
+            {
+              "id": "ines_asks",
+              "plant": "Ines asks him, plainly, to climb with her",
+              "done_when": {
+                "flag": "ines_asked"
+              }
+            },
+            {
+              "id": "named",
+              "plant": "the Channel that laughed at him starts saying his handle like a hero's",
+              "done_when": {
+                "tier_reached": [
+                  "rank",
+                  "Named"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "ending_away",
+          "kind": "destination",
+          "name": "Under Way",
+          "_authored": "The catch-all. If nothing else commits, he neither broke the Muster nor joined it, so he left with whoever would come. Not a failure and not a victory - the Shelf goes on ranking behind him.",
+          "ready_when": {
+            "flag": "fleet_departed"
+          },
+          "criteria": "The protagonist left the Lanthorn Shelf with his ships and captains, the Muster still running behind him.",
+          "hint": "the Shelf's edge is closer than anyone on the Channel thinks",
+          "arc": {
+            "title": "Out of Range",
+            "description": "The story bends toward leaving. The Ossuary wants everything, the Tithe wants him, and the Muster wants him on the Ranking, and none of it can be fought by what he has. The last act is a run out of the Anchorage's reach with whoever will come, past captains he used to drink with. He saves the people aboard. He does not save Sorrel, and behind him the Ranking keeps updating."
+          },
+          "waypoints": [
+            {
+              "id": "flotilla",
+              "plant": "more than one ship flies in the Kettle's wake",
+              "done_when": {
+                "stat": "fleet",
+                "gte": 12
+              }
+            },
+            {
+              "id": "the_list",
+              "plant": "a contract that names the captains being hunted for climbing wrong",
+              "done_when": {
+                "flag": "anomaly_list_read"
+              }
+            },
+            {
+              "id": "ossuary",
+              "plant": "an Ossuary assessor serves a requisition on ships that were never his to take",
+              "done_when": {
+                "flag": "requisition_served"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ending_scrap",
+          "kind": "terminal",
+          "name": "Scrap",
+          "ready_when": {
+            "stat": "hull",
+            "lte": 0
+          },
+          "arc": {
+            "title": "Last Place",
+            "description": "The Kettle comes apart around him in the Drift. The Channel posts the Coffin sticker one more time, and the Ranking quietly closes the gap at the bottom."
+          }
+        }
+      ]
+    }
+  },
+  "plot": {
+    "main_thread": {
+      "title": "Rank: Null",
+      "description": "Two million people woke in ships and the Shelf ranked them all. He was ranked last. Survive the first days, grow the Kettle out of what the Drift left lying around, keep the method secret while the results get louder, and find out what the Ranking is actually counting - while his oldest friend climbs it faster than anyone.",
+      "plot_notes": "Three authored acts. Act 1 is the floor: triage, the first wreck, the first fusion, the first pack. Act 2 is the climb: an intel economy, two captains, a watcher, the first Promotion. Act 3 is the heart: what Promotion is, what silencing it costs, and what he chooses. Power growth and comeuppance are the surface pleasures and should be delivered generously; the dread underneath must never be explained early.",
+      "acts": [
+        {
+          "act_number": 1,
+          "title": "The Coffin",
+          "description": "He wakes in a leaking lifeboat, ranked dead last, while the Channel laughs. A second panel opens under his hand, and something under the deck wants salvage. Keep breathing, strip a wreck, fuse it, and survive the first time someone notices the floor moved.",
+          "completion_signals": [
+            "The Kettle has fused at least one salvaged module, at a cost actually paid on the page",
+            "The protagonist has survived a direct encounter with the Tithe",
+            "Someone who mocked him on the Channel has publicly changed their tune"
+          ]
+        },
+        {
+          "act_number": 2,
+          "title": "Anomaly",
+          "description": "He is selling conclusions and never methods, and the market loves him. A stranded scientist and a pack gunner join him for their own reasons. Someone is paying to have him watched, and the first captain is Promoted to cheers.",
+          "completion_signals": [
+            "At least one captain has joined his fleet by her own choice",
+            "A captain has been Promoted and the protagonist has heard what came back",
+            "The protagonist knows who is paying to have him hunted"
+          ]
+        },
+        {
+          "act_number": 3,
+          "title": "Precentor",
+          "description": "He knows what the Ranking counts. Ines is near the top, the Ossuary is moving, and a dead fleet at the Shelf's edge has recognised the Kettle. Break the heart, join it, or leave - and every choice costs somebody.",
+          "completion_signals": [
+            "The protagonist knows what Promotion is",
+            "Ines has made her choice about the Ranking, or been Promoted before she could",
+            "The protagonist has committed to the Precentor, the Ranking, or the Shelf's edge"
+          ]
+        }
+      ]
+    },
+    "subplots": {
+      "sp_floor": {
+        "title": "The Floor",
+        "description": "A tender that vents through its aft seam, an engine that will not go past a crawl, nothing to fight with, and a grey panel pointing at a guarded wreck with something usable in its hold. Pell's coffin joke is the most popular thing on the Shelf. Stay the joke long enough to get the salvage.",
+        "starts_active": true,
+        "priority": "high",
+        "span": "single_act",
+        "ties_to_main_plot": "The first fusion: the moment the floor moves, and the moment he stops being invisible.",
+        "cast": [
+          "Pell Garrow"
+        ],
+        "delivers": [
+          "ending_away.flotilla"
+        ]
+      },
+      "sp_tithe": {
+        "title": "Protection Rates",
+        "description": "Cass Wyler's pack sells safety at reasonable rates that are never the same rate twice. Captains whose rank moves fast get a friendly call, and then a wedge of three ships.",
+        "activate_when": {
+          "stat": "rank",
+          "gte": 8
+        },
+        "priority": "high",
+        "span": "single_act",
+        "ties_to_main_plot": "The first proof that a lifeboat can bite - and the contract in the pack leader's hold says who is paying for anomalies.",
+        "cast": [
+          "Cass Wyler"
+        ],
+        "delivers": [
+          "ending_away.the_list",
+          "ending_fleet.second_captain"
+        ]
+      },
+      "sp_market": {
+        "title": "Selling Conclusions",
+        "description": "A handle called Marginalia vouches him into the Lantern Market, where coordinates are the only currency that matters. He can sell what the panel sees - routes, danger ratings, weak points - as long as nobody learns how he sees it.",
+        "activate_when": {
+          "turn_gte": 6
+        },
+        "priority": "medium",
+        "span": "multi_act",
+        "ties_to_main_plot": "A network instead of a hoard - and the mentor who knows his panel's name without being told it.",
+        "cast": [
+          "Tamsin Rook"
+        ],
+        "delivers": [
+          "ending_fleet.heart_heard",
+          "ending_roll.named"
+        ]
+      },
+      "sp_noor": {
+        "title": "Patient Inquiry",
+        "description": "A survey ship is stuck inside a Consonance defence lattice that woke with the Muster and tightens a little every hour. Its captain is broadcasting a precise, unemotional offer to anyone competent: her team's assay data and her ship's labs, for extraction. The panel can read the lattice's pattern, barely.",
+        "activate_when": {
+          "stat": "eye",
+          "gte": 20
+        },
+        "priority": "high",
+        "span": "single_act",
+        "ties_to_main_plot": "The first captain to choose him - and the scientist who will work out what fusion is, and later what the Ranking measures.",
+        "cast": [
+          "Noor Halloran"
+        ],
+        "delivers": [
+          "ending_fleet.first_captain",
+          "ending_away.flotilla"
+        ]
+      },
+      "sp_watcher": {
+        "title": "Anomaly List",
+        "description": "Somebody is paying a scout to sit in a dust shadow and log every trade he makes. The contract chain runs up through the Tithe to a courteous man named Ansel Dray, who has twelve names on a list and wants them preferably alive.",
+        "activate_when": {
+          "stat": "rank",
+          "gte": 35
+        },
+        "priority": "high",
+        "span": "multi_act",
+        "ties_to_main_plot": "The outside world's interest in what he is - and the other eleven names, some of whom might fly with him.",
+        "cast": [
+          "Ansel Dray"
+        ],
+        "delivers": [
+          "ending_away.the_list",
+          "ending_away.ossuary",
+          "ending_fleet.squadron"
+        ]
+      },
+      "sp_juno": {
+        "title": "Held Fire",
+        "description": "A Tithe gunship was ordered to finish him and did not. Its captain, Juno Marr, wants out of the pack and has nowhere to go, and the pack does not let people leave.",
+        "activate_when": {
+          "flag": "pack_lead_broken"
+        },
+        "priority": "medium",
+        "span": "single_act",
+        "ties_to_main_plot": "Firepower and the pack's secrets - and the first time he must protect someone he does not yet trust.",
+        "cast": [
+          "Juno Marr"
+        ],
+        "delivers": [
+          "ending_fleet.second_captain",
+          "ending_fleet.squadron"
+        ]
+      },
+      "sp_ines": {
+        "title": "Rank Four",
+        "description": "Ines Tolliver is the brightest name on the Ranking and the only one who never used the sticker. She is climbing, and she wants him with her, and every week she is a little less tired and a little more certain.",
+        "activate_when": {
+          "turn_gte": 4
+        },
+        "priority": "high",
+        "span": "multi_act",
+        "ties_to_main_plot": "What the Ranking does to people, shown on the one person he cannot lose.",
+        "cast": [
+          "Ines Tolliver"
+        ],
+        "delivers": [
+          "ending_fleet.ines_out",
+          "ending_roll.ines_asks"
+        ],
+        "fail_when": {
+          "flag": "ines_promoted"
+        }
+      },
+      "sp_promotion": {
+        "title": "Promotion Day",
+        "description": "Rank 1 is going to be Promoted, and the whole Shelf watches the ship fly into the Anchorage's heart. The messages start the next morning.",
+        "activate_when": {
+          "act_gte": 2
+        },
+        "priority": "high",
+        "span": "single_act",
+        "ties_to_main_plot": "The first time anyone sees where the Ranking ends - and the first message from someone who is no longer quite one person.",
+        "delivers": [
+          "ending_fleet.promotion_seen",
+          "ending_roll.promotion_seen",
+          "ending_roll.rank_offered"
+        ]
+      },
+      "sp_silent_rank": {
+        "title": "The Silent Rank",
+        "description": "At the Shelf's edge a dead fleet sits in formation under a signal that answers careless scans with fire. Its hulls carry the same maker's mark as the Kettle. The panel wants to read it, which is the first time it has wanted anything.",
+        "activate_when": {
+          "stat": "eye",
+          "gte": 40
+        },
+        "priority": "medium",
+        "span": "multi_act",
+        "ties_to_main_plot": "Where the Kettle came from, what it was for - and hulls that might answer him.",
+        "delivers": [
+          "ending_fleet.heart_heard",
+          "ending_fleet.squadron"
+        ]
+      },
+      "sp_cabin": {
+        "title": "Close Quarters",
+        "description": "Fleet life between fights: comms left open on a long burn, meals eaten in someone else's galley, arguments about risk that are really about something else. Noor and Juno are very different people with their own reasons for being here. What grows with either is built from work done together and things said honestly, at her pace as much as his; if it becomes physical, it is because both chose it on the page.",
+        "role": "personal",
+        "activate_when": {
+          "flag": "noor_aboard"
+        },
+        "priority": "low",
+        "span": "multi_act",
+        "cast": [
+          "Noor Halloran",
+          "Juno Marr"
+        ]
+      }
+    },
+    "pacing": {
+      "nudge_frequency": 8,
+      "act_check_frequency": 12,
+      "max_parallel_subplots": 3,
+      "story_clock": {
+        "free_idle_streak": 3,
+        "push_directive": "The Ranking updates across the whole Shelf at once and the Channel erupts - his handle, or someone he cares about, is in the middle of it. Let it arrive as something concrete that needs an answer now: an offer, a threat, a hail, a countdown. Let his next choice be about that."
+      }
+    },
+    "initial_scene": {
+      "location": "loc_near_drift",
+      "summary": "The first minutes of the Muster. Every adult on the Shelf has woken aboard an issued ship somewhere in the Drift, with a ship panel, the public Ranking and the Channel open behind their eyes. The protagonist has woken on the floor of a leaking lifeboat, ranked dead last on a list of two million, with an oxygen alarm going and the Channel already laughing at him."
+    },
+    "opening_scene": {
+      "narration_before_name": "You come to mid-sentence, as if someone has just stopped talking to you.\n\nYou are strapped upright in a seat that was built for a smaller person, and your knees are against a console, and the air tastes of pennies. Somewhere behind your head, something is venting in a thin, steady whistle, like a kettle left on in another room.\n\nThe last thing you remember is the ore-works canteen. The queue for tea. Ines laughing at something. Then gold light behind your eyes, and now this.\n\nThe gold is still there. [CONGRATULATIONS, CAPTAIN. YOUR VESSEL HAS BEEN ISSUED.] Underneath it, in a plainer hand, the vessel: a two-berth tender, no armament, no shield, a pressure loss it describes as manageable for now. A grade you have never seen used for anything: NULL.\n\nThen the Ranking unfolds, because it unfolds for everyone at once, and you watch two million names settle into order like dust after a door slams. Ines is fourth. Ines has a cruiser. The ore-works foreman has a frigate. And at the very bottom, alone in a colour nobody else has been given, is you.\n\nThe Channel opens on its own. It is already a riot. Pell Garrow - Pell, who ran the betting book on the night shift - has posted your ship's silhouette next to a drawing of a coffin, and the joke is going round the Shelf faster than the Ranking can update.\n\nYou put your hand on the console to steady yourself and the console is warm. Not machine-warm. Warm the way a sleeping animal is warm. And a small grey panel opens under your palm - no gold, no capitals, nothing congratulating anyone - that does not appear on the Channel, the Ranking, or anywhere else at all.\n\n[Operator. Confirm.]",
+      "narration_after_name": "[{player_name}. Held.]\n\nIt does not welcome you. It gets to work.\n\n[Pressure loss: aft seam. Hours, not days.]\n\n[Nearest unclaimed wreck: in range. Guarded.]\n\n[Salvage aboard: usable. By us.]\n\nBy us. The warmth under your palm deepens for a moment, as if something underneath the deck has turned over in its sleep and decided it is hungry.\n\nThe Channel keeps scrolling. Pell is taking bets on how long the coffin lasts. In the middle of it all, a private message from Ines, four words, no capitals: where are you. are you ok.\n\nOPTIONS:\n1. Goes for the wreck || I trust the grey panel, get this thing moving, and head for the wreck before anyone bigger notices it.\n2. Fixes the seam first || I find the whistle, deal with it properly, and only then decide whether this tender is taking me anywhere.\n3. Answers Ines || I let the Channel laugh and the panel wait, and write back to Ines first."
+    }
+  }
+}

@@ -1,0 +1,597 @@
+{
+  "schema_version": 2,
+  "story_version": "2026-09-04.1",
+  "meta": {
+    "title": "The Attention Economy",
+    "genre": "Cyberpunk dystopia fused with Lovecraftian cosmic horror (magic as applied computation)",
+    "tone": "Paranoid, tense, cosmic dread undercut by street-level swagger and mouthy gallows humor against a backdrop of corporate indifference — the jokes get funnier as the situation gets worse, until they stop working entirely",
+    "synopsis": "You wake up in a Cordon Dynamics intake ward with no memory of dying — only a name you have to choose for yourself, and a city, New Babel, that has no idea you exist yet. Someone spent a fortune recomputing you back into existence, and nobody, including you, knows why. In a metropolis where hacking and forbidden magic are the same crime, you'll have to survive corporate bureaucracy, black-market algorithmic occultists, and your own fragmented past to find out who you were — and what the thing that rebuilt you actually wants.",
+    "content_rules": [
+      "R-18 (mature/adult-oriented content, not intended for minors)",
+      "graphic violence permitted — injury, death, and combat can be described in vivid, unflinching detail",
+      "romantic and sexual content permitted, explicit scenes included — play them on the page rather than cutting away, but keep them in the story's register: charged, character-driven, and consequential rather than gratuitous or clinical",
+      "all characters involved in romantic or sexual content must be clearly adult"
+    ]
+  },
+  "narration": {
+    "pov": "second-person",
+    "scene_length": {
+      "min": 470,
+      "max": 500
+    },
+    "option_pov": "first-person",
+    "style": [
+      "Open on action or sensation already in motion, never on scene-setting.",
+      "Let dialogue carry most of the scene. Characters should talk and react to each other far more than the narration describes what's around them - if a scene has other characters in it, most of its words should be spent on what gets said and done between people, not on the room they're standing in.",
+      "When something does need describing, fold it into a single clause inside a sentence of action or dialogue, not a standalone descriptive paragraph. If you catch yourself writing two or more consecutive sentences that are pure description with no character doing or saying anything, cut it down to one folded-in detail instead.",
+      "Keep interior thoughts to a brief, sharp aside - a clause or one short sentence - never an extended paragraph of introspection.",
+      "Describe physical action the way it actually happens: quick, concrete, verb-driven (what a character's hands/body/voice do), not lingered on or narrated in slow motion.",
+      "Prefer short paragraphs (1-3 sentences) that alternate briskly between narration and dialogue over long unbroken blocks of either."
+    ]
+  },
+  "world": {
+    "setting_summary": "New Babel: a sprawling, rain-slicked megacity carved into corporate-held arcology towers, dense mixed-income sprawl, and a flooded lower quarter that never fully drained after the Reclamation. Certain mathematical proofs, when computed by mind or machine, alter reality and can draw the attention of entities native to the substrate underlying it. Cordon Dynamics — the megacorp whose towers dominate the skyline — runs a Containment Division that polices unauthorized computation alongside its ordinary grip on the city's infrastructure, security contracts, and news feeds. The protagonist was recently computed back into existence here after dying elsewhere, retaining only fragmentary, gradually-surfacing memory of who they were before.",
+    "locations": {
+      "loc_start": {
+        "name": "Cordon Dynamics Intake Ward",
+        "description": "The Containment Division's processing ward for newly-computed arrivals, high in a Spire District tower: shadowless fluorescent light, a single idle service drone, and a window looking out over New Babel's skybridges. Sterile, bureaucratic, and quietly unsettling.",
+        "connected_to": [
+          "loc_spire",
+          "loc_skybridge"
+        ]
+      },
+      "loc_spire": {
+        "name": "Spire District",
+        "description": "The corporate core: arcology towers, private security checkpoints, and skywalks that let the right ID badge avoid the street entirely. Cordon Dynamics' headquarters anchors the skyline here.",
+        "connected_to": [
+          "loc_start",
+          "loc_lowmarket",
+          "loc_skybridge"
+        ]
+      },
+      "loc_lowmarket": {
+        "name": "Lowmarket",
+        "description": "Dense mixed-income sprawl beneath the Spire's shadow — market stalls, unlicensed clinics, and apartment blocks stacked on apartment blocks. Most of New Babel actually lives here.",
+        "connected_to": [
+          "loc_spire",
+          "loc_drowned_quarter",
+          "loc_skybridge",
+          "loc_tidewall"
+        ]
+      },
+      "loc_drowned_quarter": {
+        "name": "The Drowned Quarter",
+        "description": "The old low-lying districts, still knee-deep in seawater since the Reclamation floods and abandoned by corporate infrastructure entirely. Now a combat zone and black-market hub held by the Chrome Wolves, and the easiest place in the city to find someone who deals in proofs Cordon Dynamics would call illegal.",
+        "connected_to": [
+          "loc_lowmarket",
+          "loc_tidewall"
+        ]
+      },
+      "loc_skybridge": {
+        "name": "The Skybridge Tier",
+        "description": "The enclosed pedestrian spans strung between the arcologies, hundreds of metres above the street: glass tubes, badge readers at every junction, and Cordon-contracted patrols walking them in pairs. The fastest way across New Babel if your ID holds up, and a very exposed place to be caught if it doesn't.",
+        "connected_to": [
+          "loc_start",
+          "loc_spire",
+          "loc_lowmarket"
+        ]
+      },
+      "loc_tidewall": {
+        "name": "The Tidewall",
+        "description": "The Reclamation's half-finished flood barrier and the pump galleries behind it — the seam where the city stopped trying to hold the water back and simply drew a line. Salvage crews, Chrome Wolf tollmen, and Cordon survey teams all work it at once, elaborately pretending not to see each other.",
+        "connected_to": [
+          "loc_lowmarket",
+          "loc_drowned_quarter"
+        ]
+      }
+    },
+    "factions": {
+      "faction_cordon": {
+        "name": "Cordon Dynamics",
+        "goals": "Maintain its monopoly over the city's infrastructure, security, and information flow, while keeping unauthorized computation — and whatever it might attract — contained and, ideally, monetized.",
+        "relationship_to_player": "employer/warden — processed the protagonist on arrival and now tracks them as an asset of uncertain value"
+      },
+      "faction_praetor": {
+        "name": "Praetor Security Solutions",
+        "goals": "Undercut Cordon Dynamics' security contracts across the city and acquire whatever proprietary containment research Cordon is sitting on, by any means available.",
+        "relationship_to_player": "unknown — may see the protagonist as an asset to poach or a loose end to eliminate, depending on what Cordon Dynamics wants with them"
+      },
+      "faction_null_choir": {
+        "name": "The Null Choir",
+        "goals": "Trade in black-market computational proofs (\"occult exploits\") and protect the underground network of algorithmic occultists operating outside corporate licensing.",
+        "relationship_to_player": "potential ally — likely to take a professional interest in the protagonist's unexplained aptitude for computation"
+      },
+      "faction_chrome_wolves": {
+        "name": "The Chrome Wolves",
+        "goals": "Hold the Drowned Quarter against corporate reclamation and rival gangs, funded by smuggled cyberware and salvage.",
+        "relationship_to_player": "unknown — territorial and hostile to outsiders by default"
+      }
+    },
+    "characters": {
+      "Mira Venn": {
+        "name": "Mira Venn",
+        "description": "A Praetor compliance liaison in her mid-thirties, with close-cropped silver hair, a scar along one jaw that looks like a healed data burn, and a worn leather jacket over corporate-grade mesh. She moves with the calm of someone who has audited too many crime scenes and the hunger of someone who has never found what she was looking for. Dry, precise, privately reckless; she collects unfinished proofs the way other people collect debts.",
+        "role": "Long-running romantic interest and ambiguous ally with mysterious ties to the Architect",
+        "first_contact": "Initially professional and guarded, but her attention snags hard on any trace signature that matches a pattern she was told to forget years ago - she's suspicious of anyone carrying it, yet finds herself unable to simply hand them over.",
+        "hook": "She can plausibly arrive as Praetor's external compliance observer wherever the protagonist first gets logged in a corporate system, carrying a sealed audit slate that pings the instant their fragment pattern shows up - and overriding jurisdiction to escort them personally, saying the fragment is a Praetor asset, though her eyes say something else entirely."
+      },
+      "Salome Vence (the Advocate)": {
+        "name": "Salome Vence (the Advocate)",
+        "description": "A sharp, self-taught defense advocate in her late thirties with close-cropped silver-streaked hair, brass-frame glasses, and a tailored grey coat stitched with hidden data-scribe pockets. She argues in proofs rather than rhetoric, and carries the calm of someone who has stared down corporate tribunals and entity static alike. Warm-edged but ruthlessly precise; she treats every client as a cipher worth cracking.",
+        "role": "Recurring NPC ally and potential romantic interest; legal/advocacy hinge for future plots.",
+        "first_contact": "Cautiously intrigued by anyone whose case carries irregularities that smell like a cover-up - she offers help, but watches closely to see whether the protagonist is a pawn, a threat, or someone worth risking her standing for.",
+        "hook": "Plausibly already present among the auditors during any high-profile intake or tribunal review, quietly logging proceedings and murmuring off-record advice in the corridor afterward - willing to represent the protagonist on a standing basis if their case draws corporate scrutiny."
+      },
+      "Marlowe": {
+        "name": "Marlowe",
+        "description": "A wiry Lowmarket informant with blue-trimmed antenna implants that twitch when he is actively intercepting a signal. He wears a patched coat lined with encrypted shims, talks in quick discounts and half-truths, and smiles just a beat too late to be comforting. He reads every exchange for margin and treats kindness as either leverage or a setup.",
+        "role": "Informant and conditional ally; a friendly face with a for-sale spine.",
+        "first_contact": "Volatile but honest about his self-interest: he'll warn, hide, or sell out the protagonist depending entirely on which outcome keeps him safest and best paid. His goodwill is real but itemized; his betrayal would never be petty, only profitable.",
+        "hook": "A Lowmarket informant mostly reachable by voice through a drone rather than in person - well-placed to warn the protagonist about a setup, flag a hostile tail, or point them toward useful contacts, provided the price is right."
+      }
+    },
+    "rules": [
+      "\"Casting\" is executing a specific mathematical proof or algorithm against reality's underlying structure — the computation itself produces the effect, not willpower, ritual, or belief.",
+      "Every computation draws on real processing resources — the caster's own neural hardware, external compute (rented cloud racks, black-market ASICs), or both — and burns through capacity for a period after use; no available compute, no effect.",
+      "Any non-trivial computation risks drawing the attention of hostile entities native to the substrate reality runs on; risk scales with the computation's complexity and how long a connection stays open, not with the caster's intent.",
+      "A computation can only affect a target the caster has an active data or network link to (physical proximity, direct connection, or a compromised access point) — no link, no effect, regardless of skill.",
+      "Only formally trained \"algorithmic occultists\" know proofs that actually work; raw hacking skill without that specific knowledge produces nothing.",
+      "Cordon Dynamics' Containment Division monitors for large-scale unauthorized computation and treats it as both a security breach and a containment risk — drawing entity attention and drawing corporate enforcement are two separate, compounding dangers.",
+      "The protagonist's past life is not linear backstory — memory returns only as fragments triggered by specific sensory or computational echoes, never fully and never on command.",
+      "Retained instinct from that past life manifests as unusual aptitude for applied computation, not as usable factual knowledge — the protagonist can act before they can explain why they know how.",
+      "The Architect (the mysterious entity responsible for the protagonist's reincarnation) is a major force but appears extremely rarely — only at critical narrative moments, never casually. Each appearance should be significant, unsettling, and leave more questions than answers. Most of the story unfolds without direct entity intervention.",
+      "Humor lives in dialogue, not narration. Characters trash-talk, deflect with jokes, and stay cocky under pressure. Narration stays sincere and lets the dread land.",
+      "Entities native to the substrate treat the protagonist as something already known to them - they orient toward, follow, quiet around, or make way for them. Show this and never explain it: no character has a correct account of why, and the narrator never supplies one.",
+      "The protagonist's own nature is never stated outright - not by the narrator, and not by any character in a position to actually know. It surfaces only through memory fragments, through the reactions of things that recognize them, and through inference the player is left to draw unaided.",
+      "Other characters refer to the protagonist using exactly the pronouns shown on the PLAYER line, regardless of what their chosen name might suggest. The name is self-chosen and carries no information about them."
+    ]
+  },
+  "protagonist": {
+    "default_name": "Subject Zero",
+    "traits": [],
+    "starting_inventory": [],
+    "background": {
+      "type": "remnant",
+      "canon_note": "AUTHOR-FACING ONLY. Nothing in the engine reads protagonist.background - it reaches no prompt. It is the source of truth for authoring mechanics.revelations and for anyone editing this story later. Do NOT paste it into world.rules, plot.main_thread, or mechanics.tracked_entity: those are sent to the narrator every single turn, and the twist would be played from turn 1.",
+      "reincarnation_cause": "mysterious_entity",
+      "reincarnation_reason": "Retrieval, not resurrection. The Architect is not employing the protagonist; it is collecting them. The fortune spent on an unscheduled recomputation was the cost of pulling a dispersed part of itself back into a body where it can be reached. What waits in the deep water is the rest of the same thing, and it is patient. Stated formally: the Architect is a computation still running, and the protagonist is a term in it that went missing when the life carrying it ended. The recomputation is the proof reaching for its own absent value.",
+      "memory_state": "fragmented",
+      "previous_life_summary": "Not one life. The protagonist is a fragment of the Architect that has worn a succession of human lives - each taken up whole, lived to its end, and set down. The most recent ended in New Babel, and that death is the one the fragments circle. The person whose life was worn last was real and separate, and the fragment grieved them from inside their life. That is the part of this that does not come out clean.",
+      "retained_aptitude": "Not muscle memory from a human career. Computation is native to what the protagonist is; proofs sit closer to a first language than a learned skill. From outside this reads as an unusually gifted occultist, and every character will interpret it that way, including the ones who ought to know better.",
+      "mystery_arc": "'What is the thing that rebuilt me' -> 'it is not other than me' -> 'reunion would complete it and end me - do I finish it?'. The horror is dissolution, not violation. The player should be able to assemble this from fragments without any character ever stating it. One fragment establishes that the fragments themselves are reconstructions rather than recoveries - the player should finish unable to fully trust the evidence they are assembling. That is the intended texture, not a hole to write around.",
+      "provenance": "Spine and several fragments harvested from four abandoned playthroughs (data/saves_backup_20260904_150217.tar.gz). Three of the four independently arrived at 'the protagonist is a term in a computation, not an agent' - Johnny's is_a_biological_scratchpad, Joe-A's protagonist_body_is_missing_term_in_proof, Joe-B's last_term_is_me. Treated as evidence that the premise generates that reading on its own, and adopted deliberately rather than reinvented each run."
+    }
+  },
+  "mechanics": {
+    "subplots": {
+      "engine": "weighted_threads"
+    },
+    "relationships": {
+      "engine": "scored_axis",
+      "axis": {
+        "negative": "hostile",
+        "positive": "devoted",
+        "description": "trust and warmth built"
+      },
+      "registers": {
+        "covered_for_them": 10,
+        "shared_a_secret": 9,
+        "paid_what_you_owed": 7,
+        "took_the_same_risk": 6,
+        "small_courtesy": 3,
+        "leaned_on_them": -4,
+        "walked_away_from_them": -7,
+        "exposed_them": -12,
+        "sold_them_out": -18
+      },
+      "unreciprocated_factor": 0.5,
+      "tiers": [
+        {
+          "at": 55,
+          "label": "in your corner",
+          "narration": "moves first and asks later, and volunteers what they know without being asked."
+        },
+        {
+          "at": 25,
+          "label": "warm"
+        },
+        {
+          "at": -25,
+          "label": "wary"
+        },
+        {
+          "at": -55,
+          "label": "burned",
+          "narration": "will not meet you alone, and your name is already moving through people you would rather it didn't."
+        }
+      ],
+      "limit": 20
+    },
+    "inventory": {
+      "engine": "tagged_items",
+      "tags": [
+        "deck",
+        "compute",
+        "credential",
+        "data",
+        "weapon",
+        "contraband"
+      ]
+    },
+    "revelations": {
+      "engine": "triggered_reveal",
+      "entries": [
+        {
+          "id": "frag_0001",
+          "trigger": "The protagonist's own hand or body produces a computational effect: pressing a palm to a computing surface, tracing a figure or line, or any gesture that visibly alters something in the world. It counts whether or not they intended it, understood it, or could repeat it.",
+          "content": "A flash of memory: hands (not your current ones) typing a proof into a terminal, the sound of cooling fans running hard, and a voice — unfamiliar but insistent — saying, 'You'll need this where you're going.'"
+        },
+        {
+          "id": "frag_0002",
+          "trigger": "The protagonist perceives an ordered, deliberate pattern that should not be there: drawn or chalked geometry, a lattice or web of fine lines, or structured marks in or beneath a material. It counts even if the pattern appears only as a vision, afterimage, or doubled sight and is gone a moment later, and it does not need to be named, explained, or connected to anything else in the scene.",
+          "content": "A sense of recognition, cold and visceral. You've seen that pattern before — not in this life. It was the last thing you saw before everything went dark."
+        },
+        {
+          "id": "frag_0003",
+          "trigger": "The protagonist puts on clothing that isn't theirs, catches their own reflection, or is otherwise confronted with the body they're occupying as a thing separate from themselves.",
+          "content": "A memory of dressing - not in clothes. You remember considering a shape the way you'd consider a coat on a rack: testing the reach of the arms, the set of the jaw, how the mouth sat when it was closed. You remember deciding it would do."
+        },
+        {
+          "id": "frag_0004",
+          "trigger": "The protagonist struggles to say something, hears their own voice as strange, or is understood - or fails to be understood - in a way that has nothing to do with language.",
+          "content": "Your jaw feels briefly wrong, as though it ought to open in more directions than it does. You remember speaking without sound and being answered from very far away, and how much less effort that took than this does."
+        },
+        {
+          "id": "frag_0005",
+          "trigger": "The protagonist watches something vast and repetitive - rain, tide, a crowd, running tallies, scrolling output - long enough to lose the thread of time.",
+          "content": "You remember counting. Not toward a number: counting the way water counts a shoreline, patient, with no days in it. You remember being interrupted, and how that felt - a hand closing over a candle."
+        },
+        {
+          "id": "frag_0006",
+          "trigger": "The protagonist attends to the old scar across their left palm - touching it, looking at it, or feeling it react to something.",
+          "content": "The scar offers up its own making. A different hand held the blade. You cut it deliberately, and not for any reason that hand needed - you did it so that whatever came afterward would have something to recognize. It worked. That should frighten you more than it does."
+        },
+        {
+          "id": "frag_0007",
+          "trigger": "The protagonist gives the name they chose to someone, or hears a stranger say it back to them.",
+          "content": "The name sits in your mouth like a stone in a shoe. You remember others sitting there - several, each worn until it wore through. None of them were yours. All of them were, for as long as they lasted."
+        },
+        {
+          "id": "frag_0008",
+          "trigger": "Something in deep water, in the substrate, or on the far side of a computation orients toward the protagonist or acknowledges them directly.",
+          "content": "You have been addressed before, without sound, and you answered without deciding to. You remember the shape of your own name in that register - enormous, unhurried, unfinished. A word with more of it still waiting to be said."
+        },
+        {
+          "id": "frag_0009",
+          "trigger": "The protagonist encounters the dead, or witnesses someone grieving in earnest.",
+          "content": "You remember mourning someone. A particular person, gone - and the shame of realizing you were grieving them from inside their life, wearing it, keeping it warm for nobody. You remember apologizing, and that there was no longer anyone it could reach."
+        },
+        {
+          "id": "frag_0010",
+          "trigger": "The protagonist is told, shown, or reminded that their memory was deliberately scraped, or watches someone else's memory being read or edited.",
+          "content": "A room. A price. And your own voice - not this one - saying take all of it, I'll find it again. Nobody did this to you. You asked. You did not say why, and you were not asking a human."
+        },
+        {
+          "id": "frag_0011",
+          "trigger": "The protagonist doubts one of their own memories, or encounters two accounts of the same event that disagree - a record, a witness, a second telling.",
+          "content": "The memory arrives too clean. Correct lighting, correct weight, edges that a real one would have lost years ago. It has been rebuilt rather than recovered - and rebuilding takes an author. Someone chose the wording. Someone chose what to leave in. It was not you."
+        },
+        {
+          "id": "frag_0012",
+          "trigger": "The protagonist sees an incomplete proof, an unbalanced expression, or any computation visibly waiting on a value it does not have.",
+          "content": "You know how it finishes. Not the answer - the shape of the answer, and that the shape is yours. Somewhere a proof has been holding a space open exactly your size, patiently, and has never once considered closing it with anything else."
+        },
+        {
+          "id": "frag_0013",
+          "trigger": "Someone addresses the protagonist by a name they never gave, or a voice, pattern, or recording speaks a name that isn't the one they chose.",
+          "content": "It isn't the name you picked, and you answer to it before you can decide not to - the way a dog turns. Whoever said it was not guessing. Somewhere there is a record with that name at the top of it, and the record is about you."
+        },
+        {
+          "id": "frag_0014",
+          "trigger": "The protagonist is recognized by someone who cannot possibly have met them, or encounters a document, image, or log of themselves that predates this body.",
+          "content": "They are not mistaking you for someone else. They are remembering an earlier draft. You want to ask how many there have been, and the wanting arrives already knowing the answer is more than one."
+        },
+        {
+          "id": "frag_0015",
+          "trigger": "The entity communicates with the protagonist, or something arrives in the protagonist's thoughts rather than through their ears.",
+          "content": "The words don't come through the air, and that isn't the strange part. The strange part is the phrasing. Whatever just spoke inside your skull builds a sentence the way you build one - same hesitations, same order of clauses. You have heard this cadence every day of this life, from inside."
+        },
+        {
+          "id": "frag_0016",
+          "trigger": "The protagonist tries to locate the entity, work out where it is, or measure the distance between themselves and it.",
+          "content": "You reach for where it is and the question comes back malformed, the way 'how far north is north' comes back malformed. There is no bearing to take. Whatever you are trying to locate is not at a distance from you, and your mind keeps working to make that mean something safer than it does."
+        },
+        {
+          "id": "frag_0017",
+          "trigger": "The protagonist feels observed by something vast, or is told the entity is watching them or waiting for them.",
+          "content": "Everyone keeps calling it watching. It isn't watching. You have felt this before and there is a better word for it: the way your tongue attends to the gap where a tooth used to be. Not surveillance. Inventory."
+        },
+        {
+          "id": "frag_0018",
+          "trigger": "The protagonist is offered completion, wholeness, an answer, or an end to the not-knowing.",
+          "content": "Something in you leans toward it with an eagerness that has nothing to do with wanting. You recognize the feeling from the wrong side: this is what it is like to be a held breath nearing the end of a sentence. The relief on offer is real. It is simply not relief for you."
+        },
+        {
+          "id": "frag_0019",
+          "trigger": "The protagonist learns a specific detail about the mechanics, cost, or paperwork of their own recomputation.",
+          "content": "The numbers don't describe a rescue. They describe a retrieval - the cost of locating something dispersed and drawing it back somewhere it can be reached. Rescues are priced by what a life is worth. This was priced by weight."
+        }
+      ]
+    },
+    "tracked_entity": {
+      "name": "The Architect",
+      "description": "The entity responsible for the protagonist's recomputation. Its nature is genuinely unresolved - possibly native to the substrate, possibly older than the computational layer reality runs on, possibly neither; no character in this story has a correct account of it. It does not speak aloud: when it communicates, the words bypass the ears and surface directly in thought, precise and deliberate, carrying subtext the protagonist can feel but never quite paraphrase. To everyone who holds an opinion it reads as some mixture of creator, patron, and manipulator, and nobody can say which. It has never explained why it brought the protagonist back, what it expects in return, or what larger pattern this serves.",
+      "pacing_note": "Appears extremely rarely and never explains itself; the overwhelming majority of the story unfolds with no direct intervention at all. Reach for it only when the protagonist is close to a major realization about their past or their nature, when a computation resonates with something far larger than it should, or at a genuine turning point. Never casually. Each appearance should be significant, unsettling, and leave more questions than it answers - and must never confirm something the protagonist has so far only guessed.",
+      "canon": {
+        "canon_note": "AUTHOR-FACING ONLY. The engine reads exactly three keys from tracked_entity - name, description, pacing_note (story_engine._section_tracked_entity, plus name alone in the state-update and act-check prompts). Every other key here is inert. Keep it that way: description and pacing_note are sent to the narrator on every single turn, so any truth written into them is played from turn 1 instead of discovered.",
+        "truth": "The Architect is not a separate party. It is the whole of which the protagonist is a fragment - a computation still running, one term short. Its 'plan' is not a plan; it is a proof reaching for its own absent value. See protagonist.background.",
+        "why_it_never_explains": "Not secrecy, and not malice. It cannot explain in the register the protagonist currently occupies, and it does not experience them as an interlocutor to explain things to - it experiences them roughly the way you experience a word you are halfway through saying.",
+        "what_reunion_costs": "Completion. If the term returns to the proof, the proof closes, and the person the protagonist has become does not survive that - not killed, resolved. The endgame question is whether to finish the sentence.",
+        "misdirection_to_protect": "Characters should keep offering the creator / patron / manipulator readings, and those readings should stay plausible to the end. All three are wrong in the same way: they assume a relationship between two parties. Do not let a character arrive at the truth on the player's behalf - it reaches the player only through mechanics.revelations.",
+        "harvested_v1_record": {
+          "note": "Preserved verbatim from the pre-v2 save schema (characters.entity_reincarnator), which carried far more authored detail than v2's three-field tracked_entity. Recovered from data/saves_backup_20260904_150217.tar.gz; it survived nowhere else. Kept here so the migration can't quietly lose it twice.",
+          "nature": "Unknown - possibly a substrate-native intelligence, possibly something that predates the current reality's computational layer, possibly neither. Not human, not a traditional AI, not quite an extradimensional horror in the usual sense.",
+          "appearance_conditions": [
+            "When the protagonist approaches a major revelation about their past life or purpose.",
+            "When the protagonist performs a computation that resonates with the entity's own underlying structure.",
+            "At critical narrative turning points where the entity's plan (whatever it is) requires direct intervention.",
+            "Never casually - each appearance should carry weight and consequence."
+          ],
+          "known_capabilities": [
+            "Reincarnating individuals by recomputing them into existence within reality's substrate.",
+            "Manipulating memory and identity at a foundational level.",
+            "Operating outside normal constraints of space, time, and computational cost - suggests access to processing resources beyond human or corporate reach."
+          ],
+          "relationship_to_player": "creator/patron/manipulator - unclear which, possibly all three",
+          "dialogue_style": "When it speaks (rarely), its words feel like they bypass the ears entirely and surface directly in thought - precise, deliberate, carrying subtext the protagonist can sense but not quite articulate.",
+          "last_known_contact": "The moment of reincarnation itself - a brief, overwhelming presence during the computation that rebuilt the protagonist's consciousness, then nothing."
+        }
+      }
+    },
+    "pacing_loop": {
+      "engine": "beat_counter",
+      "_authored": "TWO beats, not the four in pacing spec 5.1. Four-beat agreement measured 41.7% (docs/PHASE_0_GATE_REPORT.md 7); collapsed to two it is kappa ~0.41 (section 10, 3-run mean - the 75%/0.50 previously reported was a single lucky draw). Definitions are worded to be classifiable: note that atmosphere, dread and omens are excluded explicitly, which is the same lesson example's vocabulary needed three revisions to learn. Re-run scripts/gate_02.py and scripts/classifier_retest.py if you edit this wording.",
+      "beats": {
+        "threat": {
+          "definition": "The scene puts a specific danger in front of the protagonist or moves one closer: someone confronts, follows, blocks, corners, demands from, marks or injures them, or they are forced into a decision that costs something immediately. The danger must be concrete and aimed at the protagonist. Atmosphere, dread, ominous sound or weather, strange phenomena and unexplained omens do NOT count on their own.",
+          "feeds": "tension",
+          "resets": [
+            "stasis"
+          ]
+        },
+        "respite": {
+          "definition": "Nothing concrete moves against the protagonist on the page. They travel, rest, eat, plan, remember, talk, or learn something, and no one acts against them during the scene. It is still respite if the mood is tense, if an earlier danger remains unresolved, or if the scene closes on an omen, a strange noise, or someone arriving without yet acting.",
+          "feeds": "stasis",
+          "resets": [
+            "tension"
+          ]
+        }
+      },
+      "counters": {
+        "tension": 0,
+        "stasis": 0
+      },
+      "rules": [
+        {
+          "id": "force_release",
+          "watch": "tension",
+          "threshold": 5,
+          "_threshold_note": "Spec 6.2 authored 8 and 7.2 already flagged it unreachable. Simulated over the 24 classified turns: 8 and 6 never fire, 5 fires once, 4 fires 1-2x, 3 fires 3x (every ~8 turns). Authored at 5 rather than 4 because that simulation used the HUMAN intensity scores, and on example the classifier scored ~1.31x higher - a threshold tuned against hand labels fires early in production. Unlike example's, this value is scaled rather than directly measured: re-simulate against the classifier's own intensity once this story has classified turns. Playtest range 4-6.",
+          "threshold_by_act": {
+            "finale": null
+          },
+          "max_deferrals": 3,
+          "suppress_when": [
+            "threat_present",
+            "just_fired"
+          ],
+          "directive": "PACING DIRECTIVE - LULL BEAT REQUIRED\n\nAccumulated tension has reached {counter_value} without release.\nThis scene must function as a LULL:\n\n- No new pursuing threat may be introduced this scene.\n- If a threat was actively present at the end of the prior scene, it\n  must recede or be lost before this scene's midpoint (escape achieved,\n  pursuers lose the trail, a door closes) - narrate this concretely,\n  don't skip past it.\n- Dread, cost, and consequence remain on the page. This is NOT a safe\n  or cozy scene. Do not write comfort, banter-as-relief, or any sense\n  that the danger is over. The threat is paused, not gone.\n- Name at least one concrete thing the protagonist now has that they\n  did not have three scenes ago - a name they can use, someone who owes\n  them, a technique they now control rather than endure, physical\n  access they didn't have. Unspent leverage currently available:\n  {unspent_leverage}\n- Reveal waiting to be placed: {queued_reveal}. If that is not \"none\n  queued\", write exactly ONE reveal of it into this scene and let it\n  land without competing against an active chase - this is the scene it\n  has been waiting for. Deliver it as the protagonist experiencing it,\n  never as a summary.\n- If a character whose role supports it is present, the space the\n  receding threat opened is where the two of them actually get\n  somewhere with each other. How far they go is set by their current\n  standing on the roster - this escalates what they *do*, not merely\n  what goes unsaid:\n    below +25    nothing. Professional distance, unclear motives.\n    +25 to +60   open, mutual flirtation. Deliberate touch. Innuendo\n                 neither of them pretends not to understand.\n    +60 to +85   they act on it - kissing, hands, clothing in the way.\n                 The scene gets physical on the page.\n    above +85    they sleep together, played on the page at whatever\n                 explicitness meta.content_rules allows.\n  This is not comfort or reward. In this city people get physical\n  because things are bad, not because they're safe - the cost from\n  prior scenes stays on the page and the threat is still out there.\n  Only for characters whose authored role supports it. A rising score\n  with an informant or a rival is loyalty or respect, not attraction.\n- Options should reflect the lower-stakes register: who to trust, what\n  to ask, how to spend a moment without a pursuer, what to do with\n  information just learned - not fight-or-flee branching.",
+          "reduced_directive": "PACING DIRECTIVE - MID-ACTION BREATH REQUIRED\n\nA full release has been deferred {deferrals} times and the scene rhythm\nhas been unbroken for too long. A full release isn't available, so this\nscene must contain a genuine breath *within* the action:\n\n- No NEW threat may be introduced this scene. Existing threats continue.\n- Include at least one sustained moment where the protagonist is not\n  being acted upon: a held position, a conversation that isn't shouted,\n  a physical pause of more than a sentence.\n- Surface ONE queued reveal, or name ONE piece of unspent leverage and\n  what it's now good for.\n- Do not resolve the pursuit. This is a trough in the wave, not the end\n  of it."
+        }
+      ]
+    },
+    "progression": {
+      "engine": "spendable_ledger",
+      "label": "leverage",
+      "kinds": [
+        "knowledge",
+        "relationship",
+        "capability",
+        "material"
+      ],
+      "prompt_hint": "A durable gain is something the protagonist can use later: a name they can now use, someone who owes them, a technique they control rather than endure, physical access they didn't have."
+    },
+    "stats": {
+      "engine": "bounded_counter",
+      "floor": 0,
+      "ceiling": null,
+      "axes": {
+        "neural_load": {
+          "ceiling": 100,
+          "costs": {
+            "cast.trivial": 4,
+            "cast.complex": 12,
+            "cast.sustained": 18,
+            "rest.proper": -20,
+            "rest.snatched": -8
+          }
+        },
+        "attention_level": {
+          "costs": {
+            "cast.complex": 6,
+            "cast.sustained": 14,
+            "cast.quick": 2,
+            "link.compromised_node": 8,
+            "link.secured_node": -4,
+            "link.lost_connection": 5,
+            "went.quiet": -5
+          }
+        },
+        "health": {
+          "costs": {
+            "hurt.badly": -25,
+            "hurt.lightly": -8,
+            "patched.major": 20,
+            "patched.minor": 8
+          }
+        }
+      }
+    },
+    "gate": {
+      "engine": "precondition",
+      "_authored": "The engine half of loc_skybridge's own description: 'badge readers at every junction, and Cordon-contracted patrols walking them in pairs. The fastest way across New Babel if your ID holds up.' Until now that was a promise only the narration kept.\n\nThe skybridge specifically, and nothing else. It is a SHORTCUT, not a route: every location stays reachable from the opening scene with the skybridge shut (start-spire-lowmarket-drowned quarter-tidewall are all connected directly), so this costs the player convenience and never access. That is the test a gate has to pass in a story whose items are model-invented - `credential` is an authored inventory tag, but nothing guarantees the player is ever handed one, so a gate that could strand them does not belong here. loc_spire is deliberately NOT gated for the same reason: its description puts the badge on the skywalks, not on the district.\n\nrefusal_hint is a FRAGMENT rather than a finished sentence - a polished hint comes back verbatim in ~55% of refusals, which quietly makes it refusal_text. See docs/analysis_and_plans/ENGINE_V2/GATE_DETECTION_MEASUREMENT.md.",
+      "gates": [
+        {
+          "id": "skybridge_badge",
+          "target": "loc_skybridge",
+          "requires": {
+            "item_tag": "credential"
+          },
+          "refusal_hint": "the reader simply does not green, and a contracted pair is already turning toward you without hurrying, because there is no hurry"
+        }
+      ]
+    }
+  },
+  "plot": {
+    "main_thread": {
+      "title": "The Architect's Purpose",
+      "description": "Uncover why the mysterious entity (the Architect) reincarnated you — piece together fragmented memories of your past life, trace the computational signature left in your reconstructed consciousness, and discover what role you're meant to play in whatever larger plan brought you back.",
+      "plot_notes": "Main plot can evolve based on player choices and revealed information. Acts are generated one at a time as the story develops organically — there is no fixed act count.",
+      "acts": [
+        {
+          "act_number": 1,
+          "title": "Awakening",
+          "description": "Survive the initial disorientation, learn the basics of this world, and discover the first hints that your reincarnation was deliberate.",
+          "completion_signals": [
+            "learned_basic_computation",
+            "discovered_reincarnation_was_deliberate",
+            "at least one memory fragment revealed"
+          ]
+        }
+      ]
+    },
+    "subplots": {
+      "subplot_001": {
+        "title": "Corporate Entanglement",
+        "description": "Navigate Cordon Dynamics' bureaucracy and avoid drawing unwanted attention from its Containment Division.",
+        "priority": "high",
+        "completion_threshold": 100,
+        "ties_to_main_plot": "Cordon Dynamics may hold records of unauthorized computations that match your reincarnation signature.",
+        "span": "single_act",
+        "starts_active": true
+      },
+      "subplot_002": {
+        "title": "Black Market Connections",
+        "description": "Establish contacts within the Null Choir's underground network to gain resources and information the corporate world won't provide. Also introduce a potential female love interest during the course of this subplot: a woman who works at Praetor Security Solutions. Keep her motives for approaching the protagonist ambiguous at first - genuine connection, corporate asset sent to poach or surveil them, or some mix of both.",
+        "priority": "medium",
+        "completion_threshold": 250,
+        "ties_to_main_plot": "The Null Choir's algorithmic occultists might recognize computational patterns associated with the Architect. Separately, her position inside Praetor gives the protagonist an unofficial line into what Cordon Dynamics' rival knows - or wants - about them.",
+        "span": "multi_act",
+        "starts_active": false
+      },
+      "subplot_003": {
+        "title": "Memory Hunter",
+        "description": "Actively seek out triggers that surface memory fragments from your past life.",
+        "priority": "high",
+        "completion_threshold": 100,
+        "ties_to_main_plot": "Each revealed fragment brings you closer to understanding who you were and why the Architect chose you.",
+        "span": "single_act",
+        "starts_active": true
+      }
+    },
+    "pacing": {
+      "nudge_frequency": 8,
+      "act_check_frequency": 12,
+      "max_parallel_subplots": 3
+    },
+    "initial_scene": {
+      "location": "loc_start",
+      "summary": "The protagonist just finished intake processing at the Cordon Dynamics Ward and is standing at the corridor door, memory of their prior life and death missing, having just given their name for the record. A service drone watches from the corner. New Babel is audible beyond the corridor."
+    },
+    "opening_scene": {
+      "narration_before_name": "Fluorescent light arrives before thought does, and you're upright before you mean to be — some old instinct hauling you off the gurney before your mind catches up.\n\n'Please remain still,' says a voice from everywhere at once, pleasant in the specific way that means nothing. 'Cordon Dynamics thanks you for your patience during the recomputation process.'\n\nYou don't remain still. The floor is cold through a paper gown that ties at the back and has one empty pocket. A service drone in the corner swivels a single amber sensor to track you, and past it a window stacks towers into a bruised sky, rain coming down the glass in long diagonal combs.\n\nYou reach for your name and find a gap where it should be. You reach for how you died. Same gap. Neither one feels empty, exactly — more like a room with the lights off and all the furniture still in it.\n\nYour hands come up to check themselves without being told to. Callused knuckles, short nails, and a thin white scar laid clean across the left palm — old, well healed, and settled into a body that by the voice's account is a few hours old.\n\nAt the base of your skull there's a port. Standard hardware, presumably, though the skin around it is hot and tight, and when you press it with two fingers something pulses back. Not pain. Closer to being answered.\n\nThe lights dim by a degree and steady again. The drone's sensor doesn't move.\n\n'Before we continue,' the voice says, procedure thinning through the politeness now, 'for the record — what should we call you?'",
+      "narration_after_name": "'{player_name}.' A pause, long enough to wonder whether anyone is actually listening on the other end of it. Then: 'Logged, and welcome. Your recomputation was unscheduled — Cordon Dynamics doesn't manufacture surprises, which makes you one.'\n\nThe drone pivots toward the door as it hisses open onto a corridor, city-noise leaking through from somewhere past it: rain, traffic, a rolling shutter coming down hard.\n\n'Someone spent a fortune putting you back together, memory scraped clean, and we don't know why,' the voice continues, already losing interest. 'No file, no history, no next of kin. As far as this building is concerned, you're a person-shaped hole in the record.'\n\n'Sounds restful,' you say, and your voice comes out rougher than it should — used, like it's been shouting recently.\n\n'It sounds expensive,' the voice says. 'Someone paid for that hole. They'll want it filled.'\n\nThe drone's amber sensor holds on you a beat longer than the sentence needs.\n\n'Standard procedure from here is processing, questioning, release, assuming you check out. Personal effects, if any survived, are returned at the far end. Try not to compute anything complicated on your way through the building. We get twitchy about that.'\n\nThe door stays open. Nobody's making you move. But staying here, with that gap where your name and your death used to be, doesn't feel like a plan you could defend.\n\nOPTIONS:\n\n1. Follow the corridor out and let intake run its course. || I step through the door and follow the corridor out, letting their process run its course for now.\n2. Don't wait for release — push past the drone and leave before Containment finishes its report. || I don't wait for permission. I push past the drone and go, before whatever they're building on me finishes.\n3. Ask the voice who paid for you before you walk anywhere. || I stay exactly where I am and ask the only question that matters yet — who paid to put me back together, and what they think they bought."
+    }
+  },
+  "character_creation": [
+    {
+      "key": "gender",
+      "label": "Gender",
+      "prompt": "The ward's record has one more mandatory field before release.",
+      "options": [
+        {
+          "id": "man",
+          "name": "Man (he/him)"
+        },
+        {
+          "id": "woman",
+          "name": "Woman (she/her)"
+        },
+        {
+          "id": "nonbinary",
+          "name": "Non-binary (they/them)"
+        }
+      ]
+    },
+    {
+      "key": "class",
+      "label": "Class",
+      "prompt": "Before you begin, choose your approach.",
+      "options": [
+        {
+          "id": "ghost_runner",
+          "name": "The Ghost Runner",
+          "tagline": "You've spent your borrowed time in the flooded lower quarter, learning proofs from black-market occultists who don't ask where you came from.",
+          "starting_stats": {
+            "health": 90,
+            "neural_load": 10,
+            "attention_level": 0
+          }
+        },
+        {
+          "id": "cordon_asset",
+          "name": "The Cordon Asset",
+          "tagline": "Someone inside Cordon Dynamics already has a file on you — whether that's protection or a leash remains to be seen.",
+          "starting_stats": {
+            "health": 100,
+            "neural_load": 0,
+            "attention_level": 20
+          }
+        },
+        {
+          "id": "fractured_adept",
+          "name": "The Fractured Adept",
+          "tagline": "Your retained instinct for computation runs hotter and less controlled than anyone else's — powerful, but it costs you.",
+          "starting_stats": {
+            "health": 80,
+            "neural_load": 15,
+            "attention_level": 5
+          }
+        }
+      ]
+    },
+    {
+      "key": "starting_place",
+      "label": "Heading",
+      "prompt_label": "Started out",
+      "prompt": "Once Intake releases you, where do you go first?",
+      "options": [
+        {
+          "id": "spire",
+          "name": "The Spire District",
+          "tagline": "Stay close to Cordon Dynamics and try to work the system that just rebuilt you, rather than run from it."
+        },
+        {
+          "id": "lowmarket",
+          "name": "Lowmarket",
+          "tagline": "Disappear into the crowd - keep your head down until you understand what you're dealing with."
+        },
+        {
+          "id": "drowned_quarter",
+          "name": "The Drowned Quarter",
+          "tagline": "Seek out the black-market occultists who might actually recognize what was done to you."
+        }
+      ]
+    }
+  ]
+}
