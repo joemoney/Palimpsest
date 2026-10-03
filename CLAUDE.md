@@ -301,11 +301,12 @@ the full reasoning behind each decision below — D1–D7 there, reproduced here
   because Flask would otherwise resolve them relative to `backend/`.
 - **Adding a story is a content change, not a code change** — drop in
   `stories/<slug>/template.json`.
-- **A story meant to stay private never goes in this repo's history.** It goes in
-  the single private submodule at `stories/private/<slug>/`, which is a second story
-  root, not a story — `state_store.story_roots()` scans both, and a slug in both
-  resolves to the public one. Mounted inside `stories/` so docker-compose's existing
-  bind mount covers it; don't move it out without adding a second mount.
+- **Stories no longer need to stay out of this repo's history.** Decided
+  2026-10-03: the private-submodule split (`stories/private/<slug>/` as a second,
+  gitignored-from-history story root) is retired — it's fine for story content,
+  including what was previously kept in `palimpsest-stories`, to be public in this
+  repo. Don't reintroduce a second story root; a story is just
+  `stories/<slug>/template.json` like any other.
 - `data/` is runtime-only and gitignored. Accounts are provisioned server-side;
   there is deliberately no self-service registration route.
 
