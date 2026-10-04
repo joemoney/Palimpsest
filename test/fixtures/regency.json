@@ -115,6 +115,44 @@
         "reputation"
       ],
       "prompt_hint": "A durable social gain the heroine can spend later: something told to her in confidence, a favour someone now owes her, an introduction that opens a door, or a standing she has visibly earned in company."
+    },
+    "bonds": {
+      "engine": "scored_bonds",
+      "registers": {
+        "confided_in": 6,
+        "slighted": -8
+      },
+      "tiers": [
+        {
+          "at": 20,
+          "label": "close"
+        },
+        {
+          "at": -20,
+          "label": "estranged"
+        }
+      ],
+      "seed": [
+        {
+          "from": "Miss Harriet Vane",
+          "to": "Mr. Aldous Crane",
+          "score": 5
+        }
+      ]
+    },
+    "lore": {
+      "engine": "keyed_lore",
+      "max_active": 2,
+      "entries": [
+        {
+          "id": "fixture_lore",
+          "priority": 10,
+          "keys": [
+            "lorekey"
+          ],
+          "content": "Fixture lore: only while its key is on the page."
+        }
+      ]
     }
   },
   "plot": {

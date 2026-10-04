@@ -127,10 +127,11 @@ ctx2 = se.state_store.load_state("steertest2", se.state_store.DEFAULT_STORY_SLUG
 plot_manager.add_emergent_direction(
     ctx2, "The Undercity Signal", "A recurring signal hints at something buried."
 )
-plot_manager.add_player_goal(ctx2, "Find out who's been intercepting the mail.")
 nudge2 = se.generate_pacing_nudge(ctx2)
 assert "The Undercity Signal" in nudge2, nudge2
-assert "Find out who's been intercepting the mail." in nudge2, nudge2
-print("OK: hand-authored add-emergent/add-goal now reach generate_pacing_nudge (write-only fix)")
+assert "PLAYER GOAL" not in nudge2, "CR-12 retired player_driven_goals and its nudge line"
+msg = plot_manager.add_player_goal(ctx2, "Find out who's been intercepting the mail.")
+assert msg and "player_threads" in msg, "a story with no player_threads has nowhere to put a goal"
+print("OK: hand-authored add-emergent reaches generate_pacing_nudge; add-goal needs player_threads (CR-12)")
 
 print("\nALL CHECKS PASSED: test_steering_seed")

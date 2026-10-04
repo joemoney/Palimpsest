@@ -1,13 +1,13 @@
 """Regression test for call_llm's Gemini fail-safe (story_engine.py): if the primary
 provider/model fails, call_llm retries once against the operator's free-tier Gemini model
 (GEMINI_MODEL) via a direct Google API call before giving up, so a freely-swapped
-TIER_AB_MODEL/TIER_C_MODEL (e.g. an experimental OpenRouter model being tried out) can't
+NARRATION_MODEL/EXTRACTION_MODEL (e.g. an experimental OpenRouter model being tried out) can't
 take the whole app down if it turns out to be unreachable or misconfigured. See
 test_openrouter.py for the opposite case (fail-safe also fails, LLMUnavailableError still
 propagates) - it exhausts the fail-safe deliberately, this file is about it succeeding.
 
 Sets TESTING_FORCE_GOOGLE=false (like test_openrouter.py) so the primary path for both
-tiers is the real OpenRouter one under test (TIER_AB_PROVIDER/TIER_C_PROVIDER already
+tiers is the real OpenRouter one under test (NARRATION_PROVIDER/EXTRACTION_PROVIDER already
 default to "openrouter") - the fail-safe always targets Gemini regardless of which tier's
 primary failed.
 

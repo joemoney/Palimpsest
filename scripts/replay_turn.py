@@ -117,9 +117,9 @@ def use_tier_b(ctx: dict, action: str, narration: str) -> dict:
     real = story_engine.call_llm_json
     story_engine.call_llm_json = lambda prompt, **kw: real(
         prompt,
-        model=story_engine.TIER_AB_MODEL,
-        provider=story_engine.TIER_AB_PROVIDER,
-        reasoning=True,
+        model=story_engine.JUDGMENT_MODEL,
+        provider=story_engine.JUDGMENT_PROVIDER,
+        reasoning=story_engine.JUDGMENT_REASONING,
     )
     try:
         return story_engine.update_progress_from_turn(ctx, action, narration)

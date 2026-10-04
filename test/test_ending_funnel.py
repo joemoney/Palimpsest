@@ -76,9 +76,10 @@ def at_turn(ctx, turn):
 class Judge:
     """Scripted call_llm_json: answers by which judge is asking, and records every call."""
     def __init__(self, commit=None, confirm=True):
-        self.commit, self.confirm, self.calls = list(commit or []), confirm, []
+        self.commit, self.confirm, self.calls, self.kwargs = list(commit or []), confirm, [], []
 
     def __call__(self, prompt, **kw):
+        self.kwargs.append(kw)
         if "ENDINGS NOW WITHIN REACH" in prompt:
             self.calls.append(("commit", prompt))
             return {"ending": self.commit.pop(0) if self.commit else None}
@@ -285,5 +286,34 @@ print("OK: the finale prompt names no player request, and finale_turns bounds it
 # --- once committed, subplot generation and act advancement no-op ------------------------
 assert se.generate_new_subplot(ctx) is None
 print("OK: a committed ending stops subplot generation, as endgame.requested always has")
+
+# --- CR-05 open question 1: both judges run on the judgment tier, not extraction -------------
+ctx = make_ctx()
+judge = Judge(commit=[1], confirm=False)
+se.call_llm_json = judge
+se._confirm_terminal(ctx, {"id": "t", "criteria": "Something irreversible happened."})
+se._judge_commit(ctx, [ENDINGS["entries"][0]])
+assert [c[0] for c in judge.calls] == ["confirm", "commit"], judge.calls
+for kw in judge.kwargs:
+    assert kw.get("model") == se.JUDGMENT_MODEL and kw.get("provider") == se.JUDGMENT_PROVIDER, kw
+    assert kw.get("reasoning") == se.JUDGMENT_REASONING, kw
+print("OK: the terminal confirmation and the commit judge both run on the judgment tier")
+
+# --- CR-05 open question 4: the account's ending collection, counted at conclusion -------
+ctx = make_ctx()
+at_turn(ctx, 30)
+se.call_llm_json = Judge()
+committed = se.check_ending_funnel(ctx)
+assert se.state_store.endings_reached("reader", "funnel_story") == []
+se._record_ending_reached(ctx, "reader", "funnel_story")
+se._record_ending_reached(ctx, "reader", "funnel_story")
+rows = se.state_store.endings_reached("reader", "funnel_story")
+assert [(r["id"], r["name"]) for r in rows] == [(committed["id"], committed["name"])], rows
+assert se.state_store.endings_reached("someone_else", "funnel_story") == []
+uncommitted = make_ctx()
+se._record_ending_reached(uncommitted, "reader", "other_story")
+assert se.state_store.endings_reached("reader", "other_story") == []
+assert mechanics.endings.display_name({"id": "x", "arc": {"title": "Arc"}}) == "Arc"
+print("OK: a concluded ending is recorded once per account, by name, and nothing without a commit")
 
 print("\nALL CHECKS PASSED: test_ending_funnel")

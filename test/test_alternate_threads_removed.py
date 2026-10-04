@@ -68,7 +68,7 @@ v1_save = {
                              {"act_number": 1, "title": "Act 1", "description": "d", "completed": False, "optional": False}
                          ], "act_history": [], "emergent_directions": []},
         "alternate_threads": {"thread_x": {"id": "thread_x", "title": "t", "description": "d", "active": False}},
-        "thread_steering": {"last_pivot_turn": 0, "pivot_history": [], "emerging_themes": [], "player_driven_goals": []},
+        "thread_steering": {"last_pivot_turn": 0, "pivot_history": [], "emerging_themes": []},
         "subplots": {}, "completed_subplots": [], "entity_interaction_count": 0,
         "endgame": {"requested": False, "requested_turn": None, "final_arc": None, "concluded": False},
         "pacing": {"turn_count": 0, "turns_since_last_pacing_nudge": 0, "pacing_nudge_frequency": 8,

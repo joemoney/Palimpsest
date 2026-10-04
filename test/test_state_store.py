@@ -102,7 +102,7 @@ try:
 
     # --- the story/state split: ctx["story"] is frozen, ctx["state"] is mutable ---
     ctx_alice = ss.load_state("alice", "story_a")
-    assert set(ctx_alice.keys()) == {"story", "state"}
+    assert set(ctx_alice.keys()) == {"story", "state", "authoring"}
     try:
         ctx_alice["story"]["meta"]["title"] = "hacked"
         assert False, "expected writing into ctx['story'] to raise"

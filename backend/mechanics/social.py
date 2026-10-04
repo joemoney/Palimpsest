@@ -275,8 +275,10 @@ class ScoredAxis(MechanicEngine):
         if len(projected) <= limit:
             return []
         authored = set(ctx["story"]["world"].get("characters", {}).keys())
+        from . import bonds  # a character cast in a live side thread is pinned (CR-11)
+        keep = bonds.pinned(ctx)
         removable = sorted(
-            (n for n in projected if n not in authored),
+            (n for n in projected if n not in authored and n not in keep),
             key=lambda n: (abs(projected[n]), n),
         )
         return [Effect("relationships.evict", reason="over_limit", target=name)
@@ -284,16 +286,88 @@ class ScoredAxis(MechanicEngine):
 
     # --- prompt ---------------------------------------------------------------------
 
+    # --- CR-08: transitions ---------------------------------------------------------
+
+    @staticmethod
+    def departed(ctx, name):
+        return bool((ctx["state"]["characters"].get(name) or {}).get("departed"))
+
+    @staticmethod
+    def _first_name_id(name):
+        return (name.split() or [name])[0].lower()
+
+    def settle(self, cfg, ctx):
+        """CR-08: evaluate the authored transitions against every relationship, after this
+        turn's deltas. Post-resolve rather than inside it because `when` reads `peak` and the
+        score *after* the move, which `resolve` cannot see (it must not touch ctx).
+
+        A transition fires once per character (`once_per_character`, default true), or on each
+        rising edge of its condition when false. Firing records `exiting`; the directive is
+        shown to the next narration only. A transition that authors `sets_flag` is a
+        departure: the turn after it fires, the exit scene having been narrated, the
+        character is marked `departed` (dropped from the roster prompts) and the flag set, by
+        code, not by asking a model whether the scene happened - P-7. Without `sets_flag` it
+        is only a one-shot directive. The condition is fail-closed (D2): a typo must not
+        send a character away for good."""
+        transitions = cfg.get("transitions") or []
+        if not transitions:
+            return []
+        from conditions import satisfied, CLOSED
+        turn = self._turn(ctx)
+        records = ctx["state"].get("mechanics", {}).get(self.slot, {}).get("transitions", {})
+        effects = []
+        for name, entry in sorted(self.scores(ctx).items()):
+            if entry.get("departed") or not isinstance(entry.get("relationship"), (int, float)):
+                continue
+            mine = records.get(name, {})
+            for tr in transitions:
+                rec = mine.get(tr["id"])
+                holds = satisfied({"relationship": name, **tr["when"]}, ctx, CLOSED)
+                fire = False
+                if rec is None:
+                    fire = holds
+                elif rec.get("phase") == "exiting" and rec["turn"] < turn:
+                    effects.append(Effect(
+                        "relationships.depart", reason=f"depart:{tr['id']}", target=name, id=tr["id"],
+                        flag=(tr.get("sets_flag") or "").replace("{id}", self._first_name_id(name)),
+                        turn=turn))
+                    continue
+                elif not tr.get("once_per_character", True) and rec.get("phase") != "exiting":
+                    fire = holds and not rec.get("holding")
+                    if rec.get("holding") != holds and not fire:
+                        effects.append(Effect("relationships.transition", reason=f"edge:{tr['id']}",
+                                              target=name, id=tr["id"], fire=False, holds=holds, turn=turn))
+                if fire:
+                    effects.append(Effect(
+                        "relationships.transition", reason=f"transition:{tr['id']}", target=name,
+                        id=tr["id"], fire=True, holds=True, turn=turn, departure=bool(tr.get("sets_flag")),
+                        directive=tr["directive"].replace("{name}", name)))
+                    break  # one transition per character per turn: two directives about one person collide
+        return effects
+
+    def _transition_directive(self, cfg, ctx):
+        records = ctx["state"].get("mechanics", {}).get(self.slot, {}).get("transitions", {})
+        turn = self._turn(ctx)
+        lines = [f"- {rec['directive']}"[:500] for _name, mine in sorted(records.items())
+                 for _id, rec in sorted(mine.items()) if rec.get("turn") == turn and rec.get("directive")]
+        if not lines:
+            return ""
+        return ("\nA RELATIONSHIP HAS REACHED A TURNING POINT. This scene only, work this in as "
+                "something that happens on the page:\n" + "\n".join(lines))[:1100]
+
     def prompt_sections(self, cfg, ctx):
         """What the narrator is handed. Empty roster contributes nothing at all rather than
         an empty dict (P-2), which is also why a story's first turns carry no social block."""
-        scores = self.scores(ctx)
+        scores = {n: e for n, e in self.scores(ctx).items() if not e.get("departed")}
+        directive = self._transition_directive(cfg, ctx)
         if not scores:
-            return {}
+            return {"directive": directive} if directive else {}
         sections = {"player_line": f" | Relationships: {self._player_line(cfg, scores)}"}
         footer = self._tier_footer(cfg, scores)
         if footer:
             sections["tiers"] = footer
+        if directive:
+            sections["directive"] = directive
         return sections
 
     def _player_line(self, cfg, scores):
@@ -343,6 +417,8 @@ def _apply_set(ctx, effect):
     entry = characters.setdefault(
         payload["target"], {"relationship": 0, "first_seen_turn": payload["turn"]})
     entry["relationship"] = payload["value"]
+    # CR-08's `peak_gte`: the highest standing ever reached, which the current score cannot say.
+    entry["peak"] = max(entry.get("peak", payload["value"]), payload["value"])
     # A social beat this turn means the narration actually put them on the page, which is
     # what flips them off generate_pacing_nudge's "CHARACTERS TO WEAVE IN" line.
     entry["introduced"] = True
@@ -358,11 +434,42 @@ def _apply_set(ctx, effect):
 
 def _apply_evict(ctx, effect):
     ctx["state"]["characters"].pop(effect.payload["target"], None)
+    from . import bonds  # a character the world forgot takes their bonds with them (CR-11)
+    bonds.drop_character(ctx, effect.payload["target"])
     window = ctx["state"].get("mechanics", {}).get(ScoredAxis.slot, {}).get("window")
     if window:
         window.pop(effect.payload["target"], None)
 
 
+def _apply_transition(ctx, effect):
+    p = effect.payload
+    mine = (ctx["state"].setdefault("mechanics", {}).setdefault(ScoredAxis.slot, {})
+            .setdefault("transitions", {}).setdefault(p["target"], {}))
+    if not p["fire"]:
+        mine[p["id"]]["holding"] = p["holds"]
+        return
+    mine[p["id"]] = {"turn": p["turn"], "holding": True, "directive": p["directive"],
+                     "phase": "exiting" if p["departure"] else "fired"}
+    if p["departure"]:
+        ctx["state"]["characters"][p["target"]]["exiting"] = True
+
+
+def _apply_depart(ctx, effect):
+    p = effect.payload
+    entry = ctx["state"]["characters"].get(p["target"])
+    if entry is not None:
+        entry["departed"] = True
+        entry.pop("exiting", None)
+    records = ctx["state"]["mechanics"][ScoredAxis.slot]["transitions"][p["target"]]
+    records[p["id"]]["phase"] = "departed"
+    if p["flag"]:
+        flags = ctx["state"]["protagonist"]["flags"]
+        flags["active"][p["flag"]] = True
+        flags["meta"][p["flag"]] = {"turn_set": p["turn"], "pinned": True}
+
+
 ENGINE = register(ScoredAxis())
+register_effect("relationships.transition", _apply_transition)
+register_effect("relationships.depart", _apply_depart)
 register_effect("relationships.set", _apply_set)
 register_effect("relationships.evict", _apply_evict)

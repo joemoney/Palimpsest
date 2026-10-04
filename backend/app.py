@@ -175,6 +175,7 @@ def _scene_and_controls_response(ctx: dict, story_slug: str, user_id: str = None
     scene_html = render_template("_scene_block.html", turn=turn, story_slug=story_slug)
     controls_html = render_template(
         "_controls.html", turn=turn, options=turn["options"], mode=mode, story_slug=story_slug,
+        epilogue=story_engine.concluded_epilogue(ctx),
         label_row=_label_row(ctx, story_slug, user_id) if user_id else None,
     )
     # class must be repeated here: an hx-swap-oob replacement swaps the whole element
@@ -200,7 +201,7 @@ def _refusal_response(ctx: dict, story_slug: str, user_id: str, refusal: dict) -
     mode = "concluded" if ctx["state"]["plot"]["endgame"]["concluded"] else "playing"
     return render_template(
         "_refusal.html", refusal=refusal, turn=turn, options=turn["options"], mode=mode,
-        story_slug=story_slug,
+        story_slug=story_slug, epilogue=story_engine.concluded_epilogue(ctx),
         label_row=_label_row(ctx, story_slug, user_id) if user_id else None,
     )
 
@@ -316,6 +317,25 @@ def _story_save_stats(user_id: str, story_slug: str) -> dict | None:
     }
 
 
+def _ending_collection(user_id: str, story_slug: str) -> dict | None:
+    """CR-05 open question 4: "Endings reached: X of Y" for the story list. Only reached endings
+    are named - an unreached one is counted, never shown, since its name could steer how the
+    player plays toward it. None for a story with no endings block (P-2: no empty section)."""
+    try:
+        block = ((state_store.load_template_raw(story_slug).get("mechanics") or {}).get("endings")) or {}
+    except (ValueError, FileNotFoundError):
+        return None
+    entries = {e.get("id"): e for e in (block.get("entries") or []) if isinstance(e, dict) and e.get("id")}
+    if not entries:
+        return None
+    # The template's current name wins over the one recorded, so a renamed ending reads as it does
+    # now; an ending since deleted from the story keeps the name it was reached under.
+    rows = state_store.endings_reached(user_id, story_slug)
+    reached = [mechanics.endings.display_name(entries[r["id"]]) if r["id"] in entries else r["name"]
+               for r in rows]
+    return {"reached": reached, "total": len(entries) + sum(1 for r in rows if r["id"] not in entries)}
+
+
 def _story_blocked_by_lint(story_slug: str) -> bool:
     """True if story_slug's on-disk template currently fails author_lint (errors, not
     warnings) - the gate that keeps a story an author is still wiring up in the board out of
@@ -338,6 +358,7 @@ def stories():
     story_list = [s for s in state_store.list_stories() if not _story_blocked_by_lint(s["slug"])]
     for story in story_list:
         story["save_stats"] = _story_save_stats(user_id, story["slug"])
+        story["endings"] = _ending_collection(user_id, story["slug"])
     return render_template("stories.html", stories=story_list)
 
 
@@ -438,6 +459,7 @@ def play(story_slug):
         "play.html", story_title=story_title, story_slug=story_slug,
         initial_turns=initial_turns, oldest_index=oldest_index, has_older=oldest_index > 0,
         turn=latest, options=latest["options"], mode=mode, animate=animate,
+        epilogue=story_engine.concluded_epilogue(ctx),
         label_row=_label_row(ctx, story_slug, user_id),
     )
 

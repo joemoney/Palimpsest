@@ -1,4 +1,7 @@
 {% if mode == "concluded" %}
+{% if epilogue %}
+<div class="epilogue">{% for para in epilogue.split("\n\n") %}<p>{{ para }}</p>{% endfor %}</div>
+{% endif %}
 <p class="end-marker">THE END</p>
 <a href="{{ url_for('stories') }}"><button style="width:100%;">Back to your stories</button></a>
 {% else %}

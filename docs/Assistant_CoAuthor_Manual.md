@@ -67,7 +67,7 @@ Format rules:
 - **Offer one version, not five.** If the idea genuinely forks, give your recommendation in
   full and one line on the alternative.
 - When something the author asked for isn't built in the engine yet (section 4), write it
-  anyway and say in one line that the story won't load for play until that engine exists.
+  anyway and say in one line that it will have no effect in play yet.
 
 ---
 
@@ -150,8 +150,8 @@ type. Ids and names save when the field loses focus (click elsewhere or press Ta
   - **Carries toward** (a dropdown: **+ Carry a waypoint…**)
   - **Fails when**
   - **On complete: stat events**: a ★ chip shows it on the thread's box. Leave it blank to
-    inherit the priority's row of **Forms → Thread progress → Completion rewards**. Not built:
-    the story loads with a warning.
+    inherit the priority's row of **Forms → Thread progress → Completion rewards**. The engine pays
+    it once, when the thread completes.
   - **Delete thread**
 - **Endings column:** **Destination endings** (**+ Ending**) and **Failure endings**
   (**+ Failure**).
@@ -227,7 +227,9 @@ condition needs one of these ids, have the author pick it in the builder by titl
    | a character's **Canon** notes, an ending's **Criteria**, the protagonist's background, a fragment's **Content** (revealed only when triggered) | **Description**, **First contact**, **Hook**, **World rules**, **Setting**, **Main theme** of a thread, act **Description**, **Hint**, lore **Content** that isn't gated |
 
    **Role** on a character is author-only, so it's a fine place for "the one who betrays
-   them". The **Criteria** of an ending is judge-only, not the narrator's.
+   them". But the linter does not check **Role** against narrator text (only **Canon** and
+   **Criteria** are checked), so you must keep its wording out of descriptions, premises and acts.
+   The **Criteria** of an ending is judge-only, not the narrator's.
 2. **A character's name is their only identity.** Use the exact spelling already on the
    board, including anything in parentheses, e.g. "Salome Vence (the Advocate)". A new
    character's name becomes the spelling everyone else must use.
@@ -244,16 +246,10 @@ condition needs one of these ids, have the author pick it in the builder by titl
 6. **Declare before you refer.** A flag must exist under **Story flags** before a condition
    can name it. A fragment, stat axis, tier label, location or character must exist before a
    condition, gate or cast can point at it.
-7. **Not built yet, but allowed.** These can be authored, but the story then won't load for
-   play until the engine catches up. Say so in one line when you use them:
-   - lore;
-   - bonds;
-   - side threads (including player-started ones and vignettes);
-   - derived values;
-   - a stat tier's **On enter: directive**.
-
-   Also: **Max acts** isn't enforced, and the
-   **Epilogue** isn't displayed yet.
+7. **Everything on the board is built.** Tier **On enter** directives, thread **Completion
+   rewards**, relationship **Transitions**, **Max acts**, the **Epilogue**, lore, derived values,
+   bonds, side threads (recipes, vignettes, player-started threads) and scene length by moment
+   all work in play.
 8. **Keep what reaches every turn short.** World rules, setting, character descriptions and
    faction lines go into every narration. Offer the short version. A fact that matters only
    when someone or somewhere is on the page is lore.
@@ -286,7 +282,7 @@ Leaf types in the builder's first dropdown, and their JSON:
 |---|---|
 | Stat | `{"stat": "nerve", "gte": 5}` (`lte`, `between: [a, b]`) |
 | Relationship | `{"relationship": "Ada Quill", "tier_gte": "trusting"}` (`tier_lte`, `peak_gte`) |
-| Bond (one character to another) | `{"bond": ["Ada Quill", "Wren"], "tier_gte": "warm"}` |
+| Bond (one character to another) | `{"bond": ["Ada Quill", "Wren"], "tier_gte": "warm"}` (in a recipe, may name cast slots) |
 | Creation choice | `{"creation": {"years": "old"}}` |
 | Flag | `{"flag": "lamp_nine_lit"}` |
 | Revelation revealed | `{"revealed": "frag_0001"}` |
@@ -384,7 +380,6 @@ turns** in the same panel. Give:
 - a **Push when the free turns run out** line in the story's voice: one concrete thing in the
   world that moves and asks for a decision, not a summary.
 
-It isn't built yet: the story loads with a warning, and every turn still counts until it is.
 
 ### 6.3 "Give me waypoints for <ending>"
 
@@ -425,7 +420,7 @@ Produce:
 - **First contact** (their stance on first meeting; shown only until the first scored
   interaction);
 - **Hook** (a concrete way on stage);
-- **Role** (author-only: their function, may state where their arc goes);
+- **Role** (author-only: their function, may state where their arc goes). The leak check does not compare it with narrator text, so never reuse its wording in the Description, a recipe premise or an act;
 - **Canon** notes (key and text: their secret truth).
 
 Also say which threads they belong in.
@@ -450,9 +445,13 @@ in red.
   scene's place.
 - **Faction:** **+ Faction** → **Id** (`faction_…`), **Name**, **Goals**, **Stance toward the
   player**.
-- **Lore** (not built): **+ Lore entry** → **Id**, **Priority**, **Keys** (specific words that
+- **Lore**: **+ Lore entry** → **Id**, **Priority**, **Keys** (specific words that
   appear in play, not generic ones), **Sticky turns**, **Also when**, **Unlocks when**,
-  **Content**.
+  **Content**. An entry is injected when a key appears (whole word, any case) in the player's
+  action or the last scene, or when **Also when** holds; **Unlocks when** keeps it dormant
+  until earned; **Sticky turns** keeps it for that many turns after. At most **Max active**
+  (default 3) are injected, highest priority first, and the injected lore must fit about 3,000
+  characters, so keep each entry to a few sentences.
 
 ### 6.7 "A clue / secret / memory the player uncovers" (a fragment)
 
@@ -505,10 +504,10 @@ These live in the **Forms** tab, each in its own section. Give the values field 
 using the labels the form shows:
 
 - **Relationships:** registers are the social beats and their worth. A tier has a label and
-  optional narration. **Transitions** (not built; the story loads with a warning) hold
+  optional narration. **Transitions** hold
   one-shot exits: give an *id*, a *when* (peak reached, plus a score or tier band), a
   *directive* that says `{name}`, and *sets flag* with `{id}` for the first name, e.g.
-  `{id}_departed`. Suggest declaring the flags too.
+  `{id}_departed`. Suggest declaring the flags too. A transition with *sets flag* is a departure: the character leaves the roster the narrator sees; one without is only a one-shot directive.
 - **Inventory:** the tag vocabulary. Starting items are on the Protagonist card.
 - **Progression:** a label, kinds and a prompt hint.
 - **Pacing loop:** beats with definitions, and one rule with a directive.
@@ -525,8 +524,11 @@ Suggest ranges in **Forms → Narration → Scene length**:
 - a **Questions** range (e.g. 120–220 words) for turns where the player only asks something.
 
 Give each as *row → min → max*. Also suggest a `style` line such as "Don't recap the previous
-scene or restate the choices." It isn't built yet: the story loads with a warning, and only the
-default row is used until it is.
+scene or restate the choices."The range is chosen in code before
+the scene is written, first match wins: the finale, then a turn where a pacing directive (or
+the idle push) fires, then the beat of the *previous* turn, then the default row. The
+**Questions** range is different: the narrator is asked to use it when the action is only a
+question, and it is never used on a directive or finale turn.
 
 ### 6.12 The protagonist, character creation, the opening
 
@@ -539,23 +541,39 @@ default row is used until it is.
 - **Opening** card: **Opening location**, **Scene summary**, and **Opening narration**. That's
   two parts, before and after the name, when the player names the protagonist, and one
   otherwise. `{player_name}` inserts the name.
-- **Derived values** (not built), on the Protagonist card:
+- **Derived values**, on the Protagonist card:
   - **+ Rule**, a condition (usually **Creation choice**), and `{name} = value` rows;
   - the last rule has no condition;
   - **Check every combination** shows the result per creation path.
 
   Tell the author to write `{name}` in the text that uses it.
 
-### 6.13 Bonds, side threads, player-started threads, vignettes (not built)
+### 6.13 Bonds, side threads, vignettes, player-started threads
+
+All four are built.
 
 - **Bonds:** Cast tab → **+ Add bonds** → **Registers** (+ Register: name, amount), **Tiers**
-  (labels only), **Starting bonds** grid (row feels it toward column), **Limits**.
-- **A side-thread recipe:** Side threads tab → **+ Add side threads** (once) → **+ Recipe** →
-  **Id**, **Premise** (about the slots, not named people), **Cast** slots, **Eligible when**
-  (a Bond condition can name slots), **May move**.
+  (labels only), **Starting bonds** grid (row feels it toward column), **Limits**. The
+  narrator sees only a tier label, and only for two characters who are in the scene together.
+  A bond between two authored characters is never dropped; limits apply to generated ones.
+- **A side-thread recipe:** Side threads tab → **+ Add side threads** (once), then **+ Recipe**
+  → **Id**, **Premise** (about the slots, not named people), **Cast** slots, **Eligible when**
+  (a Bond condition can name slots), **May move** (the only stats, flags and bonds the thread
+  may change), **New characters**, **Callback**. The engine starts a thread on its own after a
+  **Start after these beats** beat, if there is room, the **Cooldown turns** have passed and no
+  ending is committed. It writes the thread's content with one model call from the premise.
+  A thread ends when its own conditions say so, or at **Turn limit**, and the **Callback**
+  can follow its outcome (`resolved`, `failed`, `expired`, `finale`, `abandoned`).
+- **Protected characters:** tick **Protected** on anyone a side thread must never cast.
 - **Player-started threads:** Side threads tab → **+ Let the player start side threads** →
-  **At once**, **Reported**, **Within turns**, **Abandoned after offers**, **May move**.
-- **Vignettes:** **+ Add vignettes** → **At least every**, **Seeds**, **Also feature**.
+  **At once**, **Reported**, **Within turns**, **Abandoned after offers**, **May move**. When
+  the player keeps pursuing something off the rails (**Reported** times within **Within
+  turns**), the engine opens a thread for it; it never opens if its cast would include a
+  protected character, and it ends as abandoned after **Abandoned after offers** ignored offers.
+  A recipe callback can follow it. In the Plot Manager, **Start Player Thread** opens one
+  directly.
+- **Vignettes:** **+ Add vignettes** → **At least every**, **Seeds**, **Also feature**. A
+  vignette is a single texture line offered to the narrator in a quiet scene, not a thread.
 
 ### 6.14 "Review my story" / "what's missing?"
 

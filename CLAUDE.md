@@ -127,9 +127,15 @@ already gone off the rails.
   restored by a whole-state swap rather than a diff.
 
 ### LLM backend
-- **Tier A and Tier B are the same model**, distinguished only by the
-  `reasoning` flag threaded per call site. Tier C is its own model. Don't
-  collapse them into two tiers or split A/B into separate env vars.
+- **Tiers are roles, not models; each is configured to the strength of whatever model fills
+  it.** The engine must stay model-agnostic (it was first built around DeepSeek; that is no
+  longer an assumption). Current assignment, decided 2026-10-03: **narration** (Tier A)
+  `claude-sonnet-5-5`, low effort; **judgment** (Tier B: commit judge, terminal confirmation,
+  act generator) `claude-opus-5-5`, thinking always on; **extraction** (Tier C:
+  classification and state extraction) `claude-haiku-4-5-20251001`, no extended thinking.
+  Per-call behaviour (effort, thinking) is threaded per call site, never hardcoded to a
+  provider. Don't hardcode a model name outside configuration. Tier A and B may be different
+  models; code must not assume they share one. (Supersedes "A and B are the same model".)
 - **Google/Gemini is not a real tier.** It is reserved for the offline test
   suite and for `call_llm`'s own fail-safe retry.
 - **The fail-safe only ever falls back *to* Gemini, never away from it**, and

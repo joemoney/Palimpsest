@@ -33,18 +33,19 @@ build the piece real authoring needs next.
 |---|---|---|
 | Endings (destinations, catch-all, terminals, waypoints, budget, timeline) | Diagram → endings column; health panel → Ending funnel settings; Timeline | **Built** (`ending_funnel`): pruning, scoring, commits, forced commit, terminals |
 | Threads (roles, activation, carries, fail, cast) | Diagram → lanes | Built: `activate_when`, `fail_when`, carrier prune. `cast` is author-only. |
-| Acts / main thread | Diagram → acts strip | Built (`max_acts` not enforced) |
+| Acts / main thread | Diagram → acts strip | Built |
 | Protagonist, creation, opening, name capture toggle | Diagram → Start column | Built |
-| Derived values (CR-04) | Protagonist card | **Not built**: `mechanics.validate()` refuses a story with `derived` |
+| Derived values (CR-04) | Protagonist card | Built (2026-10-03): `state_store` settles `state["derived"]` once creation completes and hands consumers a substituted `ctx["story"]` |
 | Fragments | Fragments tab | Built (narrator heading is now neutral "REVEALED SO FAR") |
 | World, locations, factions | World tab | Built |
-| Lore (CR-06) | World tab → Lore | **Not built** (refuses load) |
+| Lore (CR-06) | World tab → Lore | **Built** (`mechanics/lore.py`) |
 | Cast, first contact, hook, canon, thread membership | Cast tab | Built |
-| Bonds (CR-11) | Cast tab → Bonds | **Not built** (refuses load) |
-| Side threads, recipes, vignettes (CR-11), player-started threads (CR-12) | Side threads tab | **Not built** (refuses load) |
-| Stat tiers, on_enter (CR-01) | Diagram → stat bar → tier ladder | Tiers built; `on_enter` not built (warns) |
+| Bonds (CR-11) | Cast tab → Bonds | Built (`backend/mechanics/bonds.py`) |
+| Side threads, recipes, vignettes (CR-11) | Side threads tab | Built (`backend/mechanics/episodes.py`) |
+| Player-started threads (CR-12) | Side threads tab → player threads | **Built** (confirmed in code; replaces `player_driven_goals`) |
+| Stat tiers, on_enter (CR-01) | Diagram → stat bar → tier ladder | Built |
 | Story clock / idle turns (CR-13) | Health panel → Ending funnel settings → Idle turns (also Forms → Pacing) | **Built** (`backend/clock.py`) |
-| Scene length by moment (CR-14) | Forms → Narration → Scene length | **Not built** (warns; `scene_length` default still used) |
+| Scene length by moment (CR-14) | Forms → Narration → Scene length | **Built** (`story_engine._scene_length`) |
 | Everything else (narration, pacing, stats, relationships, inventory, progression, pacing loop, gates, tracked entity) | Forms tab, schema-driven | Built |
 
 **Docs written this session:**
@@ -88,23 +89,22 @@ built, whether the board would rewrite anything, and canonical formatting.
 5. **S5 decisions confirmed** (marked as such in AUTHORING_TOOL_PHASES.md): activation ignores
    `max_parallel_subplots`; nothing activates after endgame; failure runs before activation;
    waypoint keys are qualified; a blank budget boundary means that phase never begins; the
-   carrier prune is the conservative reading; both judges are Tier C.
+   carrier prune is the conservative reading; both judges are Tier B (was Tier C; changed
+   2026-10-03 when CR-05 open question 1 was decided).
 
-6. **New, from S4 - waiting on the author.**
-   - **L03/L04 (general leak check) are warnings.** The spec says errors, but an error hides a
-     story from players and the check found two shared 40-character phrases in
-     `the_missing_core` (an act description, and a plant, each repeating canon wording). Promote
-     with `visibility.LEAK_SEVERITY` once you have read them; expect `the_missing_core` to leave
-     the stories page until they are reworded.
+6. **From S4 - decided by the author 2026-10-03.**
+   - **L03/L04 (general leak check) are errors** (`visibility.LEAK_SEVERITY`). A leak takes the story
+     off the player-facing list until it is reworded. `the_missing_core` and `rank_null` lint clean;
+     `new_babel` now shows the leak as an error.
    - **Only `x-secret` text is a leak source** (canon, hidden background, an ending's `criteria`).
      `role`, `plot_notes` and a judge's `trigger` / `detect` are not, because their wording is
-     ordinarily echoed. Say if `role` should count.
-   - **L05 is a warning** (an error only for a gated opening location).
-   - **Lore keys match as whole words, ignoring case** in the sample-state highlighting. The spec
-     only says "key match"; the engine should do the same, or the spec be amended.
-   - **`new_babel` leaks a secret:** the tracked entity's description repeats its `canon`
-     `dialogue_style`, and reaches the narrator every turn. Pinned in `test_visibility.py`
-     (`KNOWN_LEAKS`); fix it in the story and delete the entry.
+     ordinarily echoed. Open: whether `role` should count (the author asked for an explanation first).
+   - **L05 is a warning** (an error only for a gated opening location). Confirmed.
+   - **Lore keys match as whole words, ignoring case** - the engine (`mechanics/lore.py`) and the
+     sample bar now do the same. Confirmed; no spec amendment needed.
+   - **`new_babel` leaks a secret** (the tracked entity's description repeats its `canon`
+     `dialogue_style`). Pinned in `test_visibility.py` (`KNOWN_LEAKS`). It will be rewritten to the
+     new schema later, so leave it; it stays off the player list until then.
 
 ---
 
@@ -137,8 +137,7 @@ built, whether the board would rewrite anything, and canonical formatting.
 ### 3.2 Storyboard design still to do (lock the design before the engine rework)
 
 - **CR-07** (thread completion rewards) and **CR-08** (relationship transitions) are on the
-  board (commit `8495bd3`): schema, Forms/thread-panel editors, lint, load warning, *not built*
-  chips. Their engines wait on demand. CR-08 settled three points the spec left open (flat
+  board (commit `8495bd3`): schema, Forms/thread-panel editors, lint. Their engines have since landed (see below). CR-08 settled three points the spec left open (flat
   `when`; `{id}` is the first name; `{name}`/`{id}` are engine-filled placeholders in
   `derived.BUILTIN`); see AUTHORING_TOOL_PHASES.md. **CR-09** (tier-scoped narration exemplars)
   stays out of the board until A/B measurement justifies its per-turn tokens.
@@ -174,11 +173,13 @@ built, whether the board would rewrite anything, and canonical formatting.
    substitute `{name}` wherever prompts are built (including the pacing directive's
    `.format()` and the opening). Then lift the refusal in `mechanics.validate()`. The
    playable projection must also drop `derived` for preview and playtest.
-6. **CR-06 `keyed_lore`**, **CR-11 `scored_bonds` / `episodic_threads`**, **CR-12 player
+6. ~~CR-11 `scored_bonds` / `episodic_threads`~~ **Done** (`mechanics/bonds.py`, `mechanics/episodes.py`; the
+   generation call is `story_engine.advance_side_threads`, the prompt line `_section_life`). Remaining:
+   **CR-06 `keyed_lore`**, **CR-12 player
    threads** (and retire `player_driven_goals`: `plot_manager add-goal`, the goal list, the
    `PLAYER GOAL:` nudge).
 7. ~~CR-13 story clock~~ **Done** (see AUTHORING_TOOL_PHASES.md S5). **CR-14 scene length by moment**: spec with
-   acceptance criteria is in `Story_Mechanics_Update.md`; not built.
+   acceptance criteria is in `Story_Mechanics_Update.md`; built.
 8. **Deferred smaller ideas:**
    - derive `OPENROUTER_MAX_TOKENS` from the story's largest word maximum rather than a fixed
      4096;

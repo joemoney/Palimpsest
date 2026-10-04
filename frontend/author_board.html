@@ -684,7 +684,7 @@ function threadRewards(n){
 function rewardChip(n){
   const r=threadRewards(n);if(!r.events.length)return null;
   const c=el('span','chip','\u2605 '+r.events.join(', '));
-  c.title=(r.inherited?`Inherited from the ${n.priority}-priority row of Thread progress: `:'This thread\u2019s own reward: ')+'these stat events are applied when it completes (CR-07, not built yet).';
+  c.title=(r.inherited?`Inherited from the ${n.priority}-priority row of Thread progress: `:'This thread\u2019s own reward: ')+'these stat events are applied when it completes (CR-07).';
   return c;
 }
 
@@ -1260,8 +1260,8 @@ function renderInspector(){
     insp.appendChild(field('On complete: stat events',textInput(((n.on_complete&&n.on_complete.stat_events)||[]).join(', '),v=>{
       const events=v.split(',').map(s=>s.trim()).filter(Boolean);
       if(events.length)n.on_complete={stat_events:events};else delete n.on_complete;
-    },'comma-separated event keys, e.g. lattice.rejoined'),['notbuilt','not built'],
-      el('div','fieldnote','CR-07: stat events from mechanics.stats.axes.<axis>.costs, applied by the engine when this thread completes. Author-only: the narrator never sees this field. Overrides the reward its priority row gives (Forms \u203a Thread progress \u203a Completion rewards). The engine that pays it is not built yet: the story loads with a warning.')));
+    },'comma-separated event keys, e.g. lattice.rejoined'),null,
+      el('div','fieldnote','CR-07: stat events from mechanics.stats.axes.<axis>.costs, applied by the engine when this thread completes. Author-only: the narrator never sees this field. Overrides the reward its priority row gives (Forms \u203a Thread progress \u203a Completion rewards).')));
     {const r=threadRewards(n);
      if(r.inherited)insp.appendChild(el('p','note',`Inherited: ${r.events.join(', ')} from the ${n.priority}-priority completion reward. Typing events above overrides it.`));
      const vocab=rewardVocab();
@@ -1391,7 +1391,7 @@ function renderCharInspector(){
     return nudged().includes(c.name)?['','A concrete way on stage. Offered in the pacing nudge until they are introduced.']:['warn','Queued: only the last two characters with hooks are nudged in. Move this character later, or wait for one to be introduced.'];
   })));
   const ri=el('input');ri.type='text';ri.value=c.role||'';ri.addEventListener('input',()=>{c.role=ri.value;after()});
-  insp.appendChild(field('Role',ri,'world.characters.*.role',el('div','fieldnote','The card subtitle and the Plot Manager label. Never prompted: a role often says where the arc is going, and the narrator would steer there from the first scene.')));
+  insp.appendChild(field('Role',ri,'world.characters.*.role',el('div','fieldnote','The card subtitle and the Plot Manager label. Never prompted: a role often says where the arc is going, and the narrator would steer there from the first scene. For the same reason the leak check (L03/L04) does not compare it with the text the narrator sees, so keep it from being pasted into a description, premise or act text yourself.')));
 
   insp.appendChild(el('h4',null,'Canon'));
   insp.appendChild(el('p','note','Author-only truth about this character. The engine never reads it, and the leak check flags any of it that turns up in the description or hook.'));
@@ -1943,7 +1943,7 @@ function renderWorld(){
   wrap.appendChild(fa);
 
   // Lore
-  const lr=wsection('Lore',['notbuilt','not built'],'Facts the narrator needs only when they matter: an entry is injected when one of its keys appears in the player’s action or the last scene, or when its also-when condition holds, and stays for its sticky turns. The highest-priority entries win, up to the maximum active. The keyed_lore engine is not built yet: a story with lore saves, but won’t load for play until it is.');
+  const lr=wsection('Lore',null,'Facts the narrator needs only when they matter: an entry is injected when one of its keys appears in the player’s action or the last scene, or when its also-when condition holds, and stays for its sticky turns. The highest-priority entries win, up to the maximum active.');
   const ma=el('input');ma.type='number';ma.min='1';ma.value=L.max_active??'';ma.placeholder='e.g. 3';ma.addEventListener('input',()=>{const v=ma.value.trim();L.max_active=v===''?null:Number(v);changed()});
   lr.appendChild(field('Max active at once',ma));
   const lgr=el('div','castGrid');
@@ -2018,7 +2018,6 @@ function renderLoreInspector(){
   const L=model.lore,i=sel.idx,e=L.entries[i];if(!e){sel=null;return renderOverview()}
   insp.appendChild(eyebrow(`Lore · mechanics.lore.entries[${i+1}]`));
   insp.appendChild(el('h2',null,e.id||'Lore entry'));
-  insp.appendChild(el('p','note','Not built yet: the keyed_lore engine doesn’t exist, so this entry is saved and checked but not yet injected in play.'));
   insp.appendChild(field('Id',idField(e,L.entries,'lore entry'),null));
   const num=(key,ph)=>{const n=el('input');n.type='number';n.value=e[key]??'';n.placeholder=ph;n.addEventListener('input',()=>{const v=n.value.trim();if(v==='')delete e[key];else e[key]=Number(v);save();renderWorld();renderHealth()});return n};
   insp.appendChild(field('Priority',num('priority','e.g. 90'),null,el('div','fieldnote','Higher wins when more entries trigger than can be active at once.')));
@@ -2096,7 +2095,17 @@ function newThread(role){
   setActivation(n,'start');sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();
   say('Thread added, active from the start. Change that under Becomes active.');
 }
+/* CR-05's placeholder budget (open question 2, decided 2026-10-03): written into the template the
+   moment a story gets its first ending, never assumed by the engine - a blank boundary still means
+   that phase never begins there. Lint L18 names the same values for a hand-edited file. */
+const DEFAULT_BUDGET={open_until:40,narrow_until:90,commit_by:140};
+function seedBudget(){
+  if(model.nodes.some(n=>n.kind==='ending'))return;
+  const es=model.endings_settings=model.endings_settings||{};
+  if(!es.budget)es.budget=Object.assign({},DEFAULT_BUDGET);
+}
 function newEnding(ekind){
+  seedBudget();
   const ids=new Set(model.nodes.map(n=>n.id));let k=model.nodes.filter(n=>n.kind==='ending').length+1,id;
   do{id='ending_'+k++}while(ids.has(id));
   const cols=['e1','e2','e3','e4'];
@@ -2289,7 +2298,7 @@ function renderMainThreadInspector(){
   insp.appendChild(field('Plot notes',pn,null,el('div','fieldnote','Guidance on how the main plot may evolve, e.g. that acts are generated one at a time.')));
   const m=el('input');m.type='number';m.min='1';m.value=MT.max_acts??'';m.placeholder='e.g. 6';
   m.addEventListener('input',()=>{const v=m.value.trim();MT.max_acts=v===''?null:Number(v);save();renderLanes()});
-  insp.appendChild(field('Max acts',m,['notbuilt','not built'],el('div','fieldnote','CR-05: once this many acts exist, no new act is generated and play continues in the last one until an ending commits. The engine doesn’t enforce it yet.')));
+  insp.appendChild(field('Max acts',m,null,el('div','fieldnote','CR-05: once this many acts exist, no new act is generated and play continues in the last one until an ending commits. Authored acts still waiting are never blocked by it.')));
 }
 function renderActInspector(){
   const MT=model.main_thread,i=sel.idx,a=MT.acts[i];if(!a){sel=null;return renderOverview()}
@@ -2506,7 +2515,7 @@ function renderObjectBody(obj,sch,into,ctx){
 function renderSceneLengths(N,into){
   const sec=el('div');sec.style.cssText='display:grid;gap:8px;margin-top:14px';
   const h=el('h3',null,'Scene length ');h.style.cssText='font:600 15px/1.2 var(--display);margin:0';sec.appendChild(h);
-  sec.appendChild(el('p','note','How many words the narrator is asked for. The first row that applies to a turn wins; a blank row falls through to the next. Only the default is read by this build: the rest is designed (CR-14) and marked not built.'));
+  sec.appendChild(el('p','note','How many words the narrator is asked for. The first row that applies to a turn wins; a blank row falls through to the next..'));
   const def=N.scene_length||{};
   const tb=el('table','bondgrid');tb.style.width='100%';
   const hr=el('tr');['Moment','Min words','Max words',''].forEach(t=>hr.appendChild(el('th',null,t)));tb.appendChild(hr);
@@ -2525,7 +2534,7 @@ function renderSceneLengths(N,into){
   const row=(label,note,path,built)=>{const tr=el('tr');const td=el('td');td.style.textAlign='left';
     const l=el('div',null,label);l.style.fontWeight='600';td.appendChild(l);if(note){const n=el('div','fieldnote',note);td.appendChild(n)}tr.appendChild(td);
     if(path){tr.appendChild(cell(()=>getRange(path,'min'),v=>setRange(path,'min',v),'\u2014'));tr.appendChild(cell(()=>getRange(path,'max'),v=>setRange(path,'max',v),'\u2014'))}
-    const bt=el('td');if(!built){bt.appendChild(el('span','vis notbuilt','not built'))}tr.appendChild(bt);tb.appendChild(tr);return tr};
+    const bt=el('td');tr.appendChild(bt);tb.appendChild(tr);return tr};
   row('The finale','Every turn once an ending is committed.',['finale']);
   row('A pacing directive fires','Also the idle-turn push. A turn where the story forces something to happen.',['directive']);
   const beats=beatNames(),authored=Object.keys(M().beats||{});
@@ -2534,7 +2543,7 @@ function renderSceneLengths(N,into){
   if(!beats.length){const tr=el('tr');const td=el('td');td.colSpan=4;td.style.textAlign='left';td.appendChild(el('span','fieldnote','No pacing-loop beats (Forms \u203a Pacing loop), so there are no per-beat rows.'));tr.appendChild(td);tb.appendChild(tr)}
   // The default: narration.scene_length, which the engine reads today.
   const dtr=el('tr');const dtd=el('td');dtd.style.textAlign='left';const dl=el('div',null,'Every other scene (default)');dl.style.fontWeight='600';dtd.appendChild(dl);
-  dtd.appendChild(el('div','fieldnote','narration.scene_length. Read today; used whenever no row above applies.'));dtr.appendChild(dtd);
+  dtd.appendChild(el('div','fieldnote','narration.scene_length. Used whenever no row above applies.'));dtr.appendChild(dtd);
   const setDef=(k,v)=>{N.scene_length=N.scene_length||{};if(v===undefined)delete N.scene_length[k];else N.scene_length[k]=v;if(!Object.keys(N.scene_length).length)delete N.scene_length};
   dtr.appendChild(cell(()=>def.min,v=>setDef('min',v),470));dtr.appendChild(cell(()=>def.max,v=>setDef('max',v),500));dtr.appendChild(el('td'));tb.appendChild(dtr);
   sec.appendChild(tb);
@@ -2542,7 +2551,7 @@ function renderSceneLengths(N,into){
   sec.appendChild(el('p','note','Judged by the narrator, not the engine: when the player\u2019s action is only a question or a look around, the narrator is asked to answer in this range instead and end on something the player can act on. Never on a finale or directive turn.'));
   const qt=el('table','bondgrid');const qr=el('tr');const qtd=el('td');qtd.style.textAlign='left';const ql=el('div',null,'Only a question or a look around');ql.style.fontWeight='600';qtd.appendChild(ql);qr.appendChild(qtd);
   qr.appendChild(cell(()=>getRange(['inquiry'],'min'),v=>setRange(['inquiry'],'min',v),'e.g. 120'));qr.appendChild(cell(()=>getRange(['inquiry'],'max'),v=>setRange(['inquiry'],'max',v),'e.g. 220'));
-  const qb=el('td');qb.appendChild(el('span','vis notbuilt','not built'));qr.appendChild(qb);qt.appendChild(qr);sec.appendChild(qt);
+  const qb=el('td');qr.appendChild(qb);qt.appendChild(qr);sec.appendChild(qt);
   into.appendChild(sec);
 }
 function renderForms(){
@@ -2663,7 +2672,7 @@ function creationSteps(){const c=model.forms&&model.forms.character_creation;ret
 function derivedNames(){const out=[];for(const r of model.derived||[])for(const k of Object.keys(r.set||{}))if(!out.includes(k))out.push(k);return out}
 function renderDerivedSection(){
   const D=model.derived=model.derived||[];
-  const h=el('h4',null,'Derived values ');h.appendChild(el('span','vis '+NOT_BUILT[0],NOT_BUILT[1]));insp.appendChild(h);
+  const h=el('h4',null,'Derived values');insp.appendChild(h);
   insp.appendChild(el('p','note','Facts worked out once, when character creation is finished, instead of asking the narrator to work them out every turn. Write {name} in any text the narrator sees, e.g. \u201cLark Ferris is {lark_is} ({lark_pron})\u201d. The first rule whose condition holds decides every value, so end with a rule with no condition. Nothing fills these in during play yet, so a story using them won\u2019t load for play until it does.'));
   const changed=()=>{save();renderHealth()};
   const repaint=()=>{const y=insp.scrollTop;renderInspector();insp.scrollTop=y};
@@ -2716,9 +2725,7 @@ function renderOpeningInspector(){
    model.bonds and model.side_threads are mechanics.bonds / mechanics.side_threads exactly as the
    template holds them (null when absent). author_model writes each back only when it changed,
    blanks pruned, so rendering must never mutate them - containers are created in handlers only.
-   Neither engine is built yet: a story authoring either block fails load_template() loudly until
-   it is (D1). Every check is server lint (Validate); nothing here re-implements an engine rule. */
-const NOT_BUILT=['notbuilt','not built'];
+   scored_bonds, episodic_threads and player_threads (CR-12) are all built. Every check is server lint (Validate); nothing here re-implements an engine rule. */
 function putOrDel(o,k,v){if(v===undefined||v===null||v===''||(typeof v==='number'&&Number.isNaN(v)))delete o[k];else o[k]=v}
 function btn(label,on,cls){const b=el('button',cls||'btn',label);b.type='button';b.onclick=on;return b}
 function numIn(val,on,ph,min){const i=el('input');i.type='number';if(min!=null)i.min=String(min);i.value=val??'';if(ph)i.placeholder=ph;i.style.width='96px';
@@ -2743,7 +2750,7 @@ function usesBonds(){return allConditions().some(x=>bondPairsIn(x.cond).length)|
 // --- bonds, on the Cast tab --------------------------------------------------------------
 function renderBondsSection(wrap){
   const B=model.bonds;
-  const sec=wsection('Bonds between characters',NOT_BUILT,'How characters feel about each other, one way at a time: Mira → Salome and Salome → Mira are separate scores, so unrequited feeling can exist. The state-update pass moves a bond only by naming one of the registers below. The narrator sees tier labels, never numbers, and only for two characters in the same scene. Conditions can test a bond (a Bond condition), and side threads use bonds to pick who an episode is about.');
+  const sec=wsection('Bonds between characters',null,'How characters feel about each other, one way at a time: Mira → Salome and Salome → Mira are separate scores, so unrequited feeling can exist. The state-update pass moves a bond only by naming one of the registers below. The narrator sees tier labels, never numbers, and only for two characters in the same scene. Conditions can test a bond (a Bond condition), and side threads use bonds to pick who an episode is about.');
   wrap.appendChild(sec);
   if(!B){sec.appendChild(btn('+ Add bonds',()=>{model.bonds={engine:'scored_bonds'};save();renderCast();renderHealth();say('Bonds added. Give them registers: the things characters do that move a bond.')}));return}
   const changed=()=>{save();renderHealth()};
@@ -2827,7 +2834,7 @@ function renderSide(){
   const S=model.side_threads;
   const wrap=el('div','castWrap');const head=el('div','castHead');const t=el('div');
   t.appendChild(eyebrow('Side threads · mechanics.side_threads'));
-  const h=el('h2',null,S?`${recipes().length} recipe${recipes().length===1?'':'s'}`:'Side threads');h.appendChild(el('span','vis '+NOT_BUILT[0],NOT_BUILT[1]));t.appendChild(h);head.appendChild(t);
+  const h=el('h2',null,S?`${recipes().length} recipe${recipes().length===1?'':'s'}`:'Side threads');t.appendChild(h);head.appendChild(t);
   if(S)head.appendChild(btn('+ Recipe',addRecipe));
   wrap.appendChild(head);
   wrap.appendChild(el('p','note','Short episodes the story runs on its own between the planned beats: two characters the protagonist keeps throwing together, someone at the dock asking about the paperwork. They are not threads. They carry no waypoints, never count toward an act, and can never be part of an ending. The engine decides when one starts and who it is about, from the story’s numbers; the model writes what happens. Every one ends by its turn limit.'));
@@ -3038,7 +3045,7 @@ $('#healthBtn').onclick=()=>{sel=null;render();insp.scrollTop=0;if(window.matchM
 function spot(){const r=canvas.getBoundingClientRect();const p=toWorld(r.left+r.width/2,r.top+r.height/2);return {x:Math.round(p.x-118),y:Math.round(p.y-70)}}
 $('#addThread').onclick=()=>{if(diagramMode==='lanes'&&viewMode==='diagram')return newThread('spine');let i=1;while(node('subplot_'+String(i).padStart(3,'0')))i++;const id='subplot_'+String(i).padStart(3,'0');const p=spot();
   model.nodes.push({id,kind:'subplot',role:'spine',title:'New thread',theme:'',x:p.x,y:p.y});sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();say('Thread added. Connect it from the start or another thread.')};
-$('#addEnding').onclick=()=>{if(diagramMode==='lanes'&&viewMode==='diagram')return newEnding('destination');let i=1;while(node('ending_'+i))i++;const id='ending_'+i;const p=spot();const cols=['e1','e2','e3','e4'];
+$('#addEnding').onclick=()=>{if(diagramMode==='lanes'&&viewMode==='diagram')return newEnding('destination');seedBudget();let i=1;while(node('ending_'+i))i++;const id='ending_'+i;const p=spot();const cols=['e1','e2','e3','e4'];
   model.nodes.push({id,kind:'ending',ekind:'destination',color:cols[model.nodes.filter(n=>n.kind==='ending').length%4],title:'New ending',theme:'',waypoints:[],x:p.x,y:p.y});sel={type:'node',id};save();render();const t=$('#f_title');t&&t.select();say('Ending added. Give it waypoints, then connect threads to it.')};
 
 /* ---------- stat sidebar and tier ladder (Phase S3, Authoring_Tool_Spec.md §4.8) ----------
@@ -3147,8 +3154,8 @@ function renderAxisInspector(){
     li.appendChild(field('Clause max words',num(t.clause_max_words,v=>setOrDrop(t,'clause_max_words',v),'optional'),null,
       el('div','fieldnote','Only read when readout.delta_block.clause_max_words_axis names this axis.')));
     const dir=textInput(t.on_enter&&t.on_enter.directive,v=>{if(v.trim()){t.on_enter=t.on_enter||{};t.on_enter.directive=v}else delete t.on_enter;once.disabled=!t.on_enter;paintLadder()},'e.g. the belt goes quiet around the ship');
-    const onF=field('On enter: directive',dir,['notbuilt','not built'],
-      el('div','fieldnote','CR-01: injected for one turn when the value climbs into this tier. Saved now; nothing reads it until S5, and the engine warns at load.'));
+    const onF=field('On enter: directive',dir,null,
+      el('div','fieldnote','CR-01: injected for one turn when the value climbs into this tier. Skipped if you tick "Only the first time" and the story has climbed into this tier before; a jump over several tiers fires only the highest one that has a directive.'));
     li.appendChild(onF);
     const ob=el('label','toggle');const once=el('input');once.type='checkbox';once.checked=!!(t.on_enter&&t.on_enter.once);once.disabled=!t.on_enter;
     once.onchange=()=>{if(!t.on_enter)return;if(once.checked)t.on_enter.once=true;else delete t.on_enter.once;after();paintLadder()};
@@ -3186,7 +3193,7 @@ function renderTimeline(){
     const p=el('div','tl-head');
     p.appendChild(el('span',null,'No complete turn budget (open_until, narrow_until, commit_by) - the funnel has no phases to draw.'));
     const s=el('button','btn small','Start from 40 / 90 / 140');s.type='button';s.title='CR-05\'s own placeholder values. Drag the boundaries to set your own.';
-    s.onclick=()=>{es.budget=Object.assign({open_until:40,narrow_until:90,commit_by:140},b||{});touched();renderTimeline()};
+    s.onclick=()=>{es.budget=Object.assign({},DEFAULT_BUDGET,b||{});touched();renderTimeline()};
     p.appendChild(s);tl.appendChild(p);placeOverlays();return;
   }
   const terms=model.nodes.filter(n=>n.kind==='ending'&&n.ekind==='terminal');

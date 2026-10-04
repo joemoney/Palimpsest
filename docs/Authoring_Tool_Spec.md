@@ -279,6 +279,7 @@ The health panel (§4.6) is the live linter on the canvas. The Lint tab in the i
 | L14 | Always-on narrator prompt (rules + style + tier lines + entity) over a token budget (default 2,500) | warning |
 | L15 | `opening_scene` narration whose OPTIONS block doesn't parse (3 lines, `label || prose`) | error |
 | L16 | Dangling `x-ref` ids (subplot, fragment or location ids that don't exist) | error |
+| L18 | An endings block missing a `budget` boundary (`open_until`, `narrow_until`, `commit_by`); the message suggests 40 / 90 / 140 | warning |
  
 L03 and L04 share their implementation with the CR-03 leak test.
 

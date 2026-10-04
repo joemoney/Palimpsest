@@ -211,6 +211,19 @@
           }
         }
       ]
+    },
+    "side_threads": {
+      "engine": "episodic_threads",
+      "start_after_beats": [
+        "recover"
+      ],
+      "default_recipe": false,
+      "vignettes": {
+        "every": 1,
+        "seeds": [
+          "Frost ferns creep across the inside of the hull plating."
+        ]
+      }
     }
   },
   "plot": {

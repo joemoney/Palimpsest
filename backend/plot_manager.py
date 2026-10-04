@@ -227,11 +227,10 @@ def promote_emergent_to_act(ctx, emergent_index, position=None):
 
 
 def add_player_goal(ctx, goal_description):
-    """Record a player-driven goal that emerged during play."""
-    steering = ctx["state"]["plot"]["thread_steering"]
-    turn_count = ctx["state"]["pacing"]["turn_count"]
-    steering["player_driven_goals"].append({"description": goal_description, "turn": turn_count, "active": True})
-    print(f"Recorded player goal: {goal_description}")
+    """Open a player-started side thread (CR-12) directly, skipping detection."""
+    problem = story_engine.open_player_thread(ctx, goal_description)
+    print(problem or f"Opened player thread: {goal_description}")
+    return problem
 
 
 def add_emerging_theme(ctx, theme):

@@ -76,12 +76,12 @@ print("OK: previewing is repeatable and leaves the template alone")
 
 # --- an engine this build lacks is left out and named, not approximated -----------------------
 lacking = copy.deepcopy(survival)
-lacking["mechanics"]["bonds"] = {"engine": "scored_bonds", "registers": {"x": 1}}
+lacking["mechanics"]["weather"] = {"engine": "not_yet_built"}
 lacking["derived"] = [{"when": {"creation": {"a": "b"}}, "set": {"who": "them"}}]
 got = author_preview.preview(lacking, {})
-assert ("bonds", "scored_bonds") in got["left_out"], got["left_out"]
-assert any("derived" in n for n in got["notes"]), got["notes"]
-print("OK: unbuilt engines and CR-04 derived values are named as left out")
+assert ("weather", "not_yet_built") in got["left_out"], got["left_out"]
+assert not any("derived" in n for n in got["notes"]), "derived is built; it is no longer reported as left out"
+print("OK: an unbuilt engine is named as left out; CR-04 derived values no longer are")
 
 # --- a story that cannot seed a state reports it ----------------------------------------------
 broken = copy.deepcopy(survival)

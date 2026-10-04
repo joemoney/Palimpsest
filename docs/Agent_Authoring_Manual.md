@@ -114,17 +114,17 @@ by leaving the mechanic out.
 | `mechanics.revelations` | `triggered_reveal` | Built |
 | `mechanics.gate` | `precondition` | Built |
 | `mechanics.subplots` | `weighted_threads` | Built |
-| `mechanics.endings` | `ending_funnel` | Built: pruning, scoring, commits, forced commit, terminals, and steering through act generation (`plant`), early carrier activation, and the pacing nudge (carrier `plant`, `hint`, drive). **Not built:** generation limited to texture, `epilogue` display, `max_acts`. |
+| `mechanics.endings` | `ending_funnel` | Built: pruning, scoring, commits, forced commit, terminals, and steering through act generation (`plant`), early carrier activation, and the pacing nudge (carrier `plant`, `hint`, drive). `epilogue` is shown under THE END and `max_acts` caps generated acts. **Not built:** generation limited to texture. |
 | `mechanics.failure_conditions` | `triggered_ending` | **Removed (D5)**: a template carrying it is refused at load. Write terminals in `mechanics.endings` instead. |
 | `mechanics.flags` | (no engine key) | Built: declared flags are readable by conditions, and the state-update pass is told each unset flag's `detect` text. |
 | `mechanics.tracked_entity` | (no engine key) | Built |
 | `plot.pacing.story_clock` | none | Built (`backend/clock.py`) |
-| `narration.scene_length_by_moment` | none | **Not built** (loads, with a warning; every scene still uses `scene_length`) |
-| `mechanics.lore` | `keyed_lore` | **Not built** (refuses load) |
-| `mechanics.bonds` | `scored_bonds` | **Not built** (refuses load) |
-| `mechanics.side_threads` | `episodic_threads` | **Not built** (refuses load) |
-| `derived` (top level) | none | **Not built** (refuses load: nothing substitutes `{name}` yet) |
-| `mechanics.stats.axes.<axis>.tiers[].on_enter` | `bounded_counter` | **Not built** (loads, with a warning) |
+| `narration.scene_length_by_moment` | none | Built (CR-14) |
+| `mechanics.lore` | `keyed_lore` | Built (CR-06) |
+| `mechanics.bonds` | `scored_bonds` | built (CR-11) |
+| `mechanics.side_threads` | `episodic_threads` | Built (CR-11, CR-12): recipes, casts, callbacks, vignettes, player-started threads. |
+| `derived` (top level) | none | Built: settled into the save when creation completes; `{name}` is filled in everything the engine prompts |
+| `mechanics.stats.axes.<axis>.tiers[].on_enter` | `bounded_counter` | Built: one directive for the narration after an upward crossing; `once` limits it to the first entry, and a jump over several tiers fires only the highest one with a directive |
 | `plot.subplots.<id>.cast` | none | Author-only; no engine reads it |
 
 ---
@@ -148,7 +148,7 @@ Three audiences read a template:
 | `world.characters.<name>.description` | Narrator, every turn |
 | `.first_contact` | Narrator, only until the first scored interaction with that character |
 | `.hook` | Pacing nudge, until the character is introduced (only the last two characters with hooks are nudged) |
-| `.role`, `.canon` | Author |
+| `.role`, `.canon` | Author. Only `canon` is a leak source (L03/L04): `role` is deliberately not checked against narrator text, so never copy its wording into a description, recipe premise or act text |
 | `protagonist.background` | Author |
 | `plot.main_thread.title` / `description`, act `title` / `description` | Narrator |
 | act `completion_signals` | Judge (act check), and the narrator through the pacing nudge ("this act resolves when") |
@@ -233,7 +233,7 @@ player, e.g. `"first-person"`), `option_count` (how many numbered options end ea
 integer of at least 2, default 3), `scene_length` (`{"min": 250, "max": 350}`, in words), `style`
 (list of short instructions).
 
-Optional `scene_length_by_moment` (CR-14, not built) sets word ranges per moment:
+Optional `scene_length_by_moment` (CR-14) sets word ranges per moment:
 
 ```json
 {"beats": {"respite": {"min": 250, "max": 350}},
@@ -297,8 +297,8 @@ Conditions test a choice with `{"creation": {"<key>": "<option id>"}}`.
 Required: `main_thread`, `pacing`, `initial_scene`, `opening_scene`. Optional: `subplots`
 (the threads, section 9).
 
-- `main_thread`: `title`, `description`, `acts` (required), `plot_notes`, `max_acts` (not
-  enforced yet). Each act needs `act_number` (1, 2, 3...), `title` and `description`, with
+- `main_thread`: `title`, `description`, `acts` (required), `plot_notes`, `max_acts` (caps how
+  many acts are *generated*; authored acts are never blocked by it). Each act needs `act_number` (1, 2, 3...), `title` and `description`, with
   optional `completion_signals` (what the act check looks for) and `requires` (a condition that
   must hold before this act can be completed). Acts are generated on demand after the authored
   ones run out, so author only as many as you need. Don't write `is_finale` or `optional`: the
@@ -337,7 +337,7 @@ One grammar serves every condition field. A condition is an object whose keys ar
 | tier | `{"tier": ["nerve", "steady"]}` | the stat is in that tier now |
 | tier_reached | `{"tier_reached": ["nerve", "steady"]}` | the stat has ever reached that tier |
 | relationship | `{"relationship": "Ada Quill", "tier_gte": "trusting"}` (`tier_lte`, `peak_gte`, `gte`, `lte`, `between`) | the protagonist's standing with them compares. Unmet means false. |
-| bond | `{"bond": ["Ada Quill", "Wren Hale"], "tier_gte": "warm"}` (`tier_lte`, `gte`, `lte`, `between`) | one character's bond **toward** another (one-way; unopened reads 0; not built) |
+| bond | `{"bond": ["Ada Quill", "Wren Hale"], "tier_gte": "warm"}` (`tier_lte`, `gte`, `lte`, `between`) | one character's bond **toward** another (one-way; unopened reads 0) |
 | revealed | `{"revealed": "frag_0001"}` | that fragment has been revealed |
 | flag | `{"flag": "lamp_nine_lit"}` | that declared flag is set (active or archived) |
 | item_tag | `{"item_tag": "document"}` | the protagonist holds an item with that tag |
@@ -465,18 +465,18 @@ thread carries are warnings. An ending with waypoints but no carrier at all is a
 | `delivers` | Waypoints this thread carries, `"<ending id>.<waypoint id>"`. |
 | `cast` | Authored character names. Author-only for now. |
 | `completion_threshold`, `ties_to_main_plot` | Optional. Leave `completion_threshold` out to get the default. |
-| `on_complete` | Optional (CR-07, **not built**: loads with a warning). `{"stat_events": ["lattice.rejoined"]}`, names from some axis's `costs`; lint errors on a name no axis prices. Overrides the priority row in `mechanics.subplots.completion_rewards`. |
+| `on_complete` | Optional (CR-07). Paid by the engine, once, when the thread completes. `{"stat_events": ["lattice.rejoined"]}`, names from some axis's `costs`; lint errors on a name no axis prices. Overrides the priority row in `mechanics.subplots.completion_rewards`. |
 
 Thread progress is priced by the engine from what the model reports (touched / advanced /
 decisive / resolved). `mechanics.subplots: {"engine": "weighted_threads"}` must be declared
 whenever the story authors threads, or they never progress. `weights` (optional) overrides the
 default prices.
 
-CR-07 (**not built**, loads with a warning) adds two optional keys to that block:
+CR-07 adds two optional keys to that block:
 `"completion_rewards": {"high": ["section.reclaimed"], "medium": ["node.relit"], "low": []}`
 (the stat events a thread pays on completion, by its `priority`; every name must be a key of an
 axis's `costs`) and `"near_completion_margin": 15` (how close to its threshold a thread must be
-before the narrator is told it may resolve this scene; no default).
+before the narrator is told it may resolve this scene; no default). When a story pays rewards, the thread's observation gains a `resolved_unshown` answer (concluded but the payoff was not on the page): the reward is still paid, and the next scene is told the payoff is owed.
 
 ---
 
@@ -514,7 +514,7 @@ Each block goes under `mechanics` with its `engine` key.
 - `limit`: roster size. Past it, the character closest to neutral is forgotten. Authored
   characters never are.
 - `scale`, `cap_per_window`, `unreciprocated_factor`.
-- `transitions` (CR-08, **not built**: loads with a warning): one-shot directives on a
+- `transitions` (CR-08): one-shot directives on a
   relationship's history. Each is `{"id", "when", "directive", "sets_flag"?, "once_per_character"?}`.
   `when` takes the modifiers of a `relationship` condition leaf, with the character bound by the
   engine: `peak_gte`, `gte`, `lte`, `between`, `tier_gte`, `tier_lte` (at least one; all must
@@ -524,6 +524,9 @@ Each block goes under `mechanics` with its `engine` key.
   Lint errors on a duplicate id, an inverted `between`, a tier label the ladder lacks, or two
   characters sharing a first name; it warns on a silent directive or an undeclared flag.
   `name` and `id` are engine-filled there, so a `derived` value can't use either.
+  A transition that sets a flag is a departure: the scene after it fires, the character is marked
+  departed (gone from the roster the narrator sees) and the flag is set by the engine. One without
+  `sets_flag` is just the one-shot directive. One transition per character per turn.
 
 ### Inventory: `tagged_items`
 
@@ -588,14 +591,16 @@ prune an ending for good.
 `{"name", "description", "pacing_note", "canon"}`. A presence the story counts encounters
 with.
 
-### Lore: `keyed_lore` (not built)
+### Lore: `keyed_lore`
 
 `max_active`, and `entries: [{"id", "priority", "keys": [...], "also_when", "unlock",
 "sticky_turns", "content"}]`. An entry is injected when a key appears in the player's action or
 the last scene, or when `also_when` holds; `unlock` keeps it dormant until earned. Keys must be
-specific (L13).
+specific (L13). `sticky_turns` keeps an entry for N turns after it last triggered; `unlock` and
+`also_when` are read strictly (an unknown referent never injects). Injected entries are capped at
+`max_active` (default 3) and by a 3,000-character budget that is checked at load.
 
-### Bonds: `scored_bonds` (not built)
+### Bonds: `scored_bonds`
 
 One-way scores between characters: A→B and B→A are separate.
 
@@ -612,7 +617,7 @@ One-way scores between characters: A→B and B→A are separate.
 - Tiers carry `at` and `label` only; a `narration` key is a schema error.
 - A pair with no seed starts at 0.
 
-### Side threads: `episodic_threads` (not built)
+### Side threads: `episodic_threads`
 
 Short episodes the engine starts on its own between planned beats. They carry no waypoints and
 can never affect an ending.
@@ -650,7 +655,7 @@ can never affect an ending.
   `player_pursuit` is a reserved recipe id.
 - **`default_recipe`** is on unless set to `false`. It casts by bond strength, so it needs bonds.
 
-### Derived values: top-level `derived` (not built)
+### Derived values: top-level `derived`
 
 Values fixed once when character creation completes. The first rule whose `when` holds wins:
 
@@ -1048,6 +1053,7 @@ Things to notice:
 | `L14` | The always-on narrator prompt (rules, style, tracked entity) is over about 2,500 tokens. Warning: it is paid every turn, so move what only matters sometimes to lore or a tier. |
 | `L15` | The opening scene has an `OPTIONS` heading but its numbered `label \|\| what happens` lines don't parse to `option_count` options. Error. |
 | `L17` | The whole narration prompt, projected at RECENT_TURN_LIMIT turns of `scene_length.max` and a full `SUMMARY_MAX_WORDS` summary, is over the author's own token budget (20,000; `author_lint.NARRATION_TOKEN_BUDGET`). Warning: shorten `scene_length`, world rules or style, or lower the summary cap. |
+| `L18` | A `mechanics.endings` block with entries but a missing `budget.open_until`, `narrow_until` or `commit_by`. Warning, one per boundary: the engine reads a blank boundary as "that phase never begins" (no `commit_by` means no ending is ever forced). Start from 40 / 90 / 140 (`author_lint.DEFAULT_ENDINGS_BUDGET`); the board writes those when a story gets its first ending. |
 | `L16` | A dangling id: a `connected_to`, a gate target, the opening location, a fragment's `after`, a thread `cast`. |
 | `structural` | Endings nothing leads to, uncarried waypoints, threads that never activate, a spine thread that carries nothing. |
 | `arc` | An ending with no `arc`. |

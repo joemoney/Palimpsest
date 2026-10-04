@@ -395,7 +395,7 @@ Any narrator-visible string may use `{var}`, e.g. in a lore entry (CR-06): *"Lar
 Authored subplots may override with `"on_complete": {"stat_events": ["lattice.rejoined"]}`. Generated subplots inherit from `completion_rewards` by priority.
  
 **Engine behaviour: pre-arm, then settle**
-- When a thread's progress is within `near_completion_margin` of its threshold, the narrator gets a one-line pre-arm: *"'<title>' may resolve this scene; if it does, something of the vessel comes back on the page."*
+- When a thread's progress is within `near_completion_margin` of its threshold, the narrator gets a one-line pre-arm: *"'**title**' may resolve this scene; if it does, something of the vessel comes back on the page."*
 - On completion, the engine applies the reward's stat events itself; the extraction pass doesn't have to remember.
 - If the scene that crossed the threshold didn't narrate the payoff (the judge reports this in the existing state-update JSON as `reward_narrated: false`), the next turn gets a one-shot directive to pay it.
 **Acceptance:** completion always produces the reward delta exactly once, including on regenerate (the pre-turn snapshot already covers this).
@@ -996,11 +996,11 @@ The authoring tool (companion spec) can start in parallel with Phase A. Its sche
  
 ## 6. Open questions
  
-1. **Commit judge tier.** Use `JUDGMENT_MODEL` (flagship) or the state-update model? A commit is irreversible and happens one to three times per run, so the flagship tier seems justified.
-2. **Budget values.** `open_until 40 / narrow_until 90 / commit_by 140` are guesses. What length should a full run of The Missing Core be? The authoring tool's simulator (companion spec §6) can check how often each destination is ready inside the budget, but the target length is your call.
-3. **Permanent pruning.** Should any destination be revivable (e.g. a departed Lark returning)? Permanent is simpler and makes consequences stick; revivable needs a `revive_when` condition.
-4. **Ending collection.** Crack issues collectible cards per ending reached. With silent commitment, an "endings reached" record per account would be the only place the player ever sees an ending's name. It's cheap (one table, no prompt impact) and fits after-the-fact.
-5. **Structural rhyme between stories.** Both stories' canon resolves to *the protagonist is a component of a larger mind, and the ending is whether to complete it.* That works for each story on its own terms, but a player who finishes both will feel the rhyme. Decide whether that is a signature or a coincidence to break before the third story.
+1. **Commit judge tier.** Use `JUDGMENT_MODEL` (flagship) or the state-update model? A commit is irreversible and happens one to three times per run, so the flagship tier seems justified. **Decided (author, 2026-10-03): flagship for judgement.** Both the commit judge and terminal confirmation run on the judgment tier. **Amended (author, 2026-10-03): tiers are now separately configured per model strength** — `NARRATION_MODEL = claude-sonnet-5-5` (effort: low), `JUDGMENT_MODEL = claude-opus-5-5` (thinking always on), `EXTRACTION_MODEL = claude-haiku-4-5-20251001` (no extended thinking). This supersedes the earlier "no separate `JUDGMENT_MODEL`; A and B are one model" rule (CLAUDE.md, *LLM backend*, amended to match). Migrated: engine code reads `NARRATION_*`, `JUDGMENT_*` and `EXTRACTION_*` (model, provider, reasoning).
+2. **Budget values.** `open_until 40 / narrow_until 90 / commit_by 140` are guesses. What length should a full run of The Missing Core be? The authoring tool's simulator (companion spec §6) can check how often each destination is ready inside the budget, but the target length is your call. **Decided (author, 2026-10-03): the budget is per-story configuration, and 40 / 90 / 140 is the default to start from**, but written into the template, not assumed by the engine. The engine still reads a blank boundary as "that phase never begins" (the 2026-09-26 S5 decision stands). The board writes 40 / 90 / 140 when a story gets its first ending, and lint L18 warns about a hand-edited file missing any boundary, suggesting the same values.
+3. **Permanent pruning.** Should any destination be revivable (e.g. a departed Lark returning)? Permanent is simpler and makes consequences stick; revivable needs a `revive_when` condition. **Decided (author, 2026-10-03): permanent.** No `revive_when`. This is already how `ending_funnel` behaves.
+4. **Ending collection.** Crack issues collectible cards per ending reached. With silent commitment, an "endings reached" record per account would be the only place the player ever sees an ending's name. It's cheap (one table, no prompt impact) and fits after-the-fact. **Decided (author, 2026-10-03): yes.** Built as an `endings_reached` table in `accounts.db`, so it outlives saves. An ending is recorded at conclusion (THE END), not at commit. The story list shows "Endings reached: X of Y" with the names of reached endings only.
+5. **Structural rhyme between stories.** Both stories' canon resolves to *the protagonist is a component of a larger mind, and the ending is whether to complete it.* That works for each story on its own terms, but a player who finishes both will feel the rhyme. Decide whether that is a signature or a coincidence to break before the third story. **Decided (author, 2026-10-03): a coincidence.** It is not a house signature. A third story should not resolve to the same "component of a larger mind" shape.
 6. **Carrier fallback order (CR-10).** When a steered waypoint has no active carrier, the draft activates an authored carrier early before generating one. Keep that order, or never generate spine threads at all (strictly authored)? **Decided (author, 2026-09-27): strictly authored.** Nothing is generated for an uncarried waypoint (lint already warns); early activation of an authored carrier stays; texture generation stays.
 7. **`sticky_turns` default.** 3 is a guess; measure against scene-to-scene character persistence on existing saves.
 **Resolved in r2**
@@ -1019,3 +1019,12 @@ The authoring tool (companion spec) can start in parallel with Phase A. Its sche
 - Crack creator guide: [Story settings](https://help.crack.wrtn.ai/guide/user/tutorial/story/2) · [Stats](https://help.crack.wrtn.ai/guide/user/tutorial/story/4) · [Keyword book](https://help.crack.wrtn.ai/guide/user/tutorial/story/6) · [Endings](https://help.crack.wrtn.ai/guide/user/tutorial/story/8)
 - `palimpsest-stories`: `the_missing_core/template.json`, `new_babel/template.json`, `new_babel/README.md`
 - `Palimpsest`: `CLAUDE.md`, `docs/Narrative_Engine_Spec.md`, `backend/story_engine.py` (synced master; see caveat in §0)
+---
+
+## Landed notes: CR-01 `on_enter`, CR-07, CR-08, `max_acts`, epilogue (2026-10-03)
+All built. CR-07 rewards are paid by the engine's `settle()` hook when a thread completes; the
+thread observation gains a `resolved_unshown` answer (when rewards are authored) so an unshown
+payoff is owed to the next scene rather than needing a separate `reward_narrated` field. CR-08
+departure (character leaves the roster, flag set by code) applies only to a transition with
+`sets_flag`. CR-01 fires its directive for the highest tier crossed that has one. `max_acts` caps
+generated acts only; the epilogue shows under THE END.

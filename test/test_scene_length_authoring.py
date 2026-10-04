@@ -58,7 +58,28 @@ print("OK: lint catches inverted ranges, unknown beats (L10) and per-beat ranges
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
     mechanics.validate(RAW)
-assert "scene_length_by_moment (CR-14)" in buf.getvalue()
-print("OK: an authored scene_length_by_moment warns at load while no engine reads it")
+assert "scene_length_by_moment" not in buf.getvalue()
+print("OK: scene_length_by_moment no longer warns at load (an engine reads it)")
+
+se = _llm_stubs.load_story_engine()
+
+
+def length(directive=False, finale=False, beat=None, story=RAW):
+    ctx = {"story": story, "directive_fired": directive,
+           "state": {"plot": {"endgame": {"requested": finale}},
+                     "pacing": {"last_beat": {"type": beat} if beat else None}}}
+    return se._scene_length(ctx)
+
+
+assert length(finale=True, directive=True, beat="threat")[:2] == (500, 650)
+assert length(directive=True, beat="respite")[:2] == (450, 550)
+assert length(beat="respite")[:2] == (250, 350)
+assert length(beat="unknown")[:2] == (470, 500) and length()[:2] == (470, 500)
+assert "120-220" in length(beat="threat")[2]
+assert length(directive=True)[2] == "" and length(finale=True)[2] == ""
+plain = copy.deepcopy(RAW)
+del plain["narration"]["scene_length_by_moment"]
+assert length(beat="respite", story=plain) == (470, 500, "")
+print("OK: the range follows the moment (finale > directive > previous beat > default); inquiry never on directive/finale")
 
 print("\nALL CHECKS PASSED: test_scene_length_authoring")

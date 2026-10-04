@@ -164,7 +164,7 @@ with open(save_path, "w") as f:
             "main_thread": {"current_act": 1, "acts": [
                 {"act_number": 1, "title": "Act 1", "description": "d", "completed": False, "optional": False}
             ], "act_history": [], "emergent_directions": []},
-            "thread_steering": {"last_pivot_turn": 0, "pivot_history": [], "emerging_themes": [], "player_driven_goals": []},
+            "thread_steering": {"last_pivot_turn": 0, "pivot_history": [], "emerging_themes": []},
             "subplots": {}, "completed_subplots": [], "entity_interaction_count": 0,
             "endgame": {"requested": False, "requested_turn": None, "final_arc": None, "concluded": False},
             "pacing": {"turn_count": 0, "turns_since_last_pacing_nudge": 0, "pacing_nudge_frequency": 8,

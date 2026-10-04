@@ -17,14 +17,15 @@ Both work on a deep copy of the state, because a section may mutate (the pacing 
 `turns_since_nudge`). Preview is static: no LLM call, no disk, no effect on any save.
 
 Not shown: the act-generator prompt. An act advances on a condition and only then asks a model,
-so there is no single prompt to render for a sample state; and the CR-06 lore, CR-11 bonds and
-side threads, whose engines are not built, which `left_out` names.
+so there is no single prompt to render for a sample state; the CR-06 lore; and any engine this
+build lacks, which `left_out` names.
 """
 import copy
 import threading
 
 import author_evaluate
 import author_model
+import derived
 import engine_trace
 import mechanics
 import state_store
@@ -60,14 +61,15 @@ def build_ctx(raw: dict, sample: dict) -> tuple:
     are plain-language things the preview leaves out that are not engine slots."""
     projected, left_out = author_model.playable_projection(raw, set(mechanics.registered_engines()))
     notes = []
-    if projected.pop("derived", None):
-        # CR-04's `{var}` substitution is not built, so a prompt built from a story that authors
-        # derived values would carry the raw `{lark_is}` a narrator must never see.
-        notes.append("`derived` (CR-04): not built, so {variables} are left out rather than shown raw.")
-    story = state_store.freeze(projected)
     state = state_store.new_save_state(projected, "preview")
-    ctx = {"story": story, "state": state}
+    ctx = {"story": state_store.freeze(projected), "state": state}
     _overlay(ctx, author_evaluate.build_ctx(projected, sample)["state"])
+    if derived.rules(projected):
+        # CR-04: the real engine fills `{var}` once creation completes; the preview fills it from
+        # whatever the sample bar has picked, so the author sees the text a narrator would get.
+        choices = dict(state["protagonist"].get("creation_choices") or {})
+        _, values = derived.resolve(projected, derived.creation_ctx(projected, choices))
+        ctx["story"] = state_store.freeze(derived.substitute(projected, values))
     return ctx, left_out, notes
 
 

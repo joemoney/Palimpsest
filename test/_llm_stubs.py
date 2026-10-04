@@ -124,7 +124,7 @@ def load_story_engine():
     STORIES_DIR redirected too."""
     os.chdir(REPO_ROOT)  # engine modules resolve stories/, data/ relative to cwd
     os.environ.setdefault("GOOGLE_API_KEY", "test-key")
-    # story_engine.py's real tiers (TIER_AB_PROVIDER/TIER_C_PROVIDER) default to "openrouter",
+    # story_engine.py's real tiers (NARRATION_PROVIDER/EXTRACTION_PROVIDER) default to "openrouter",
     # but Google is the provider kept around specifically for testing/debugging (see
     # docs/ARCHITECTURE.md) - it's the one with a stubbable SDK (google.generativeai, below), so the
     # offline suite forces TESTING_FORCE_GOOGLE here rather than needing a fake

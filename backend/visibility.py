@@ -29,15 +29,16 @@ engine does, and `test/test_visibility.py` checks the two agree by running the r
 reappears in a `narrator` or `judge` field (L03), or of secret `judge` text in a `narrator` field
 (L04), is a secret the narrator will play from the first turn.
 """
+import json
+import os
+
 LEAK_MIN_LEN = 40
 
-# The spec (Authoring_Tool_Spec §6) makes L03/L04 errors. But a lint error takes a story off the
-# player-facing list (`app._story_blocked_by_lint`), and the general check found two shared
-# 40-character phrases in `the_missing_core` on the day it landed - phrases, not pasted secrets.
-# A warning shows the author every one without hiding a live story; promoting it is this one
-# word, once the author has read them. (The character-only check in `author_lint.cast_issues`
-# has always been an error and still is.)
-LEAK_SEVERITY = "warning"
+# Authoring_Tool_Spec §6: L03/L04 are errors. A lint error takes a story off the player-facing list
+# (`app._story_blocked_by_lint`), so a leak must be fixed before the story can be played again.
+# Promoted 2026-10-03 at the author's direction. (The character-only check in
+# `author_lint.cast_issues` has always been an error too.)
+LEAK_SEVERITY = "error"
 
 VISIBILITIES = ("narrator", "judge", "author")
 
@@ -182,3 +183,52 @@ def leak_issues(raw: dict, schema: dict) -> list:
                 out.append({"id": rule, "severity": LEAK_SEVERITY,
                             "message": f"{target['path']} repeats {what} from {source['path']}. It reaches {who}."})
     return out
+
+
+_SCHEMA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "schema", "template.v3.schema.json")
+_schema = None
+
+
+def template_schema() -> dict:
+    """The template JSON Schema, loaded once and shared (the linter, the board and the loader
+    all read the same annotations - D3)."""
+    global _schema
+    if _schema is None:
+        with open(_SCHEMA_PATH, "r", encoding="utf-8") as f:
+            _schema = json.load(f)
+    return _schema
+
+
+def split_author(raw, schema=None):
+    """`(engine_view, author_only)` for a template (CR-03, *Engine behaviour*): the loader's
+    structural allowlist. `engine_view` is `raw` with every `author`-visibility subtree and every
+    `_` author-note key removed, so a prompt builder holding it *cannot* reach a secret - it is not
+    that the engine happens to read three keys, it is that only three keys are there.
+    `author_only` is exactly what was removed, same shape, for the screens that show it (the Plot
+    Manager, the cast card). Neither shares structure with `raw`."""
+    schema = schema or template_schema()
+
+    def walk(value, node):
+        if isinstance(value, dict):
+            kept, removed = {}, {}
+            for k, v in value.items():
+                child = _child(node, k, schema) if node is not None else None
+                if (isinstance(k, str) and k.startswith("_")) or annotation(child, schema)[0] == "author":
+                    removed[k] = v
+                    continue
+                keep, gone = walk(v, child)
+                kept[k] = keep
+                if gone not in (None, {}, []):
+                    removed[k] = gone
+            return kept, removed
+        if isinstance(value, list):
+            kept, removed = [], []
+            for i, v in enumerate(value):
+                keep, gone = walk(v, _child(node, i, schema) if node is not None else None)
+                kept.append(keep)
+                removed.append(gone)
+            return kept, (removed if any(r not in (None, {}, []) for r in removed) else [])
+        return value, None
+
+    return walk(raw, schema)

@@ -69,13 +69,16 @@ fail-safe even if you never point a tier at Google directly: if any tier's
 primary call fails, it's automatically retried once against your free-tier
 `GEMINI_MODEL`), plus, for the web interface, `FLASK_SECRET_KEY` (any
 random string — used to sign session cookies). LLM calls are split into
-three tiers (Tier A: cheap flagship, reasoning off; Tier B: the same
-flagship model, reasoning on; Tier C: fastest available model) —
-`TIER_AB_MODEL`/`TIER_C_MODEL` are freely swappable via `.env` if you want
-to try a different OpenRouter model for either one — the Gemini fail-safe
+three tiers, each with its own model, provider and reasoning level:
+narration (`NARRATION_MODEL`, default `claude-sonnet-5-5`, reasoning low),
+judgment (`JUDGMENT_MODEL`, default `claude-opus-5-5`, reasoning always on)
+and extraction (`EXTRACTION_MODEL`, default `claude-haiku-4-5-20251001`, no
+extended thinking). Each is freely swappable via `.env`, along with
+`*_PROVIDER` and `*_REASONING` (`off`/`low`/`medium`/`high`); on OpenRouter
+the Claude models are addressed as `anthropic/<id>` — the Gemini fail-safe
 means an unreachable or misconfigured experiment won't take the whole app
 down. See `docs/ARCHITECTURE.md`'s "Backend / Model Notes" for the full
-`TIER_AB_PROVIDER`/`TIER_AB_MODEL`/`TIER_C_PROVIDER`/`TIER_C_MODEL` picture.
+`NARRATION_*`/`JUDGMENT_*`/`EXTRACTION_*` picture.
 Boots straight into `stories/example/`'s opening with no flags needed — the
 CLI defaults to a local single-player save against the public example story
 (`--user`/`--story` flags exist if you want to target a different one, e.g.
@@ -273,8 +276,7 @@ you. This walkthrough builds a story from an empty folder to a saved,
 lint-clean template.
 
 Before you start, know that **the storyboard runs ahead of the engine**. It
-lets you author features the story engine can't run yet, such as tier
-`on_enter` directives. Fields like that are marked with a **not built** chip. A story that
+lets you author features the story engine can't run yet, such as a not-yet-built module. Fields like that are marked with a **not built** chip. A story that
 uses them saves fine, but it won't load for play until the engine catches up.
 That's expected during the V3 overhaul, and so is the fact that play itself
 is closed for now (see `PLAY_ENABLED`). Author the story you want, not the one
@@ -378,7 +380,7 @@ Go to `/author` and click your story. The board has four parts:
       answer. When it isn't, the story never asks, and this is simply the
       protagonist's name.
 
-      **Derived values** (marked *not built*) are facts worked out once, when
+      **Derived values** are facts worked out once, when
       character creation is finished, so the narrator doesn't have to work
       them out every turn. Each rule has a condition (usually a **Creation
       choice**, e.g. *gender is man*) and the values it sets, e.g. `lark_is`
@@ -440,15 +442,14 @@ labelled with who sees it:
   every connection, the opening location, and any gate that guards it.
 - **Factions**: name, goals and stance toward the player, all sent every
   turn.
-- **Lore** (*not built*): facts injected only when they matter. An entry has
+- **Lore**: facts injected only when they matter. An entry has
   **keys** (words matched in the player's action or the last scene), an
   optional **Also when** condition (injects the entry with no key on the
   page), an optional **Unlocks when** condition (keeps it dormant until
   earned), a **priority**, **sticky turns**, and its **content**. At most
   **Max active** entries are injected at once, highest priority first. Both
   conditions are checked strictly: one naming something unknown never
-  injects. The engine that runs lore doesn't exist yet, so a story with lore
-  saves and checks fine but won't load for play until it does.
+  injects. Lore is injected in play under a `LORE:` heading.
 
 Validate flags a connection, opening location or gate naming a location that
 doesn't exist, a lore id used twice, lore keys too short or common to be
@@ -522,8 +523,7 @@ fix that in Step 8.
      progress › Completion rewards** (high / medium / low), and the panel says
      so; **Near completion margin** in the same section sets how close to
      finishing a thread must be before the narrator is told it may resolve
-     this scene. The engine that pays these is not built: a story that sets
-     any of it loads with a warning.
+     this scene. The engine pays them once, when the thread completes.
 4. Under **Characters in this thread**, tick who the thread involves. The
    list comes from the Cast tab, and a character whose name already appears
    in the thread's text is marked so you can spot them. Ticked characters
@@ -560,8 +560,8 @@ columns with no carrier are the ones still to fill.
 **Acts.** Click an act in the strip to edit its title, description and
 *completion signals*, which are what the act judge looks for to decide the
 act has resolved. **+ Act** adds another authored act. Click **Main thread**
-to edit the story's through-line and **Max acts**. The engine doesn't
-enforce *Max acts* yet, so it's marked *not built*.
+to edit the story's through-line and **Max acts**. *Max acts* caps how many acts the engine
+generates; authored acts are never blocked.
 
 #### Step 9 - Write conditions, and declare flags first
 Every condition field (*Viable while*, *Ready when*, *Fails when*,
@@ -616,9 +616,7 @@ casts them and every relationship condition that names them. Deleting a
 character removes them from every thread.
 
 #### Step 11 - Add bonds and side threads (optional)
-These two go together, and both are marked **not built**: the storyboard
-saves them, but the engines that play them don't exist yet, so a story that
-authors either one won't load for play until they do.
+These two go together; both are played by the engine.
 
 **Bonds** are how characters feel about each other, one way at a time. Mira
 toward Salome and Salome toward Mira are separate scores, so unrequited
@@ -682,8 +680,8 @@ threads** tab and click **+ Add side threads**:
    reported it, named as *the cast*. A pursuit whose cast would include a
    protected character never opens. The player still can't end the story. A
    recipe's callback can follow *a thread the player started*, including one
-   the player abandoned. This replaces the Plot Manager's player goals once
-   its engine is built; until then, player goals work as before.
+   the player abandoned. This replaces the Plot Manager's player goals;
+   `plot_manager add-goal` now opens a player thread directly.
 6. **Vignettes** (optional). Single scenes of texture with no thread and no
    extra model call. Set how often, write seeds of your own, and tick which
    places, characters or held items may also be featured.
@@ -740,7 +738,7 @@ ceiling:
 3. Drag the boundaries on the strip, or use the arrow keys, to adjust. A
    boundary can't be dragged past its neighbours.
 4. **On enter: directive** is an instruction that fires when a tier is
-   entered from below. It's marked *not built*.
+   entered from below; it fires once the narration after the crossing.
 
 An axis with no tiers gets a warning (L06), because the narrator then has no
 idea what the number means. Tiers out of order or sharing a start value are
@@ -851,10 +849,9 @@ pacing directive fires, the turn after each pacing-loop beat (e.g. a short
 range after a quiet scene), and the default for every other scene. The first
 row that applies wins, and a blank row falls through. Below it, **Questions**
 sets a shorter range the narrator uses when the player only asks something or
-looks around. Only the default is read today. The rest is marked *not built*,
-and a story that sets it loads with a warning.
+looks around. Each row applies in play.
 
-**Relationships** ends with **Transitions** (*not built*): one-shot directives
+**Relationships** ends with **Transitions**: one-shot directives
 for a relationship's history, e.g. a character who was once warm and has
 drifted back to neutral is leaving, so the narrator is told to give them an
 exit that costs something. Each has an **id**, a **when** (a peak the
@@ -863,8 +860,9 @@ whichever relationship is being checked), a **directive** that says
 `{name}`, and optionally **sets flag**, where `{id}` is the character's first
 name in lowercase (`Lark Ferris` gives `lark_departed`). Declare each
 resulting flag in the Forms tab's flags, so an ending's *Viable while* can
-read it. Fields marked *not built* load with a warning and do nothing in
-play yet.
+read it. A transition with **sets flag** is a departure: the character leaves
+the roster the narrator sees. Without it, the transition is only a one-shot
+directive.
 
 - **The forms are built from the template schema itself**, so they offer
   exactly the fields the story format allows. Each field's help text comes

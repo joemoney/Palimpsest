@@ -97,6 +97,9 @@ def all_subplots(ctx: dict) -> dict:
 DEFAULT_WEIGHTS = {"touched": 5, "advanced": 20, "decisive": 45}
 # Not in DEFAULT_WEIGHTS because it has no fixed value - see the module docstring.
 RESOLVED = "resolved"
+# CR-07: the thread concluded but the scene never showed its payoff. Offered to the model only in
+# a story that authors rewards, so a story without them keeps the plain vocabulary (P-2).
+RESOLVED_UNSHOWN = "resolved_unshown"
 
 
 class WeightedThreads(MechanicEngine):
@@ -107,7 +110,8 @@ class WeightedThreads(MechanicEngine):
     resolve_order = 60
     # §5.4. This engine contributes no narration section: the narrator already gets its
     # threads through the pacing/act machinery, which is not the registry's.
-    prompt_budget = 0
+    # CR-07's pre-arm line and owed-payoff directive; a story authoring neither contributes none.
+    prompt_budget = 800
 
     # --- configuration -------------------------------------------------------------
 
@@ -118,6 +122,24 @@ class WeightedThreads(MechanicEngine):
         settle" is structural pacing that reads the same in every genre. A story that
         disagrees overrides it; none has to invent one to get a working mechanic."""
         return {**DEFAULT_WEIGHTS, **(cfg.get("weights") or {})}
+
+    @staticmethod
+    def reward_keys(cfg, ctx, sid):
+        """The stat events thread `sid` pays on completion (CR-07). A thread's own
+        `on_complete.stat_events` wins when it names any (the board reads a blank list as
+        "inherit", so the engine does too); otherwise its priority's row. A generated thread has no template entry, so it can only
+        inherit."""
+        seed = ctx["story"]["plot"]["subplots"].get(sid) or {}
+        own = seed.get("on_complete")
+        if isinstance(own, dict) and own.get("stat_events"):
+            return list(own["stat_events"])
+        priority = subplot_view(ctx, sid)["priority"]
+        return list((cfg.get("completion_rewards") or {}).get(priority) or [])
+
+    def _pays_anything(self, cfg, ctx):
+        return bool(cfg.get("completion_rewards")) or any(
+            isinstance(sp, dict) and isinstance(sp.get("on_complete"), dict) and sp["on_complete"].get("stat_events")
+            for sp in ctx["story"]["plot"]["subplots"].values())
 
     @staticmethod
     def _views(ctx):
@@ -139,7 +161,10 @@ class WeightedThreads(MechanicEngine):
         # weight keeps it deterministic (phase 1's gate) without hardcoding the vocabulary,
         # so an authored `weights` block reorders it correctly for free.
         weights = self.weights(cfg)
-        vocabulary = ", ".join(sorted(weights, key=lambda k: (weights[k], k)) + [RESOLVED])
+        ladder = sorted(weights, key=lambda k: (weights[k], k)) + [RESOLVED]
+        if self._pays_anything(cfg, ctx):
+            ladder.append(RESOLVED_UNSHOWN)
+        vocabulary = ", ".join(ladder)
         schema = (
             '  "subplot_beats": {"<subplot_id from ACTIVE SUBPLOTS above>": "<exactly one of: '
             f'{vocabulary}>"}}'
@@ -152,8 +177,10 @@ class WeightedThreads(MechanicEngine):
         instruction = (
             "For subplot_beats, include only threads this turn actually moved: touched if it "
             "was present but unchanged, advanced for real progress, decisive for a beat that "
-            "substantially settles it, resolved only if this beat concluded it. Never report "
-            "a number - what each is worth is fixed by the engine. {} if none moved.\n"
+            "substantially settles it, resolved only if this beat concluded it"
+            + (" and the scene showed what the thread paid back, resolved_unshown if it concluded "
+               "but the scene did not show that payoff" if self._pays_anything(cfg, ctx) else "")
+            + ". Never report a number - what each is worth is fixed by the engine. {} if none moved.\n"
         )
         return [ObservationField("subplot_beats", schema, context, instruction)]
 
@@ -174,6 +201,8 @@ class WeightedThreads(MechanicEngine):
         would quietly restore the model's arithmetic for any turn it slipped back into the
         old habit, and a mechanic that is only sometimes enforced is not enforced."""
         vocabulary = set(self.weights(cfg)) | {RESOLVED}
+        if self._pays_anything(cfg, ctx):
+            vocabulary.add(RESOLVED_UNSHOWN)
         active = {sid for sid, view in self._views(ctx).items() if view.get("active")}
         events = []
         for subplot_id, beat in (diff.get("subplot_beats") or {}).items():
@@ -201,22 +230,89 @@ class WeightedThreads(MechanicEngine):
             if view is None:
                 continue
             threshold = view.get("completion_threshold") or 100
-            if beat == RESOLVED:
+            if beat in (RESOLVED, RESOLVED_UNSHOWN):
                 value = threshold
             else:
                 value = min(threshold, projected[subplot_id] + int(weights[beat]))
             value = max(0, value)
             projected[subplot_id] = value
             effects.append(Effect("subplots.progress", reason=f"beat:{beat}",
-                                  id=subplot_id, value=value))
+                                  id=subplot_id, value=value, unshown=beat == RESOLVED_UNSHOWN))
         return effects
+
+    # --- CR-07: rewards -------------------------------------------------------------
+
+    def settle(self, cfg, ctx):
+        """Pay each finished thread's reward, once. Decided after the beats have applied and
+        before the stat readout renders (so the readout shows the payment), by code rather
+        than by asking the extraction pass to remember (P-7). `reward_paid` on the runtime
+        record is what makes a second call, from `check_subplot_status` or a manual closure,
+        a no-op; a regenerate restores the whole pre-turn snapshot, so the flag goes with it."""
+        if not self._pays_anything(cfg, ctx):
+            return []
+        from . import bound_for
+        runtime = ctx["state"]["plot"]["subplots"]
+        turn = ctx["state"].get("pacing", {}).get("turn_count", 0)
+        due, keys = [], []
+        for sid, view in self._views(ctx).items():
+            record = runtime[sid]
+            if record.get("reward_paid") or view["status"] == "failed":
+                continue
+            done = view["status"] == "completed" or (
+                view["active"] and view["progress"] >= view["completion_threshold"])
+            if done:
+                due.append(sid)
+                keys.extend(self.reward_keys(cfg, ctx, sid))
+        if not due:
+            return []
+        effects = []
+        stats = bound_for(ctx["story"], "stats")
+        if keys and stats is not None:
+            effects.extend(stats.engine.pay(stats.cfg, ctx, keys, "thread_reward"))
+        effects.append(Effect("subplots.reward_paid", reason="reward", ids=due, turn=turn,
+                              owed=[sid for sid in due if ctx["state"]["plot"]["subplots"][sid].get("unshown")]))
+        return effects
+
+    def prompt_sections(self, cfg, ctx):
+        sections = {}
+        margin = cfg.get("near_completion_margin")
+        turn = ctx["state"].get("pacing", {}).get("turn_count", 0)
+        if margin:
+            lines = []
+            for sid, view in sorted(self._views(ctx).items()):
+                gap = view["completion_threshold"] - view["progress"]
+                if view["active"] and 0 < gap <= margin:
+                    pays = bool(self.reward_keys(cfg, ctx, sid))
+                    lines.append(f"- '{view['title']}' may resolve this scene" + (
+                        "; if it does, let what it pays back be seen on the page in that same scene." if pays else "."))
+            if lines:
+                sections["arm"] = ("\nTHREADS NEAR THEIR END:\n" + "\n".join(lines))[:780]
+        owed = [sid for sid, rec in ctx["state"]["plot"]["subplots"].items()
+                if rec.get("owed_turn") == turn]
+        if owed:
+            titles = ", ".join(f"'{subplot_view(ctx, sid)['title']}'" for sid in sorted(owed))
+            sections["directive"] = (f"\nA PAYOFF IS OWED. {titles} concluded last scene but what it "
+                                     f"pays back never reached the page. Show it now, this scene.")[:780]
+        return sections
 
 
 def _apply_progress(ctx, effect):
     subplot = ctx["state"]["plot"]["subplots"].get(effect.payload["id"])
     if subplot is not None:
         subplot["progress"] = effect.payload["value"]
+        if effect.payload.get("unshown"):
+            subplot["unshown"] = True
+
+
+def _apply_reward_paid(ctx, effect):
+    for sid in effect.payload["ids"]:
+        record = ctx["state"]["plot"]["subplots"][sid]
+        record["reward_paid"] = True
+        if sid in effect.payload["owed"]:
+            # Shown to the narration that follows this turn: it reads off the turn it was recorded on.
+            record["owed_turn"] = effect.payload["turn"]
 
 
 ENGINE = register(WeightedThreads())
 register_effect("subplots.progress", _apply_progress)
+register_effect("subplots.reward_paid", _apply_reward_paid)

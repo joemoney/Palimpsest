@@ -25,6 +25,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 import clock
 import mechanics
 import migrate_v1
+import visibility
+import derived
 from frozen_dict import assert_unmutated, freeze, thaw
 
 STORIES_DIR = "stories"
@@ -150,7 +152,17 @@ def load_template(story_slug: str) -> dict:
     template that predates the registry."""
     raw = load_template_raw(story_slug)
     mechanics.validate(raw)
-    return freeze(raw)
+    # CR-03: the engine is handed only what the schema marks narrator- or judge-visible; author
+    # fields (canon, a character's role, `_` notes, ...) are removed here, not merely left unread.
+    engine_view, _ = visibility.split_author(raw)
+    return freeze(engine_view)
+
+
+def load_template_authoring(story_slug: str) -> dict:
+    """The author-only half of a template (what load_template() strips, same shape), for the
+    screens that display it - the Plot Manager and the cast card. Put on ctx["authoring"],
+    never on ctx["story"]; prompt builders have no business reading it."""
+    return freeze(visibility.split_author(load_template_raw(story_slug))[1])
 
 
 def _dumps_template(raw: dict) -> str:
@@ -313,7 +325,7 @@ def new_save_state(story: dict, story_slug: str) -> dict:
             },
             "thread_steering": {
                 "last_pivot_turn": 0, "pivot_history": [], "emerging_themes": [],
-                "player_driven_goals": [], "pending_seeds": [],
+                "pending_seeds": [],
             },
         },
 
@@ -403,6 +415,17 @@ def _load_existing_state(user_id: str, story_slug: str, story: dict) -> dict | N
         return _reconcile(raw_state, story)
 
 
+def _with_derived(story: dict, state: dict) -> dict:
+    """CR-04: settles the save's creation-derived values (once creation completes) and returns the
+    story with each `{var}` filled in, frozen. A story authoring no `derived` rules is returned
+    untouched."""
+    if not derived.rules(story):
+        return story
+    plain = thaw(story)
+    derived.settle(plain, state)
+    return freeze(derived.substitute(plain, (state.get("derived") or {}).get("values")))
+
+
 def load_state(user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_SLUG) -> dict:
     """Loads a user's save for a story, cloning a fresh runtime state from the story's
     authored pools on first play. Returns {"story": ctx, "state": ctx} - see module
@@ -417,7 +440,7 @@ def load_state(user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_S
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w") as f:
                 json.dump(state, f, indent=2)
-    return {"story": story, "state": state}
+    return {"story": _with_derived(story, state), "state": state, "authoring": load_template_authoring(story_slug)}
 
 
 def peek_state(user_id: str, story_slug: str) -> dict | None:
@@ -428,7 +451,7 @@ def peek_state(user_id: str, story_slug: str) -> dict | None:
     state = _load_existing_state(user_id, story_slug, story)
     if state is None:
         return None
-    return {"story": story, "state": state}
+    return {"story": _with_derived(story, state), "state": state, "authoring": load_template_authoring(story_slug)}
 
 
 def save_state(ctx: dict, user_id: str = DEFAULT_USER_ID, story_slug: str = DEFAULT_STORY_SLUG):
@@ -439,7 +462,10 @@ def save_state(ctx: dict, user_id: str = DEFAULT_USER_ID, story_slug: str = DEFA
     against a fresh read of the template file itself (the actual source of truth) rather
     than a snapshot stashed at load time, so ctx stays exactly the two-key shape
     SCHEMA_V2_SPEC.md §2.2 calls for."""
-    assert_unmutated(load_template_raw(story_slug), ctx["story"], context=f"{user_id}/{story_slug}")
+    expected = visibility.split_author(load_template_raw(story_slug))[0]
+    if derived.rules(expected):
+        expected = derived.substitute(expected, (ctx["state"].get("derived") or {}).get("values"))
+    assert_unmutated(expected, ctx["story"], context=f"{user_id}/{story_slug}")
     path = _save_path(user_id, story_slug)
     with _lock(user_id, story_slug):
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -682,6 +708,60 @@ def verify_login(username: str, password: str):
     if not check_password_hash(password_hash, password):
         return None
     return user_id
+
+
+# ---------------------------------------------------------------------------
+# Endings reached (CR-05 open question 4, decided 2026-10-03)
+# ---------------------------------------------------------------------------
+# Per account, not per save: with silent commitment this is the only place a player ever sees an
+# ending's name, so it has to outlive the save that reached it (a restart, or the overhaul's
+# disposable-saves cutover). Lives in accounts.db beside `users`. Nothing here reaches a prompt.
+
+def _endings_db() -> sqlite3.Connection:
+    conn = _accounts_db()
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS endings_reached (
+            user_id TEXT NOT NULL,
+            story_slug TEXT NOT NULL,
+            ending_id TEXT NOT NULL,
+            ending_name TEXT NOT NULL,
+            first_reached_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, story_slug, ending_id)
+        )
+        """
+    )
+    return conn
+
+
+def record_ending_reached(user_id: str, story_slug: str, ending_id: str, ending_name: str):
+    """Idempotent: an ending reached twice keeps its first date, so a regenerated or replayed
+    conclusion never double-counts."""
+    conn = _endings_db()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO endings_reached (user_id, story_slug, ending_id, ending_name) "
+            "VALUES (?, ?, ?, ?)",
+            (user_id, story_slug, ending_id, ending_name),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def endings_reached(user_id: str, story_slug: str) -> list:
+    """`[{id, name, reached_at}]` in the order this account first reached them. `name` is the one
+    recorded at the time; the caller may prefer the template's current name for a renamed ending."""
+    conn = _endings_db()
+    try:
+        rows = conn.execute(
+            "SELECT ending_id, ending_name, first_reached_at FROM endings_reached "
+            "WHERE user_id = ? AND story_slug = ? ORDER BY first_reached_at, rowid",
+            (user_id, story_slug),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [{"id": r[0], "name": r[1], "reached_at": r[2]} for r in rows]
 
 
 def parse_user_story_args(argv: list):

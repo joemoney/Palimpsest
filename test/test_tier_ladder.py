@@ -131,17 +131,17 @@ del old_client["stat_axes"]
 assert author_model.from_board_model(added, old_client)["mechanics"]["stats"] == added["mechanics"]["stats"]
 print("OK: the writer adds, clears (P-2) and no-ops correctly, and never touches costs")
 
-# --- mechanics.validate warns about on_enter, which nothing reads yet (D1, CR-01) -------------
+# --- on_enter is read now (CR-01): validate() has nothing to warn about -------------
 bound = copy.deepcopy(added)
 bound["mechanics"]["stats"]["engine"] = "bounded_counter"
 out = io.StringIO()
 with contextlib.redirect_stdout(out):
     mechanics.validate(bound)
-assert "on_enter" in out.getvalue() and "grit" in out.getvalue(), out.getvalue()
+assert "on_enter" not in out.getvalue(), out.getvalue()
 out = io.StringIO()
 with contextlib.redirect_stdout(out):
     mechanics.validate(cleared)
 assert "on_enter" not in out.getvalue()
-print("OK: validate() names the axes whose tiers author an unread on_enter, and only those")
+print("OK: validate() no longer warns about on_enter")
 
 print("test_tier_ladder.py: all checks passed.")

@@ -215,7 +215,6 @@ def migrate(v1: dict, story_slug: str, template: dict) -> dict:
                 "last_pivot_turn": thread_steering.get("last_pivot_turn", 0),
                 "pivot_history": thread_steering.get("pivot_history", []),
                 "emerging_themes": thread_steering.get("emerging_themes", []),
-                "player_driven_goals": thread_steering.get("player_driven_goals", []),
                 "pending_seeds": thread_steering.get("pending_seeds", []),
             },
         },

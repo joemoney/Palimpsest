@@ -1,4 +1,4 @@
-"""The board's server-side lint (AUTHORING_TOOL_PHASES.md decision D3): L01/L06/L07/L08/L09/L10/L16, the
+"""The board's server-side lint (AUTHORING_TOOL_PHASES.md decision D3): L01/L06/L07/L08/L09/L10/L16/L18, the
 board's structural-flow checks (Authoring_Tool_Spec.md §4.6), and the Cast checks carried over
 from the reference prototype (`docs/Missing_Core_Storyboard_Reference_Design.html`,
 `issues()`/`canonLeaks()`). Pure and offline-testable - no Flask, no engine imports. L10 (S2) is the one check that
@@ -341,6 +341,32 @@ def ending_arc_issues(raw: dict) -> list:
         out.append({"id": "arc", "severity": "warning", "node_id": e.get("id"),
                     "message": f"{name} has no {what}, so {effect}."})
     return out
+
+
+# L18: CR-05's placeholder budget (open question 2, decided by the author 2026-10-03). These are
+# what a missing boundary is *suggested* as, never what the engine assumes: `ending_funnel` still
+# reads a blank boundary as "that phase never begins" (a creative decision stays in the template).
+# The board writes the same values when a story gets its first ending; this catches a hand-edited
+# file that never went through the board.
+DEFAULT_ENDINGS_BUDGET = {"open_until": 40, "narrow_until": 90, "commit_by": 140}
+_BUDGET_EFFECT = {
+    "open_until": "the commit window is open from the first turn",
+    "narrow_until": "the drive nudge toward the leading destination never runs",
+    "commit_by": "no ending is ever forced - the story can run forever if nothing becomes ready",
+}
+
+
+def endings_budget_issues(raw: dict) -> list:
+    """L18: a `mechanics.endings` block missing any `budget` boundary. A warning, one per missing
+    boundary, naming the CR-05 placeholder to author and what leaving it blank does instead."""
+    block = (raw.get("mechanics") or {}).get("endings")
+    if not isinstance(block, dict) or not block.get("entries"):
+        return []
+    budget = block.get("budget") if isinstance(block.get("budget"), dict) else {}
+    return [{"id": "L18", "severity": "warning",
+             "message": f"mechanics.endings.budget.{k} is not set, so {_BUDGET_EFFECT[k]}. "
+                        f"Author it (the default to start from is {v})."}
+            for k, v in DEFAULT_ENDINGS_BUDGET.items() if budget.get(k) is None]
 
 
 def thread_cast_issues(raw: dict) -> list:
@@ -1027,7 +1053,7 @@ def lint(raw: dict, model: dict) -> list:
     in two vocabularies is noise."""
     schema = schema_errors(raw)
     return (schema + ([] if schema else condition_issues(raw)) + flag_issues(raw) + revelation_issues(raw) + world_issues(raw) + thread_cast_issues(raw)
-            + ending_arc_issues(raw) + bond_issues(raw) + side_thread_issues(raw) + derived_issues(raw)
+            + ending_arc_issues(raw) + endings_budget_issues(raw) + bond_issues(raw) + side_thread_issues(raw) + derived_issues(raw)
             + scene_length_issues(raw) + thread_reward_issues(raw) + transition_issues(raw)
             + visibility.leak_issues(raw, template_schema()) + fragment_issues(raw) + gate_issues(raw)
             + stat_event_rule_issues(raw) + prompt_issues(raw)

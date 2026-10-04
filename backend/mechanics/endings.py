@@ -575,6 +575,13 @@ def record_nudge(ctx, keys, hint_dest=None):
         shown[hint_dest] = shown.get(hint_dest, 0) + 1
 
 
+def display_name(entry) -> str:
+    """What a player is shown for an ending once they've reached it (the ending collection):
+    the authored name, else the finale arc's title, else the id."""
+    arc = entry.get("arc") if isinstance(entry.get("arc"), dict) else {}
+    return entry.get("name") or arc.get("title") or entry.get("id") or "An ending"
+
+
 def record_commit(ctx, entry, forced=False):
     bucket = _bucket(ctx)
     bucket["committed"] = {"id": entry.get("id"), "turn": ENGINE.turn(ctx), "forced": bool(forced)}

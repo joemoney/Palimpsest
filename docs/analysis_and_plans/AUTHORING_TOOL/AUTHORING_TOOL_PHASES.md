@@ -98,10 +98,11 @@ What routes around the refusal:
 | Destination ending plus waypoints | `mechanics.endings.entries[]` (CR-05) | **Not built** |
 | Failure ending | `mechanics.endings.entries[]`, `kind: "terminal"` (CR-05; D5). Replaces `mechanics.failure_conditions`. | **Built**; the `failure_conditions` engine is deleted |
 | Cast tab | `world.characters.<name>` (`description`, `hook`, `first_contact`, `role`, `canon`) | Yes, except `first_contact`, which is new in S1 (D7) |
-| Stat tiers | `mechanics.stats.axes.<axis>.tiers` | Yes for the current shape (QUORUM uses it). `on_enter` (CR-01) is **not built**. |
+| Stat tiers | `mechanics.stats.axes.<axis>.tiers` | Yes for the current shape (QUORUM uses it). `on_enter` (CR-01) is built (see the landed note at the end). |
 | Main thread and acts | `plot.main_thread` | Yes, not on the board. Goes in the inspector's Forms tab. |
-| Lore | `mechanics.lore` (CR-06) | **Not built** |
-| Bond grid (Cast tab), side-thread recipes, vignettes, player threads | `mechanics.bonds`, `mechanics.side_threads` (CR-11, CR-12) | **Not built** |
+| Lore | `mechanics.lore` (CR-06) | **Built** (2026-10-03) |
+| Bond grid (Cast tab), side-thread recipes, vignettes | `mechanics.bonds`, `mechanics.side_threads` (CR-11) | Built (`scored_bonds`, `episodic_threads`) |
+| Player-started threads | `mechanics.side_threads.player_threads` (CR-12) | **Built** (2026-10-03; `plot_manager add-goal` opens one directly) |
 | Board positions | `_storyboard.positions` | Never (author metadata) |
 
 ### 3. The condition evaluator exists, and fails in only one direction (decision D2)
@@ -1003,8 +1004,9 @@ to land out of order and partially, tracked here after the fact rather than plan
     `hint` or a `_`-prefixed author note (The Missing Core's `_theme` is one).
   - **A forced commit's bridging note is built in code** from the unplanted waypoints' `plant`
     texts (already narrator-facing), not asked of a model as CR-05 sketched.
-  - **Both judges are Tier C** (the registry default). CR-05's open question 1 - a stronger
-    model for the flagship commit judge - stays open until something measured says so.
+  - ~~**Both judges are Tier C** (the registry default).~~ **Superseded (author, 2026-10-03):
+    both judges are Tier B** (flagship, reasoning on) - CR-05's open question 1, decided for
+    judgement calls generally. The "why not Tier C" is recorded on each function.
   - Split `resolve()` / `settle()`: `resolve()` sees the state from before the turn's effects,
     so everything checked in code (`done_when`, pruning, scoring) runs in `settle()`, after
     them, applied by `check_ending_funnel`. Only `detect` hits go through `resolve()`.
@@ -1261,6 +1263,35 @@ to land out of order and partially, tracked here after the fact rather than plan
   - No live-save edit was needed: the fix alone restores the next turn, the same way the
     subplot-reconciliation fix did.
 
+- **Tier config migration: tiers are roles, each with its own model, provider and reasoning level**
+  (2026-10-03). `TIER_AB_*` / `TIER_C_*` are gone. `NARRATION_*` (default `claude-sonnet-5-5`, reasoning
+  low), `JUDGMENT_*` (`claude-opus-5-5`, high - always on) and `EXTRACTION_*` (`claude-haiku-4-5-20251001`,
+  off) each take `_MODEL`, `_PROVIDER` and `_REASONING` (`off`/`low`/`medium`/`high`) from the environment;
+  `PINNED_OPENROUTER_PROVIDER` replaces `TIER_AB_OPENROUTER_PROVIDER` (applies to narration and judgment).
+  `reasoning` on `call_llm` is now a level, not a bool (`True` means high); left `None` it follows the tier
+  the model fills. Narration, options and the summary rollover are narration; the act check, subplot and
+  character generation, steering seed and both ending judges are judgment; state update and gate check are
+  extraction. On OpenRouter the Claude models are `anthropic/<id>`. Covered by the existing tier tests
+  (`test_openrouter`, `test_mixed_provider`, `test_failsafe`, `test_ending_funnel`). Unmeasured: whether the
+  extraction tier (now Haiku) is as self-consistent on the observation pass as the DeepSeek flash model was
+  (`TIER_OBSERVATION_MEASUREMENT.md`); `scripts/tier_observation_probe.py` re-runs that comparison.
+
+- **CR-03 runtime enforcement landed** (2026-10-03). `state_store.load_template()` now returns only the
+  engine view: `visibility.split_author()` removes every `author`-visibility subtree and every `_` note
+  using the schema's `x-visibility` annotations, so a prompt builder holding `ctx["story"]` cannot reach
+  author text (a character's `role`, `meta.synopsis`, canon, ...). The removed half is
+  `state_store.load_template_authoring()` and rides on `ctx["authoring"]` for the screens that show it
+  (the cast card reads `role` from there). `assert_unmutated` compares against the engine view.
+  Covered by the runtime block at the end of `test/test_visibility.py`.
+
+- **CR-04 `derived` landed** (2026-10-03). `derived.settle()` fixes `state["derived"]` the first load after
+  `character_creation` completes (stored in the save, so a template edit cannot change a running story's
+  facts); `state_store.load_state/peek_state` then return a `ctx["story"]` with each defined `{name}` already
+  substituted, so no prompt builder substitutes anything and the engine's own placeholders (`{player_name}`,
+  `{counter_value}`, ...) are untouched. The `mechanics.validate()` refusal is gone and the preview fills
+  values from the sample bar. A story authoring no `derived` stores and substitutes nothing (P-2); no
+  fixture carries it, which is the omission case. Covered by `test/test_author_derived.py`.
+
 **Goal.** Every "not built" chip disappears, eventually.
 
 Order, as `Story_Mechanics_Update.md` §5 justifies (reference, not a build queue - see above):
@@ -1307,7 +1338,8 @@ omitting that module.
   `scripts/measure_baseline.py`, not asserted.
 - **Tier C by default.** The commit judge and terminal confirmation are Tier C unless the
   module records why not. CR-05's open question 1 (flagship commit judge) is exactly such a
-  "why not", and needs to be written down in the module.
+  "why not" - decided 2026-10-03: both judges are Tier B, recorded on `_confirm_terminal` and
+  `_judge_commit`.
 - **Declare-to-bind warnings.** Add one for "authors ending destinations but no engine", as
   with stats, inventory and subplots.
 **Gate:** per step, the CR's acceptance criteria. After step 3:
@@ -1368,3 +1400,11 @@ saved until the author hits Save. Covered by `test_author_assist.py` (offline,
 | D7 | `relationship_to_player` → `first_contact`, prompted only until the first scored interaction; `role` is author-only (S1) | **Decided** |
 | — | CR-11: one-way bonds, and side threads as a parallel track with their own end conditions (S2 board, S5 step 4) | **Decided** 2026-09-23 |
 | — | CR-11 r5 (location and item casts, vignettes, callbacks) and CR-12 (player-started side threads); faction life and off-screen news deferred | **Decided** 2026-09-23 |
+
+### Landed: the remaining unbuilt engine pieces (2026-10-03)
+CR-01 tier `on_enter`, CR-07 thread completion rewards, CR-08 relationship transitions, `max_acts`
+and the epilogue display are built; their "not built" warnings, schema `x-not-built` markers and
+board chips are gone. Design choices: rewards and departures are paid by a `settle()` hook run
+after the pipeline each turn (deterministic, P-7); a concluded thread whose payoff was not on the
+page answers `resolved_unshown` instead of adding a `reward_narrated` field; a transition is a
+departure only when it has `sets_flag`. Covered by `test/test_unbuilt_engine.py`.

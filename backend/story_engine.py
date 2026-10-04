@@ -19,6 +19,7 @@ import clock
 import conditions
 import engine_trace
 import mechanics
+from mechanics import episodes, lore
 import state_store
 from state_store import DEFAULT_STORY_SLUG, DEFAULT_USER_ID
 
@@ -75,39 +76,70 @@ STEER_WARNING = (
 )
 
 # --- LLM tier configuration ---
-# Three tiers, matched to what each call site actually needs (see docs/ARCHITECTURE.md's "Backend /
-# Model Notes" for the full picture and the reasoning behind each choice):
-#   Tier A - cheap flagship, reasoning OFF. For calls where style/format adherence matters
-#     most and a model's reasoning phase swallowing the final answer (see the "reasoning"
-#     comment in _call_llm_openrouter) would be a visible, player-facing failure: narration
-#     (_generate_and_apply_turn's call_llm) and the compressed_summary rollover.
-#   Tier B - the SAME cheap flagship model as Tier A, but with reasoning turned ON. For
-#     rarer, judgment-heavy calls where a bit of latency/failure risk is worth it for a
-#     better decision: check_and_advance_act, generate_new_subplot, generate_steering_seed,
-#     generate_character_from_relationship.
-#   Tier C - fastest available model. Used only for update_progress_from_turn: a
-#     closed-vocabulary classification/diff extraction that runs every single turn, where
-#     speed and cost matter far more than reasoning depth.
-# Tier A and Tier B are therefore the SAME provider/model pair (TIER_AB_PROVIDER/
-# TIER_AB_MODEL) - callers distinguish the two only via call_llm's/call_llm_json's
-# reasoning= flag. Tier C gets its own, independent pair. Google/Gemini is deliberately NOT
-# a real tier choice here - it's reserved for the offline test suite (TESTING_FORCE_GOOGLE
-# below) and call_llm's own fail-safe retry; both TIER_AB_PROVIDER and TIER_C_PROVIDER
-# default to "openrouter".
-TIER_AB_PROVIDER = os.getenv("TIER_AB_PROVIDER", "openrouter")
-TIER_AB_MODEL = os.getenv("TIER_AB_MODEL", "deepseek/deepseek-v4-pro-20260813")
-TIER_C_PROVIDER = os.getenv("TIER_C_PROVIDER", "openrouter")
-TIER_C_MODEL = os.getenv("TIER_C_MODEL", "deepseek/deepseek-v4-flash-0731")
-# Optional pin to one named OpenRouter upstream for TIER_AB_MODEL specifically, overriding
-# its default "sort": "price" routing (see _call_llm_openrouter). Rarely wanted: price-sort
-# already routes to the cheapest upstream and, unlike this pin, keeps fallbacks enabled, so
-# pinning buys nothing on cost and gives up the reroute that survives a rate-limited
-# upstream. Only ever applied to TIER_AB_MODEL, never TIER_C_MODEL's own calls (which
-# always throughput-sort), and unset - the default - means price-sorted.
-TIER_AB_OPENROUTER_PROVIDER = os.getenv("TIER_AB_OPENROUTER_PROVIDER", "").strip() or None
-for _provider in (TIER_AB_PROVIDER, TIER_C_PROVIDER):
+# Three tiers are ROLES, each filled by whatever model suits it (CLAUDE.md, *LLM backend*; the
+# engine was first built around one DeepSeek pair and must not assume that any more). Each tier has
+# its own provider, model and reasoning setting, all overridable from the environment:
+#   NARRATION  (was Tier A) - the player-facing prose: narration (_generate_and_apply_turn),
+#     options_generation and the compressed_summary rollover. Style/format adherence matters most,
+#     and a reasoning phase swallowing the final answer would be a visible failure, so reasoning
+#     stays light (default "low").
+#   JUDGMENT   (was Tier B) - rarer, irreversible or structural decisions where latency/failure
+#     risk is worth a better call: check_and_advance_act, generate_new_subplot,
+#     generate_steering_seed, generate_character_from_relationship, and the two ending judges
+#     (_confirm_terminal, _judge_commit). Reasoning always on (default "high").
+#   EXTRACTION (was Tier C) - closed-vocabulary classification/diff extraction that runs every
+#     turn (update_progress_from_turn, gate_check), where speed and cost matter far more than
+#     reasoning depth. No extended thinking (default "off").
+# Reasoning values: "off", "low", "medium", "high". Google/Gemini is deliberately NOT a real tier
+# choice - it is reserved for the offline test suite (TESTING_FORCE_GOOGLE below) and call_llm's own
+# fail-safe retry; every tier's provider defaults to "openrouter", where the Claude models are
+# addressed as "anthropic/<model id>".
+NARRATION_PROVIDER = os.getenv("NARRATION_PROVIDER", "openrouter")
+NARRATION_MODEL = os.getenv("NARRATION_MODEL", "anthropic/claude-sonnet-5-5")
+NARRATION_REASONING = os.getenv("NARRATION_REASONING", "low").strip().lower()
+JUDGMENT_PROVIDER = os.getenv("JUDGMENT_PROVIDER", "openrouter")
+JUDGMENT_MODEL = os.getenv("JUDGMENT_MODEL", "anthropic/claude-opus-5-5")
+JUDGMENT_REASONING = os.getenv("JUDGMENT_REASONING", "high").strip().lower()
+EXTRACTION_PROVIDER = os.getenv("EXTRACTION_PROVIDER", "openrouter")
+EXTRACTION_MODEL = os.getenv("EXTRACTION_MODEL", "anthropic/claude-haiku-4-5-20251001")
+EXTRACTION_REASONING = os.getenv("EXTRACTION_REASONING", "off").strip().lower()
+# Optional pin to one named OpenRouter upstream for the NARRATION and JUDGMENT models, overriding
+# their default "sort": "price" routing (see _call_llm_openrouter). Rarely wanted: price-sort
+# already routes to the cheapest upstream and, unlike this pin, keeps fallbacks enabled. The
+# EXTRACTION model always throughput-sorts; unset - the default - means price-sorted.
+PINNED_OPENROUTER_PROVIDER = os.getenv("PINNED_OPENROUTER_PROVIDER", "").strip() or None
+REASONING_LEVELS = ("off", "low", "medium", "high")
+for _provider in (NARRATION_PROVIDER, JUDGMENT_PROVIDER, EXTRACTION_PROVIDER):
     if _provider not in ("openrouter", "google"):
         raise ValueError(f"Unknown provider {_provider!r} - expected 'openrouter' or 'google'")
+for _level in (NARRATION_REASONING, JUDGMENT_REASONING, EXTRACTION_REASONING):
+    if _level not in REASONING_LEVELS:
+        raise ValueError(f"Unknown reasoning level {_level!r} - expected one of {REASONING_LEVELS}")
+
+
+def _tier_reasoning(model: str) -> str:
+    """The configured reasoning level for the tier a model fills; "off" for any other model."""
+    if model == JUDGMENT_MODEL:
+        return JUDGMENT_REASONING
+    if model == NARRATION_MODEL:
+        return NARRATION_REASONING
+    if model == EXTRACTION_MODEL:
+        return EXTRACTION_REASONING
+    return "off"
+
+
+def _reasoning_param(reasoning) -> dict:
+    """OpenRouter's `reasoning` body for a level. False/"off" is the real switch-off
+    ({"enabled": False}: excluding reasoning from the response does not stop the model spending
+    its max_tokens on it); True means high; a named level asks for that effort and keeps the
+    reasoning in the response (a Tier-B-style call accepts the truncation risk for a better
+    decision - the empty-content and finish_reason guards still catch a bad response)."""
+    if reasoning is True:
+        reasoning = "high"
+    if not reasoning or reasoning == "off":
+        return {"enabled": False}
+    return {"effort": reasoning, "exclude": False}
+
 
 # Whole-process testing/debug override - NOT a real tier setting. When true, every call,
 # regardless of tier or whatever provider/model it was given, is forced through a direct
@@ -135,10 +167,10 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
 
 # Skipped entirely under TESTING_FORCE_GOOGLE - every call is routed to Gemini regardless
-# of TIER_AB_PROVIDER/TIER_C_PROVIDER's configured values in that mode (see call_llm), so
+# of the tiers' configured providers in that mode (see call_llm), so
 # OpenRouter is never actually reached and requiring its key would needlessly break the
 # offline test suite, which stubs only the Google SDK.
-if not TESTING_FORCE_GOOGLE and "openrouter" in (TIER_AB_PROVIDER, TIER_C_PROVIDER) and not OPENROUTER_API_KEY:
+if not TESTING_FORCE_GOOGLE and "openrouter" in (NARRATION_PROVIDER, JUDGMENT_PROVIDER, EXTRACTION_PROVIDER) and not OPENROUTER_API_KEY:
     raise ValueError("OPENROUTER_API_KEY not found in .env file")
 # Required unconditionally, not just when a tier's provider is "google" - the Gemini
 # fail-safe (see call_llm) can fire regardless of which provider is primary, and
@@ -212,20 +244,20 @@ def _trim_to_last_sentence(text: str) -> str:
     return text[:last_end].rstrip() if last_end else text
 
 
-def _call_llm_openrouter(prompt: str, model: str, reasoning: bool = False, json_mode: bool = False,
+def _call_llm_openrouter(prompt: str, model: str, reasoning="off", json_mode: bool = False,
                           sort: str = None) -> str:
     def do_request():
-        # deepseek-v4-flash-0731 (TIER_C_MODEL) alone is resold through 29 different
+        # deepseek-v4-flash-0731 (once the extraction model) alone was resold through 29 different
         # OpenRouter providers, with measured throughput ranging 6-109 tok/s and TTFT
         # 0.42-2.42s depending which one a request lands on - OpenRouter's default
         # routing doesn't optimize for this, so a real production call landed on the
         # slow end (see git log: an 83s state-update call was the dominant cost in a
         # 132s turn). This asks OpenRouter to prefer whichever provider is currently
         # fastest for the requested model, instead of leaving that to chance - same
-        # model, same price, just routed better. TIER_C_MODEL keeps this: it runs every
+        # model, same price, just routed better. EXTRACTION_MODEL keeps this: it runs every
         # single turn and is the tier where a slow upstream is most visible.
         #
-        # TIER_AB_MODEL sorts by price instead. Its calls are the expensive ones (long
+        # NARRATION_MODEL and JUDGMENT_MODEL sort by price instead. Its calls are the expensive ones (long
         # narration prompts) and the spread between cheapest and median upstream is ~2.3x,
         # while its latency matters less - narration is already the slowest part of a turn
         # and Tier B calls are rare. Sorting rather than pinning is what keeps fallbacks
@@ -234,51 +266,35 @@ def _call_llm_openrouter(prompt: str, model: str, reasoning: bool = False, json_
         # the next-cheapest instead of failing the turn.
         #
         # `sort` (the explicit param) overrides all of that for one call site rather than
-        # the whole tier: summary_rollover is TIER_AB_MODEL but doesn't fit the "latency
+        # the whole tier: summary_rollover is NARRATION_MODEL but doesn't fit the "latency
         # matters less" argument above - real production calls kept tripping
         # OPENROUTER_TOTAL_TIMEOUT on it even after that was raised to 200s. Wins outright
-        # over even the TIER_AB_OPENROUTER_PROVIDER pin below, since asking for it by name
+        # over even the PINNED_OPENROUTER_PROVIDER pin below, since asking for it by name
         # at the call site is a stronger, more specific instruction than the tier default.
         if sort is not None:
             provider_route = {"sort": sort}
-        elif model != TIER_AB_MODEL:
+        elif model not in (NARRATION_MODEL, JUDGMENT_MODEL):
             provider_route = {"sort": "throughput"}
-        elif TIER_AB_OPENROUTER_PROVIDER:
-            # Escape hatch (see TIER_AB_OPENROUTER_PROVIDER above): pin to one named
+        elif PINNED_OPENROUTER_PROVIDER:
+            # Escape hatch (see PINNED_OPENROUTER_PROVIDER above): pin to one named
             # upstream. allow_fallbacks: False means a request fails outright
             # (LLMUnavailableError, same as any other OpenRouter failure) rather than
             # silently landing on a different, possibly pricier upstream if the pinned one
             # is down - which also means this reintroduces the single-upstream rate-limit
             # exposure that price-sorting avoids. Only worth setting to force a specific
             # upstream's behaviour, not to chase cost.
-            provider_route = {"order": [TIER_AB_OPENROUTER_PROVIDER], "allow_fallbacks": False}
+            provider_route = {"order": [PINNED_OPENROUTER_PROVIDER], "allow_fallbacks": False}
         else:
             provider_route = {"sort": "price"}
         body = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "provider": provider_route,
-            # A reasoning-capable model (observed with deepseek-v4-pro) can finish
-            # normally (finish_reason "stop") while leaving message.content null and
-            # putting the entire finished reply - including a correctly-formatted OPTIONS
-            # block - in message.reasoning instead, because nothing here told it to ever
-            # close its reasoning phase. This used to send {"exclude": not reasoning} for
-            # reasoning=False (Tier A, Tier C's default), on the assumption that excluding
-            # reasoning from the response also forced the model to land its answer in
-            # content - a real production call disproved that: exclude:true only hides
-            # reasoning from the response, it doesn't stop the model spending its
-            # max_tokens budget generating it, and a call landed finish_reason "length"
-            # with content null and reasoning_tokens alone using the entire budget.
-            # {"enabled": false} is OpenRouter's actual "turn reasoning off" switch (a
-            # no-op for a model without reasoning support, and providers with genuinely
-            # mandatory reasoning - none observed among this project's configured models -
-            # would 400 on it, which surfaces as LLMUnavailableError same as any other
-            # failure). reasoning=True (Tier B) still sends exclude:false, deliberately
-            # accepting the truncation risk in exchange for the model actually reasoning
-            # before it answers - judgment-heavy Tier B calls are rare and cheap to retry
-            # (the empty-content and finish_reason guards below still catch a bad response
-            # and hand it to call_llm's Gemini fail-safe, same as any other failure).
-            "reasoning": {"enabled": False} if not reasoning else {"exclude": False},
+            # See _reasoning_param: "off" is OpenRouter's real switch-off, a level asks for that
+            # effort. A reasoning model can finish normally with message.content null and the whole
+            # reply in message.reasoning (observed with deepseek-v4-pro); the empty-content and
+            # finish_reason guards below catch that and hand it to call_llm's Gemini fail-safe.
+            "reasoning": _reasoning_param(reasoning),
             "max_tokens": OPENROUTER_MAX_TOKENS,
         }
         if json_mode:
@@ -367,20 +383,19 @@ def _call_llm_google(prompt: str, model: str) -> str:
 
 def call_llm(
     prompt: str,
-    model: str = TIER_AB_MODEL,
+    model: str = NARRATION_MODEL,
     provider: str = None,
-    reasoning: bool = False,
+    reasoning=None,
     json_mode: bool = False,
     sort: str = None,
 ) -> str:
     """Sends prompt to the given (or default) provider and returns the raw text response.
-    Defaults to Tier A (TIER_AB_MODEL/TIER_AB_PROVIDER, reasoning off) - narration
-    (_generate_and_apply_turn) and the compressed_summary rollover call it exactly this way.
-    Tier B call
-    sites (generate_new_subplot, check_and_advance_act, generate_steering_seed,
-    generate_character_from_relationship) pass model=TIER_AB_MODEL,
-    provider=TIER_AB_PROVIDER, reasoning=True explicitly instead - see "LLM tier
-    configuration" above for which call site is which tier.
+    Defaults to the narration tier (NARRATION_MODEL/NARRATION_PROVIDER at NARRATION_REASONING) -
+    narration (_generate_and_apply_turn) and the compressed_summary rollover call it exactly this
+    way. Judgment-tier call sites pass model=JUDGMENT_MODEL, provider=JUDGMENT_PROVIDER,
+    reasoning=JUDGMENT_REASONING explicitly - see "LLM tier configuration" above for which call
+    site is which tier. `reasoning` is "off"/"low"/"medium"/"high" (True means high, False off);
+    None means the configured level for the tier `model` fills.
 
     `sort` overrides _call_llm_openrouter's own tier-based provider routing for this one
     call, ignored entirely under the google provider (OpenRouter-only, same as json_mode).
@@ -394,10 +409,10 @@ def call_llm(
 
     Fail-safe: if the primary call raises LLMUnavailableError, this retries once against
     the operator's own free-tier Gemini model (GEMINI_MODEL) via a direct Google API call,
-    before giving up - lets TIER_AB_MODEL/TIER_C_MODEL be freely swapped to whatever's being
+    before giving up - lets the tier models be freely swapped to whatever's being
     tried (e.g. an experimental OpenRouter model) without an unreachable or misconfigured
     model taking the whole app down. This IS a genuine runtime fallback (unlike
-    TIER_AB_PROVIDER/TIER_C_PROVIDER's fixed per-tier provider selection, which still isn't
+    the tiers' fixed per-tier provider selection, which still isn't
     one) - deliberately narrow in scope: it only ever falls back TO Gemini, never away from
     it, and only on a request-level failure, never a silent retry on output that merely
     looks wrong (e.g. malformed JSON - call_llm_json's caller decides what to do with that,
@@ -405,7 +420,9 @@ def call_llm(
     GEMINI_MODEL under TESTING_FORCE_GOOGLE above), not some separate raw argument, so this
     doesn't uselessly retry the exact same Gemini call a second time when the testing
     override already substituted GEMINI_MODEL in for a non-Gemini model argument."""
-    provider = provider or TIER_AB_PROVIDER
+    provider = provider or NARRATION_PROVIDER
+    if reasoning is None:
+        reasoning = NARRATION_REASONING if model == NARRATION_MODEL else _tier_reasoning(model)
     if TESTING_FORCE_GOOGLE:
         provider, model = "google", GEMINI_MODEL
     try:
@@ -424,21 +441,23 @@ def call_llm(
 
 def call_llm_json(
     prompt: str,
-    model: str = TIER_C_MODEL,
+    model: str = EXTRACTION_MODEL,
     provider: str = None,
-    reasoning: bool = False,
+    reasoning=None,
     sort: str = None,
 ) -> dict:
     """Call the LLM expecting a single JSON object back, tolerating markdown code fences.
-    Defaults to Tier C (TIER_C_MODEL/TIER_C_PROVIDER) - update_progress_from_turn is the
-    only call site that calls this bare, every turn. Every Tier B call site
+    Defaults to the extraction tier (EXTRACTION_MODEL/EXTRACTION_PROVIDER) - update_progress_from_turn is the
+    only call site that calls this bare, every turn. Every judgment-tier call site
     (generate_new_subplot, check_and_advance_act, generate_steering_seed,
-    generate_character_from_relationship) passes model=TIER_AB_MODEL,
-    provider=TIER_AB_PROVIDER, reasoning=True explicitly. Always requests
+    generate_character_from_relationship, and CR-05's two ending judges) passes model=JUDGMENT_MODEL,
+    provider=JUDGMENT_PROVIDER, reasoning=JUDGMENT_REASONING explicitly. Always requests
     OpenRouter's response_format: json_object mode underneath (see _call_llm_openrouter) - a
     no-op under the google provider, which has no equivalent knob in this codebase.
     `sort` is passed straight through to call_llm - see its docstring."""
-    provider = provider or TIER_C_PROVIDER
+    provider = provider or EXTRACTION_PROVIDER
+    if reasoning is None:
+        reasoning = EXTRACTION_REASONING if model == EXTRACTION_MODEL else _tier_reasoning(model)
     raw = call_llm(prompt, model=model, provider=provider, reasoning=reasoning, json_mode=True, sort=sort).strip()
     if raw.startswith("```"):
         lines = raw.splitlines()
@@ -468,8 +487,9 @@ STATUS_LABELS = {
     "options_generation": "Offering",
     "state_update": "Reckoning",
     "subplot_generation": "Branching",
+    "side_thread_generation": "Wandering",
     "act_advancement_check": "Weighing",
-    # CR-05's two judge calls, both Tier C and both rare: a terminal's confirmation only on a
+    # CR-05's two judge calls, both Tier B (flagship, reasoning on) and both rare: a terminal's confirmation only on a
     # turn its condition trips, the commit judge only at a check with a ready destination.
     "terminal_confirm": "Reckoning",
     "ending_commit_judge": "Deciding",
@@ -501,9 +521,11 @@ DEFAULT_STEP_ESTIMATE_SECONDS = {
     "options_generation": 8,
     "state_update": 23,
     "subplot_generation": 6,
+    "side_thread_generation": 6,
     "act_advancement_check": 4,
-    "terminal_confirm": 2,
-    "ending_commit_judge": 3,
+    # Tier B since CR-05 open question 1 was decided - seeded like the other reasoning calls.
+    "terminal_confirm": 4,
+    "ending_commit_judge": 5,
     "summary_rollover": 19,
 }
 
@@ -528,10 +550,10 @@ def _timed(label: str, fn, model: str):
     rollover, and, on the turn an end-story command lands, the closing-arc call - so total
     request duration alone (the access log's one number) doesn't say which of those is
     actually where the time goes. Labels line up 1:1 with the call sites below.
-    `model` is the actual model name that call is about to hit (TIER_AB_MODEL/
-    TIER_C_MODEL, or an explicit override) - included in the log line so
+    `model` is the actual model name that call is about to hit (one of the tier models,
+    or an explicit override) - included in the log line so
     perf_dashboard.py can group latency by model, not just by call label, since
-    TIER_AB_MODEL/TIER_C_MODEL are now freely swapped via .env for testing.
+    the tier models are freely swapped via .env for testing.
     Also writes a status beacon (the raw label - app.py maps it through STATUS_LABELS for
     display) before running fn(), if take_turn/regenerate_last_turn set one up for this
     thread - see _status_ctx above. After fn() returns, records the elapsed duration into
@@ -695,7 +717,8 @@ def _character_record(ctx: dict, name: str) -> dict:
     return {
         "name": name,
         "description": authored.get("description") or runtime.get("description", ""),
-        "role": authored.get("role") or runtime.get("role", ""),
+        "role": (((ctx.get("authoring") or {}).get("world", {}).get("characters", {}).get(name) or {})
+                 .get("role")) or runtime.get("role", ""),
         "first_contact": authored.get("first_contact") or runtime.get("first_contact", ""),
         "hook": authored.get("hook") or runtime.get("hook", ""),
         "authored": bool(_authored_character(ctx, name)),
@@ -831,6 +854,7 @@ _CLOSED_THREAD_STATUSES = ("completed", "failed")
 
 def check_subplot_status(ctx: dict) -> dict:
     """Check and update subplot completion status."""
+    mechanics.settle_all(ctx)  # CR-07: a thread closed outside a turn still pays (idempotent)
     subplots = ctx["state"]["plot"]["subplots"]
     completed_this_check = []
 
@@ -1070,7 +1094,7 @@ is a separate, manual step."""
 
     engine_trace.note_prompt("state_update", len(prompt))
     try:
-        diff = _timed("state_update", lambda: call_llm_json(prompt), model=TIER_C_MODEL)
+        diff = _timed("state_update", lambda: call_llm_json(prompt), model=EXTRACTION_MODEL)
     except (json.JSONDecodeError, ValueError):
         return {}
 
@@ -1186,6 +1210,7 @@ is a separate, manual step."""
         engine_trace.emit(ctx, "clock", **record)
 
     mechanics.run_observation_pipeline(ctx, diff, before_resolve=decide_clock)
+    mechanics.settle_all(ctx)
 
     return diff
 
@@ -1275,8 +1300,8 @@ new person - most subplots don't need one."""
     try:
         generated = _timed(
             "subplot_generation",
-            lambda: call_llm_json(prompt, model=TIER_AB_MODEL, provider=TIER_AB_PROVIDER, reasoning=True),
-            model=TIER_AB_MODEL,
+            lambda: call_llm_json(prompt, model=JUDGMENT_MODEL, provider=JUDGMENT_PROVIDER, reasoning=JUDGMENT_REASONING),
+            model=JUDGMENT_MODEL,
         )
         title = generated["title"]
         description = generated["description"]
@@ -1293,6 +1318,77 @@ new person - most subplots don't need one."""
     engine_trace.emit(ctx, "subplot_generated", sid=new_id, title=title,
                       span=generated.get("span"), priority=generated.get("priority"))
     return new_id
+
+
+def _start_side_thread(ctx: dict, bound, binding: dict):
+    """One generation call, then the thread is built and started by code. None on a bad
+    generation, which costs nothing (same failure mode as generate_new_subplot)."""
+    prompt = episodes.generation_prompt(bound.cfg, ctx, binding)
+    try:
+        generated = _timed(
+            "side_thread_generation",
+            lambda: call_llm_json(prompt, model=EXTRACTION_MODEL, provider=EXTRACTION_PROVIDER, reasoning=EXTRACTION_REASONING),
+            model=EXTRACTION_MODEL,
+        )
+    except (json.JSONDecodeError, KeyError, ValueError):
+        return None
+    thread = episodes.build_thread(bound.cfg, ctx, binding, generated)
+    if thread is None:
+        return None
+    npc = generated.get("new_character") if binding["spec"].get("may_create_npc") else None
+    if isinstance(npc, dict) and npc.get("name") and npc["name"] not in _existing_character_names(ctx):
+        insert_character(ctx, npc["name"], npc.get("description", ""), npc.get("role", ""),
+                         npc.get("first_contact", ""), npc.get("hook", ""), origin="side_thread")
+        thread["cast"]["npc"] = npc["name"]
+    mechanics.apply_effects(ctx, [mechanics.Effect("side.start", reason=thread["recipe"], thread=thread)])
+    engine_trace.emit(ctx, "side_thread_started", id=thread["id"], recipe=thread["recipe"],
+                      title=thread["title"], origin=thread["origin"])
+    return thread
+
+
+def advance_side_threads(ctx: dict) -> None:
+    """CR-11: settle the live side threads (end rules, evaluated after this turn's effects), then
+    open a confirmed player pursuit (CR-12) or start an engine thread if the rules allow. The
+    start is the engine's call; the model writes the episode."""
+    bound = mechanics.bound_for(ctx["story"], "side_threads")
+    if bound is None:
+        return
+    effects = bound.engine.settle(bound.cfg, ctx)
+    if effects:
+        mechanics.apply_effects(ctx, effects)
+        for e in effects:
+            if e.kind == "side.conclude":
+                engine_trace.emit(ctx, "side_thread_concluded", id=e.payload["id"], outcome=e.payload["outcome"])
+    if episodes.committed(ctx):
+        return
+    cand = episodes.pursuit(ctx)
+    if cand and cand.get("ready"):
+        if episodes.player_room(bound.cfg, ctx):
+            _start_side_thread(ctx, bound, episodes.pursuit_binding(bound.cfg, cand["summary"], cand.get("cast", [])))
+        mechanics.apply_effects(ctx, [mechanics.Effect("side.pursuit", reason="spent", candidate=None)])
+    if not episodes.start_due(bound.cfg, ctx):
+        return
+    binding = episodes.choose(bound.cfg, ctx)
+    if binding is not None:
+        _start_side_thread(ctx, bound, binding)
+
+
+def open_player_thread(ctx: dict, summary: str) -> str | None:
+    """CR-12: open a player thread directly from a hand-written summary (`plot_manager add-goal`),
+    skipping detection. Returns a message for the operator, or None on success."""
+    bound = mechanics.bound_for(ctx["story"], "side_threads")
+    if bound is None or episodes.player_cfg(bound.cfg) is None:
+        return "This story authors no mechanics.side_threads.player_threads, so there is nowhere to put a player goal."
+    if episodes.committed(ctx):
+        return "The story is ending; no new thread can open."
+    if not episodes.player_room(bound.cfg, ctx):
+        return "The story already has its maximum of player-started threads running."
+    present = [n for n in (ctx["state"].get("plot", {}).get("current_scene") or {}).get("present") or []
+               if isinstance(n, str) and n in set(episodes._characters_all(ctx))]  # noqa: SLF001
+    cast = [n for n in present if n not in episodes.protected(bound.cfg, ctx)]
+    if _start_side_thread(ctx, bound, episodes.pursuit_binding(bound.cfg, summary, cast)) is None:
+        return "The thread could not be generated; try again."
+    return None
 
 
 def generate_steering_seed(ctx: dict, note: str):
@@ -1340,8 +1436,8 @@ Respond with ONLY a JSON object, no other text, in exactly one of these three sh
     try:
         generated = _timed(
             "steering_seed_generation",
-            lambda: call_llm_json(prompt, model=TIER_AB_MODEL, provider=TIER_AB_PROVIDER, reasoning=True),
-            model=TIER_AB_MODEL,
+            lambda: call_llm_json(prompt, model=JUDGMENT_MODEL, provider=JUDGMENT_PROVIDER, reasoning=JUDGMENT_REASONING),
+            model=JUDGMENT_MODEL,
         )
         seed_type = generated["type"]
         if seed_type not in ("character", "subplot", "direction"):
@@ -1401,8 +1497,8 @@ Respond with ONLY a JSON object, no other text:
     try:
         draft = _timed(
             "relationship_promotion",
-            lambda: call_llm_json(prompt, model=TIER_AB_MODEL, provider=TIER_AB_PROVIDER, reasoning=True),
-            model=TIER_AB_MODEL,
+            lambda: call_llm_json(prompt, model=JUDGMENT_MODEL, provider=JUDGMENT_PROVIDER, reasoning=JUDGMENT_REASONING),
+            model=JUDGMENT_MODEL,
         )
         if not isinstance(draft, dict):
             raise ValueError(draft)
@@ -1451,8 +1547,11 @@ def _confirm_terminal(ctx: dict, entry: dict) -> bool:
     authored `criteria` before the story ends on it. No `criteria` means the condition is the
     whole rule, and nothing is asked.
 
-    Tier C, per the registry's default (CLAUDE.md: "An engine call is Tier C unless its module
-    records why not"): a yes/no reading of one scene against one sentence of criteria."""
+    Tier B, not the registry's Tier C default (CLAUDE.md: "An engine call is Tier C unless its
+    module records why not"). Why not: a confirmed terminal ends the story, permanently, and it
+    is asked only on a turn whose condition tripped - so a rare call where a wrong yes cannot be
+    undone. Author's decision on CR-05 open question 1 (2026-10-03): judgement calls use the
+    flagship."""
     criteria = (entry.get("criteria") or "").strip()
     if not criteria:
         return True
@@ -1465,7 +1564,9 @@ SCENE JUST NARRATED:
 {_recent_scene(ctx)}
 
 Reply with JSON only: {{"confirmed": true or false}}"""
-    result = _timed("terminal_confirm", lambda: call_llm_json(prompt), model=TIER_C_MODEL)
+    result = _timed("terminal_confirm",
+                    lambda: call_llm_json(prompt, model=JUDGMENT_MODEL, provider=JUDGMENT_PROVIDER, reasoning=JUDGMENT_REASONING),
+                    model=JUDGMENT_MODEL)
     return bool((result or {}).get("confirmed") is True)
 
 
@@ -1477,9 +1578,9 @@ def _judge_commit(ctx: dict, ready: list):
     `criteria` shown here are judge-only by design (CR-03); this prompt is never a narration
     prompt, and nothing in it is written back into one.
 
-    Tier C, per the registry default. CR-05's open question 1 asks whether the flagship stories
-    want a stronger model for this call; nothing measured says so yet, so it stays C until
-    something does."""
+    Tier B, not the registry's Tier C default: a commit is irreversible and happens one to three
+    times a run, so the flagship's cost is negligible next to a wrong ending. Author's decision
+    on CR-05 open question 1 (2026-10-03)."""
     lines = "\n".join(
         f"{n}. {e.get('name') or e.get('id')}: {e.get('criteria') or 'no further criteria'}"
         for n, e in enumerate(ready, 1))
@@ -1497,7 +1598,9 @@ Choose the ending whose criteria the story genuinely meets. If the story is mid-
 scene is still unresolved, answer null - the question will be asked again later.
 
 Reply with JSON only: {{"ending": <the NUMBER above, or null>}}"""
-    result = _timed("ending_commit_judge", lambda: call_llm_json(prompt), model=TIER_C_MODEL)
+    result = _timed("ending_commit_judge",
+                    lambda: call_llm_json(prompt, model=JUDGMENT_MODEL, provider=JUDGMENT_PROVIDER, reasoning=JUDGMENT_REASONING),
+                    model=JUDGMENT_MODEL)
     try:
         index = int((result or {}).get("ending"))
     except (TypeError, ValueError):
@@ -1726,6 +1829,19 @@ def check_and_advance_act(ctx: dict):
     if not current_act:
         return None
 
+    # `max_acts` (no default; unset is unbounded) caps how many acts get *generated*. An authored act
+    # still waiting is never blocked by it, so the cap only bites when the next act would be invented.
+    # Skipped before the Tier B call: a verdict that could not be acted on is a wasted call.
+    max_acts = ctx["story"]["plot"]["main_thread"].get("max_acts")
+    if max_acts:
+        authored_ahead = any(a["act_number"] > current_act["act_number"]
+                             for a in ctx["story"]["plot"]["main_thread"]["acts"])
+        non_finale = [a for a in _all_acts(ctx) if not a.get("is_finale")]
+        if not authored_ahead and len(non_finale) >= max_acts:
+            engine_trace.emit(ctx, "act_check", called=False, skipped="max_acts",
+                              due="completed" if completed_recently else "cadence")
+            return None
+
     # §2.2: necessary conditions belong to the engine, sufficiency stays with the director.
     # An authored `requires` that is not met means no Tier B call, no verdict to validate and
     # no advancement - and the director is still free to say no once it *is* met, so §2.1 is
@@ -1806,8 +1922,8 @@ the next act really can't work without a specific new person - most acts don't n
     try:
         verdict = _timed(
             "act_advancement_check",
-            lambda: call_llm_json(prompt, model=TIER_AB_MODEL, provider=TIER_AB_PROVIDER, reasoning=True),
-            model=TIER_AB_MODEL,
+            lambda: call_llm_json(prompt, model=JUDGMENT_MODEL, provider=JUDGMENT_PROVIDER, reasoning=JUDGMENT_REASONING),
+            model=JUDGMENT_MODEL,
         )
     except (json.JSONDecodeError, ValueError):
         engine_trace.emit(ctx, "act_check", called=True, failed=True, plants=[p["key"] for p in plants])
@@ -2012,11 +2128,6 @@ def generate_pacing_nudge(ctx: dict, report: dict | None = None) -> str:
         directions = "; ".join(f"{d['title']} - {d['description']}" for d in pending_directions[-2:])
         nudge_parts.append(f"NOTED DIRECTION: {directions}")
 
-    active_goals = [g for g in thread_steering.get("player_driven_goals", []) if g.get("active")]
-    if active_goals:
-        goals = "; ".join(g["description"] for g in active_goals[-2:])
-        nudge_parts.append(f"PLAYER GOAL: {goals}")
-
     # CR-12: emerging_themes reached generate_new_subplot but never the prose itself.
     emerging_themes = thread_steering.get("emerging_themes", [])
     if emerging_themes:
@@ -2126,6 +2237,8 @@ def _section_roster(ctx: dict) -> str | None:
     bound = mechanics.bound_for(ctx["story"], "relationships")
     lines = []
     for name in sorted(_all_character_names(ctx)):
+        if ctx["state"]["characters"].get(name, {}).get("departed"):
+            continue  # CR-08: gone, and the narrator is told nothing more of them
         record = _character_record(ctx, name)
         if not record["description"] and not record["authored"]:
             continue
@@ -2316,7 +2429,10 @@ def _section_pacing_directive(ctx: dict) -> str | None:
     A rule that fires the same turn wins (at most one directive per turn, an armed rule being the more specific
     instruction), and the push is then spent for this streak all the same, so it cannot fire on the next turn
     as if it were new. Never in the finale (`clock.exhausted`)."""
+    ctx["directive_fired"] = False
     rule_text = _pacing_rule_directive(ctx)
+    if rule_text:
+        ctx["directive_fired"] = True
     if not clock.push_due(ctx):
         return rule_text
     push = clock.push_text(ctx)
@@ -2328,6 +2444,7 @@ def _section_pacing_directive(ctx: dict) -> str | None:
                            streak=ctx["state"]["pacing"].get("idle_streak"))
         return rule_text
     engine_trace.defer(ctx, "push", fired=True, streak=ctx["state"]["pacing"].get("idle_streak"), chars=len(push))
+    ctx["directive_fired"] = True
     return f"PACING DIRECTIVE: {push}"
 
 
@@ -2463,7 +2580,7 @@ def generate_missing_options(ctx: dict, narration_text: str) -> str | None:
         "Respond with only the OPTIONS block - no narration, no other text."
     )
     try:
-        response = _timed("options_generation", lambda: call_llm(prompt), model=TIER_AB_MODEL)
+        response = _timed("options_generation", lambda: call_llm(prompt), model=NARRATION_MODEL)
     except LLMUnavailableError:
         return None
     _, options = parse_narration_and_options(f"\n\nOPTIONS:\n{response}", option_count=option_count)
@@ -2472,14 +2589,41 @@ def generate_missing_options(ctx: dict, narration_text: str) -> str | None:
     return response.strip()
 
 
+def _scene_length(ctx: dict) -> tuple:
+    """CR-14: `(min, max, inquiry_sentence)` for this scene. The range follows the moment, chosen
+    from what is known before narration (first match wins): the finale, a directive firing this
+    turn (_section_pacing_directive runs earlier in SECTIONS and leaves `directive_fired`), the
+    previous turn's classified beat, then `narration.scene_length`. The inquiry sentence is the one
+    narrator-judged part and never appears on a directive or finale turn."""
+    narration_cfg = ctx["story"].get("narration", {})
+    base = narration_cfg.get("scene_length", {})
+    rng = {"min": base.get("min", DEFAULT_SCENE_WORD_MIN), "max": base.get("max", DEFAULT_SCENE_WORD_MAX)}
+    by = narration_cfg.get("scene_length_by_moment") or {}
+    if not by:
+        return rng["min"], rng["max"], ""
+    finale = ctx["state"]["plot"]["endgame"]["requested"]
+    directive = ctx.get("directive_fired")
+    if finale and by.get("finale"):
+        rng = by["finale"]
+    elif directive and not finale and by.get("directive"):
+        rng = by["directive"]
+    elif not finale and not directive:
+        beat = (ctx["state"]["pacing"].get("last_beat") or {}).get("type")
+        rng = (by.get("beats") or {}).get(beat) or rng
+    inquiry = ""
+    if by.get("inquiry") and not finale and not directive:
+        q = by["inquiry"]
+        inquiry = (f"If the player's action is only a question or a look around, answer it in "
+                   f"{q['min']}-{q['max']} words instead, and end on something they can act on. ")
+    return rng["min"], rng["max"], inquiry
+
+
 def _section_footer(ctx: dict) -> str:
     story = ctx["story"]
     protagonist = ctx["state"]["protagonist"]
     endgame = ctx["state"]["plot"]["endgame"]
     narration_cfg = story.get("narration", {})
-    scene_length = narration_cfg.get("scene_length", {})
-    scene_min = scene_length.get("min", DEFAULT_SCENE_WORD_MIN)
-    scene_max = scene_length.get("max", DEFAULT_SCENE_WORD_MAX)
+    scene_min, scene_max, inquiry = _scene_length(ctx)
     # 5.1: option_pov defaults to narration.pov (v1 hardcoded first-person options against
     # whatever the narration's own pov was, which happened to work only because both
     # existing stories are second-person narrated with first-person option prose - now
@@ -2511,6 +2655,7 @@ def _section_footer(ctx: dict) -> str:
         instruction_footer = (
             f"Continue the story based on the player's next action. Narrate the scene itself in "
             f"{scene_min}-{scene_max} words. "
+            f"{inquiry}"
             f"{_options_block_instruction(option_count, option_pov)}"
             f"{(' ' + clock.LEAN_FORWARD) if clock.exhausted(ctx) else ''}"
         )
@@ -2524,6 +2669,15 @@ underscores for anything other than underline).
 {instruction_footer}"""
 
 
+def _section_lore(ctx: dict) -> str | None:
+    """CR-06: LORE for whatever the player's action or the last scene just put on the page."""
+    bound = mechanics.bound_for(ctx["story"], "lore")
+    if bound is None:
+        return None
+    lore.touch(bound.cfg, ctx)
+    return mechanics.prompt_sections(ctx).get("lore.entries", "").strip("\n") or None
+
+
 def _section_gates(ctx: dict) -> str | None:
     """What the world is currently refusing (§7.4), so the prose agrees with the rail.
 
@@ -2531,6 +2685,26 @@ def _section_gates(ctx: dict) -> str | None:
     changes as the player picks up a key or talks their way past a clerk - and it belongs
     beside the scene it constrains, not among the standing format instructions."""
     return mechanics.prompt_sections(ctx).get("gate.closed")
+
+
+def _section_life(ctx: dict) -> str | None:
+    """CR-11: what is going on between characters, and the one side-thread or texture line the
+    narrator may use this scene. Recording the offer here is what lets the observation pass ask
+    about the same thread the narrator was shown."""
+    bound = mechanics.bound_for(ctx["story"], "side_threads")
+    if bound is not None:
+        episodes.record_offer(bound.cfg, ctx)
+    sections = mechanics.prompt_sections(ctx)
+    parts = [sections[k] for k in ("bonds.between_them", "side_threads.offer", "side_threads.texture") if k in sections]
+    return "".join(parts).strip("\n") or None
+
+
+def _section_directives(ctx: dict) -> str | None:
+    """One-scene directives the engines record when something crosses a line (CR-01 tier entry,
+    CR-07 owed payoff, CR-08 relationship transition). Placed with the scene it steers."""
+    sections = mechanics.prompt_sections(ctx)
+    parts = [v for k, v in sorted(sections.items()) if k.endswith((".directive", ".arm"))]
+    return "".join(parts).strip("\n") or None
 
 
 SECTIONS = [
@@ -2547,6 +2721,9 @@ SECTIONS = [
     _section_pacing_or_endgame,
     _section_pacing_directive,
     _section_scene,
+    _section_life,
+    _section_directives,
+    _section_lore,
     _section_gates,
     _section_revelations,
     _section_protagonist,
@@ -2743,6 +2920,7 @@ def update_state_after_turn(
 
     # See if the current act has narratively resolved and needs a successor
     check_and_advance_act(ctx)
+    advance_side_threads(ctx)
     _trace_threads(ctx)
 
     # Roll oldest turns into compressed summary once a full batch has built up past the limit
@@ -2769,14 +2947,14 @@ NEW EVENTS:
 Respond with ONLY the updated summary text, under {SUMMARY_MAX_WORDS} words, no preamble."""
         updated_summary = _timed(
             "summary_rollover",
-            # sort="throughput": this is TIER_AB_MODEL, but doesn't fit the tier's usual
+            # sort="throughput": this is NARRATION_MODEL, but doesn't fit the tier's usual
             # "latency matters less" reasoning (see _call_llm_openrouter) - its prompt is
             # the whole overflowing batch of turns plus the existing summary, and real
             # production calls kept tripping OPENROUTER_TOTAL_TIMEOUT even after that was
             # raised to 200s. Fastest upstream over cheapest, for this call only.
-            lambda: call_llm(summary_prompt, model=TIER_AB_MODEL, provider=TIER_AB_PROVIDER,
+            lambda: call_llm(summary_prompt, model=NARRATION_MODEL, provider=NARRATION_PROVIDER,
                               sort="throughput"),
-            model=TIER_AB_MODEL,
+            model=NARRATION_MODEL,
         )
         history["compressed_summary"] = _enforce_word_cap(
             updated_summary.strip(), SUMMARY_MAX_WORDS
@@ -2939,9 +3117,10 @@ def _generate_and_apply_turn(
     (a deep copy of ctx["state"] from just before this turn) so a later regenerate_last_turn
     call can restore to exactly this point and re-roll. Returns True once the story has
     concluded."""
+    ctx["player_action"] = player_action
     prompt = build_system_prompt(ctx) + f"\n\nPlayer action: {player_action}\n\nNarrator:"
     engine_trace.note_prompt("narration", len(prompt))
-    ai_response = _timed("narration", lambda: call_llm(prompt), model=TIER_AB_MODEL)
+    ai_response = _timed("narration", lambda: call_llm(prompt), model=NARRATION_MODEL)
 
     # A non-endgame turn is required to end with an OPTIONS block (endgame turns are
     # explicitly told not to produce one - see _section_footer). If the model skipped it,
@@ -2972,7 +3151,37 @@ def _generate_and_apply_turn(
 
     engine_trace.flush_turn(ctx, **_trace_turn_fields(ctx))
     state_store.save_state(ctx, user_id, story_slug)
+    if ctx["state"]["plot"]["endgame"]["concluded"]:
+        _record_ending_reached(ctx, user_id, story_slug)
     return ctx["state"]["plot"]["endgame"]["concluded"]
+
+
+def _record_ending_reached(ctx: dict, user_id: str, story_slug: str) -> None:
+    """CR-05 open question 4: the account's ending collection. Counted at conclusion (THE END),
+    not at commit - an ending the player never played through to isn't one they reached. After
+    save_state, so a turn that failed to persist never records an ending; idempotent, so a
+    regenerated final scene doesn't double-count."""
+    committed = ((ctx["state"].get("mechanics") or {}).get("endings") or {}).get("committed")
+    bound = mechanics.bound_for(ctx["story"], "endings")
+    if not committed or bound is None:
+        return
+    entry = next((e for e in bound.engine.entries(bound.cfg) if e.get("id") == committed.get("id")), None)
+    if entry is None:
+        return
+    state_store.record_ending_reached(user_id, story_slug, entry["id"], mechanics.endings.display_name(entry))
+
+
+def concluded_epilogue(ctx: dict) -> str:
+    """The committed ending's authored `epilogue`, for display under THE END; "" until the story
+    has concluded, and for an ending that authors none."""
+    if not ctx["state"]["plot"]["endgame"].get("concluded"):
+        return ""
+    committed = ((ctx["state"].get("mechanics") or {}).get("endings") or {}).get("committed")
+    bound = mechanics.bound_for(ctx["story"], "endings")
+    if not committed or bound is None:
+        return ""
+    entry = next((e for e in bound.engine.entries(bound.cfg) if e.get("id") == committed.get("id")), None)
+    return ((entry or {}).get("epilogue") or "").strip()
 
 
 def detect_gate_refusal(ctx: dict, player_action: str) -> dict | None:
@@ -3036,7 +3245,7 @@ Reply with JSON only:
   rule, never mention conditions or requirements, and never refer to a gate, a check or a
   number - write only what the protagonist sees and feels. Empty string if blocked is null>"}}"""
 
-    result = _timed("gate_check", lambda: call_llm_json(prompt), model=TIER_C_MODEL)
+    result = _timed("gate_check", lambda: call_llm_json(prompt), model=EXTRACTION_MODEL)
     try:
         index = int((result or {}).get("blocked"))
     except (TypeError, ValueError):

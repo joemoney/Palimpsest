@@ -75,7 +75,7 @@ print("OK: {name} and {id} are engine-filled placeholders there, so a derived va
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
     mechanics.validate(RAW)
-assert "CR-08" in buf.getvalue()
+assert "CR-08" not in buf.getvalue(), "transitions are read now: no warning"
 quiet = copy.deepcopy(RAW)
 del quiet["mechanics"]["relationships"]["transitions"]
 buf = io.StringIO()

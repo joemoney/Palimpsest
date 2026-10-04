@@ -1,5 +1,5 @@
 """Regression test for story_engine's OpenRouter call path (_call_llm_openrouter, the
-default provider for both TIER_AB_PROVIDER and TIER_C_PROVIDER in real use - Google is kept
+default provider for both NARRATION_PROVIDER and EXTRACTION_PROVIDER in real use - Google is kept
 only for testing/debugging and call_llm's fail-safe, see docs/ARCHITECTURE.md): a successful response
 is parsed correctly, model routing defaults to the right tier per call, and network/HTTP/
 malformed-response failures are all wrapped as the same LLMUnavailableError the Google path
@@ -10,7 +10,7 @@ failure alone no longer directly raises.
 Sets TESTING_FORCE_GOOGLE=false for this file only - the rest of the suite defaults it to
 "true" via _llm_stubs.py (the fully-stubbed, provider-agnostic path), but this file
 specifically exercises the real OpenRouter path (both tiers already default to
-TIER_AB_PROVIDER=TIER_C_PROVIDER="openrouter", so no provider override is needed beyond
+NARRATION_PROVIDER=EXTRACTION_PROVIDER="openrouter", so no provider override is needed beyond
 disabling the testing force). Each test file runs in its own subprocess (see run_all.py), so
 this doesn't affect other test files.
 
@@ -86,39 +86,39 @@ class _FakeResponse:
 
 # --- a successful call parses choices[0].message.content, using the default (Tier A/B) model ---
 def _fake_post_ok(url, headers=None, json=None, timeout=None):
-    assert json["model"] == se.TIER_AB_MODEL
+    assert json["model"] == se.NARRATION_MODEL
     return _FakeResponse(200, {"choices": [{"message": {"content": "narration text"}}]})
 
 
 se.requests.post = _fake_post_ok
 assert se.call_llm("some prompt") == "narration text"
-print("OK: a successful OpenRouter response is parsed correctly, defaulting to TIER_AB_MODEL")
+print("OK: a successful OpenRouter response is parsed correctly, defaulting to NARRATION_MODEL")
 
 
 # --- call_llm_json defaults to Tier C, not Tier A/B, and requests json_object mode ---
 def _fake_post_state_update(url, headers=None, json=None, timeout=None):
-    assert json["model"] == se.TIER_C_MODEL
+    assert json["model"] == se.EXTRACTION_MODEL
     assert json["response_format"] == {"type": "json_object"}
     return _FakeResponse(200, {"choices": [{"message": {"content": "{}"}}]})
 
 
 se.requests.post = _fake_post_state_update
 assert se.call_llm_json("some prompt") == {}
-print("OK: call_llm_json defaults to TIER_C_MODEL and requests json_object mode")
+print("OK: call_llm_json defaults to EXTRACTION_MODEL and requests json_object mode")
 
 
-# --- call_llm_json's Tier B override (reasoning=True) sends exclude:false ---
+# --- the judgment tier's reasoning level sends effort + exclude:false ---
 def _fake_post_tier_b(url, headers=None, json=None, timeout=None):
-    assert json["model"] == se.TIER_AB_MODEL
-    assert json["reasoning"] == {"exclude": False}
+    assert json["model"] == se.NARRATION_MODEL
+    assert json["reasoning"] == {"effort": "high", "exclude": False}
     return _FakeResponse(200, {"choices": [{"message": {"content": "{}"}}]})
 
 
 se.requests.post = _fake_post_tier_b
 assert se.call_llm_json(
-    "some prompt", model=se.TIER_AB_MODEL, provider=se.TIER_AB_PROVIDER, reasoning=True
+    "some prompt", model=se.NARRATION_MODEL, provider=se.NARRATION_PROVIDER, reasoning="high"
 ) == {}
-print("OK: reasoning=True (Tier B) sends reasoning.exclude=false")
+print("OK: reasoning='high' sends reasoning.effort=high and exclude=false")
 
 
 # --- an explicit model= override is actually sent to OpenRouter ---
@@ -132,16 +132,16 @@ assert se.call_llm("some prompt", model="some/other-model") == "ok"
 print("OK: an explicit model= override is passed through to the request body")
 
 
-# --- sort= overrides TIER_AB_MODEL's usual price-sort for one call, without touching the
-# tier-wide default any other TIER_AB_MODEL call site still gets ---
+# --- sort= overrides NARRATION_MODEL's usual price-sort for one call, without touching the
+# tier-wide default any other NARRATION_MODEL call site still gets ---
 def _fake_post_default_sort(url, headers=None, json=None, timeout=None):
     assert json["provider"] == {"sort": "price"}
     return _FakeResponse(200, {"choices": [{"message": {"content": "ok"}}]})
 
 
 se.requests.post = _fake_post_default_sort
-assert se.call_llm("some prompt", model=se.TIER_AB_MODEL, provider=se.TIER_AB_PROVIDER) == "ok"
-print("OK: TIER_AB_MODEL with no sort= override still price-sorts, unchanged")
+assert se.call_llm("some prompt", model=se.NARRATION_MODEL, provider=se.NARRATION_PROVIDER) == "ok"
+print("OK: NARRATION_MODEL with no sort= override still price-sorts, unchanged")
 
 
 def _fake_post_sort_override(url, headers=None, json=None, timeout=None):
@@ -150,9 +150,9 @@ def _fake_post_sort_override(url, headers=None, json=None, timeout=None):
 
 
 se.requests.post = _fake_post_sort_override
-assert se.call_llm("some prompt", model=se.TIER_AB_MODEL, provider=se.TIER_AB_PROVIDER,
+assert se.call_llm("some prompt", model=se.NARRATION_MODEL, provider=se.NARRATION_PROVIDER,
                     sort="throughput") == "ok"
-print("OK: sort='throughput' overrides TIER_AB_MODEL's price-sort for this one call "
+print("OK: sort='throughput' overrides NARRATION_MODEL's price-sort for this one call "
       "(summary_rollover's own reason for using it)")
 
 

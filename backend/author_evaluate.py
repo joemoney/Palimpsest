@@ -144,9 +144,7 @@ def _eval_ctx(story: dict, sample: dict) -> tuple:
     return ctx, left_out
 
 
-# CR-06: "at most 3 active at once". The engine that injects lore is not built, so this is the
-# spec's number, used only to show the cutoff; the engine will own it.
-LORE_DEFAULT_MAX_ACTIVE = 3
+LORE_DEFAULT_MAX_ACTIVE = 3  # mirrors mechanics.lore.DEFAULT_MAX_ACTIVE
 
 
 def lore_injection(story: dict, sample: dict) -> list:
@@ -155,8 +153,8 @@ def lore_injection(story: dict, sample: dict) -> list:
     `injected`, `cut` (triggered but past `max_active`), `dormant` (its `unlock` does not hold) or
     `idle` (nothing triggered it); `why` names each trigger. Empty when the story authors no lore.
 
-    The keyed_lore engine is not built, so this is the *design* (Story_Mechanics_Update.md CR-06)
-    evaluated with the real condition code, not a copy of a runtime rule: a key matches
+    Same rules as the keyed_lore engine (mechanics/lore.py), kept as a separate reading so the
+    sample bar can show a state that is not a save: a key matches
     case-insensitively as a whole word or phrase in `sample["lore_text"]` (the player's action
     plus the last scene), `also_when` and `unlock` are read CLOSED, entries rank by priority
     (ties by authored order) and the top `max_active` win. `sticky_turns` needs history a sample

@@ -333,6 +333,20 @@ assert "no arc description" in got["nodesc"][1]
 assert author_lint.ending_arc_issues({"mechanics": {}}) == []
 print("OK: a missing arc title or description is one warning per ending, naming what's missing")
 
+# --- L18: a missing budget boundary is a warning naming CR-05's placeholder, never an engine default
+partial = copy.deepcopy(arcs)
+partial["mechanics"]["endings"]["budget"] = {"open_until": 25}
+got = author_lint.endings_budget_issues(partial)
+assert [i["id"] for i in got] == ["L18", "L18"] and all(i["severity"] == "warning" for i in got), got
+assert "narrow_until" in got[0]["message"] and "90" in got[0]["message"]
+assert "commit_by" in got[1]["message"] and "140" in got[1]["message"] and "ever forced" in got[1]["message"]
+assert len(author_lint.endings_budget_issues(arcs)) == 3
+partial["mechanics"]["endings"]["budget"] = dict(author_lint.DEFAULT_ENDINGS_BUDGET)
+assert author_lint.endings_budget_issues(partial) == []
+assert author_lint.endings_budget_issues({"mechanics": {}}) == []
+assert any(i["id"] == "L18" for i in author_lint.lint(arcs, author_model.to_board_model(arcs)))
+print("OK: L18 warns once per missing budget boundary and suggests 40 / 90 / 140")
+
 # --- has_errors -------------------------------------------------------------------------------
 assert author_lint.has_errors([{"severity": "error"}])
 assert not author_lint.has_errors([{"severity": "warning"}])

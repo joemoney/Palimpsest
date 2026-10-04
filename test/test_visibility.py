@@ -140,3 +140,24 @@ print(f"OK: of {checked_secret} secret fields only the {len(KNOWN_LEAKS)} known 
       f"{checked_shown} 'every turn' narrator fields all do (3 stories)")
 
 print("\nALL CHECKS PASSED: test_visibility")
+
+# --- runtime enforcement (CR-03, Engine behaviour): the loader's allowlist ---------------------
+import state_store  # noqa: E402
+
+for slug in [s["slug"] if isinstance(s, dict) else s for s in state_store.list_stories()]:
+    raw = state_store.load_template_raw(slug)
+    engine = json.dumps(state_store.thaw(state_store.load_template(slug)) if hasattr(state_store, "thaw") else
+                        state_store.load_template(slug), default=dict)
+    authoring = json.dumps(state_store.thaw(state_store.load_template_authoring(slug))
+                           if hasattr(state_store, "thaw") else state_store.load_template_authoring(slug), default=dict)
+    eng_view, author_only = visibility.split_author(raw)
+    assert "_" not in {k[0] for k in eng_view if k}, slug
+    for ch in (raw.get("world", {}).get("characters") or {}).values():
+        if ch.get("role"):
+            assert not any("role" in c for c in eng_view["world"]["characters"].values()), \
+                f"{slug}: a character's role reached the engine view"
+            assert any("role" in c for c in author_only["world"]["characters"].values()), slug
+    syn = (raw.get("meta") or {}).get("synopsis")
+    if syn:
+        assert "synopsis" not in eng_view["meta"] and author_only["meta"]["synopsis"] == syn, slug
+print("OK: load_template() strips author-visibility fields; load_template_authoring() carries them")

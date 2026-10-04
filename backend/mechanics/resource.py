@@ -199,6 +199,15 @@ class BoundedCounter(MechanicEngine):
 
         Only ever adjusts an axis already present in protagonist.stats - the CLAUDE.md
         invariant that the model can never introduce a new stat axis lives here now."""
+        return self._resolve(cfg, ctx, observations, drift=True)
+
+    def pay(self, cfg, ctx, keys, reason):
+        """Price named events outside the observation pass - CR-07's completion rewards. Same
+        arithmetic, bounds and tier crossings as `resolve`, but no drift: this is not a new turn."""
+        observations = [{"type": "stat_event", "key": k} for k in keys]
+        return self._resolve(cfg, ctx, observations, drift=False, tag=reason)
+
+    def _resolve(self, cfg, ctx, observations, drift, tag=None):
         costs = self.costs(cfg)
         stats = self.current(ctx)
         # Projected, not read fresh per effect: several events in one turn may move the same
@@ -228,7 +237,7 @@ class BoundedCounter(MechanicEngine):
             if kind == "stat_event":
                 key = observation.get("key")
                 for axis, magnitude in (costs.get(key) or {}).items():
-                    move(axis, magnitude, f"event:{key}")
+                    move(axis, magnitude, f"{tag}:{key}" if tag else f"event:{key}")
             elif kind == "stat_changes":
                 for axis, delta in (observation.get("changes") or {}).items():
                     try:
@@ -244,10 +253,50 @@ class BoundedCounter(MechanicEngine):
         # CR-13: drift reads the story clock, so asking questions (which take little in-world time) does not
         # tick a deadline down; and only on a turn the clock moved, or a parked clock resting on a multiple
         # of `interval` would tick every idle turn.
-        turn_count = clock.story_turn(ctx)
-        for axis, (per_turn, interval) in self.drift(cfg).items():
-            if clock.advanced(ctx) and turn_count % interval == 0:
-                move(axis, per_turn, "per_turn")
+        if drift:
+            turn_count = clock.story_turn(ctx)
+            for axis, (per_turn, interval) in self.drift(cfg).items():
+                if clock.advanced(ctx) and turn_count % interval == 0:
+                    move(axis, per_turn, "per_turn")
+        effects.extend(self._crossings(cfg, ctx, projected))
+        return effects
+
+    @staticmethod
+    def _tier_key(tier):
+        return tier.get("label") or str(tier["at"])
+
+    def _crossings(self, cfg, ctx, projected):
+        """CR-01: one `stats.tier_cross` per axis that climbed into a higher tier this turn.
+
+        Judged on the net move (value before the turn against value after it), so a stat that
+        dips and recovers inside one turn crosses nothing. Every tier climbed past is logged in
+        `tier_log`, which conditions read ("reached `loud` at any point"); only the highest one
+        that authors an `on_enter` directive fires it, since a jump over two tiers should not
+        hand the narrator two directives. `once` is judged against the log as it stood before
+        this turn."""
+        stats = self.current(ctx)
+        log = (((ctx["state"].get("mechanics") or {}).get("stats") or {}).get("tier_log") or {})
+        effects = []
+        for axis, after in projected.items():
+            before = stats.get(axis)
+            if not isinstance(before, (int, float)) or not isinstance(after, (int, float)) or after <= before:
+                continue
+            climbed = [t for t in self.tiers(cfg, axis) if before < t["at"] <= after]
+            if not climbed:
+                continue
+            seen = log.get(axis) or []
+            fire = None
+            for tier in reversed(climbed):
+                hook = tier.get("on_enter") or {}
+                if hook.get("directive") and not (hook.get("once") and self._tier_key(tier) in seen):
+                    fire = tier
+                    break
+            effects.append(Effect(
+                "stats.tier_cross", reason=f"tier:{axis}", axis=axis,
+                entered=[self._tier_key(t) for t in climbed],
+                directive=fire["on_enter"]["directive"] if fire else "",
+                label=self._tier_key(fire) if fire else "",
+                turn=ctx["state"].get("pacing", {}).get("turn_count", 0)))
         return effects
 
     # --- prompt ---------------------------------------------------------------------
@@ -265,7 +314,20 @@ class BoundedCounter(MechanicEngine):
                     "footer": self._footer(cfg, visible)}
         if (tiers := self._tier_footer(cfg, ctx)):
             sections["tiers"] = tiers
+        if (directive := self._enter_directive(ctx)):
+            sections["directive"] = directive
         return sections
+
+    @staticmethod
+    def _enter_directive(ctx):
+        """CR-01's `on_enter`, for the one narration right after the crossing. Read off the turn
+        it was recorded on rather than cleared after use: a regenerate restores the pre-turn
+        snapshot and sees it again, and an old one simply stops matching."""
+        turn = ctx["state"].get("pacing", {}).get("turn_count", 0)
+        pending = (((ctx["state"].get("mechanics") or {}).get("stats") or {}).get("directives") or [])
+        lines = [f"- {d['text']}" for d in pending if d.get("turn") == turn]
+        return (("\nA FIGURE HAS JUST CROSSED A LINE. This scene only, work this in as something that "
+                 "happens on the page, never as an explanation:\n" + "\n".join(lines))[:1300]) if lines else ""
 
     def _tier_footer(self, cfg, ctx):
         """One authored line per axis currently sitting in a tier that wrote guidance.
@@ -480,5 +542,21 @@ def _apply_set(ctx, effect):
         deltas[axis] = deltas.get(axis, 0) + (value - before)
 
 
+def _apply_tier_cross(ctx, effect):
+    payload = effect.payload
+    block = ctx["state"].setdefault("mechanics", {}).setdefault(BoundedCounter.slot, {})
+    seen = block.setdefault("tier_log", {}).setdefault(payload["axis"], [])
+    for key in payload["entered"]:
+        if key not in seen:
+            seen.append(key)
+    if payload["directive"]:
+        # Only this turn's directives are kept: older ones never match again.
+        kept = [d for d in block.get("directives") or [] if d.get("turn") == payload["turn"]]
+        kept.append({"axis": payload["axis"], "tier": payload["label"],
+                     "text": payload["directive"], "turn": payload["turn"]})
+        block["directives"] = kept
+
+
 ENGINE = register(BoundedCounter())
 register_effect("stats.set", _apply_set)
+register_effect("stats.tier_cross", _apply_tier_cross)

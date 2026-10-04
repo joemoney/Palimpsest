@@ -173,14 +173,14 @@ print("OK: L03 covers recipe premises and vignette seeds, against every characte
 
 print("OK: lint catches dangling names, protected casting, unknown beats/tags/stats/recipes, and inert blocks")
 
-# --- the sample state answers bond conditions while the engine is unbuilt ------------------------
+# --- the sample state answers bond conditions (scored_bonds and episodic_threads are both built) ------------------------
 story = copy.deepcopy(RAW)
 story["plot"] = {"main_thread": {"title": "m", "description": "d", "acts": [
     {"act_number": 1, "title": "A", "description": "d", "requires": {"bond": [MIRA, SAL], "gte": 0}},
     {"act_number": 2, "title": "B", "description": "d", "requires": {"turn_gte": 3}}]}}
 rows, left_out = author_evaluate.evaluate_all(story, {"bonds": {MIRA: {SAL: 5}}, "turn": 4})
 by = {r["path"]: r for r in rows}
-assert ("bonds", "scored_bonds") in left_out and ("side_threads", "episodic_threads") in left_out
+assert ("side_threads", "episodic_threads") not in left_out and ("bonds", "scored_bonds") not in left_out
 assert by["plot.main_thread.acts[0].requires"]["satisfied"] and not by["plot.main_thread.acts[0].requires"]["unknown"]
 assert by["plot.main_thread.acts[1].requires"]["satisfied"], "other leaves still evaluate"
 assert not any("side_threads" in p for p in by), "a recipe's slot condition has no single sample answer"

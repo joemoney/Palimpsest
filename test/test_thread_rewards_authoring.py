@@ -66,7 +66,7 @@ for label, raw in (("completion_rewards", RAW), ("a thread's on_complete", {**RA
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         mechanics.validate(raw)
-    assert "CR-07" in buf.getvalue(), label
+    assert "CR-07" not in buf.getvalue(), label
 plain = copy.deepcopy(RAW)
 plain["plot"]["subplots"]["s1"].pop("on_complete")
 plain["mechanics"]["subplots"] = {"engine": "weighted_threads"}
@@ -74,6 +74,6 @@ buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
     mechanics.validate(plain)
 assert "CR-07" not in buf.getvalue()
-print("OK: an authored reward warns at load while no engine pays it; a story without one stays quiet")
+print("OK: an authored reward loads without a warning now that the engine pays it")
 
 print("\nALL CHECKS PASSED: test_thread_rewards_authoring")

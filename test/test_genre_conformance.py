@@ -54,6 +54,11 @@ NARRATION_MARKERS = {
     # Phase 6. Only present while a gate is actually shut - a story whose gates are all
     # satisfied contributes no header, which is P-2 rather than an accident of timing.
     "gate": "CLOSED TO THE PROTAGONIST",
+    # CR-11. A vignette is the one side-thread line a fixture with no cast can show: the survival
+    # fixture authors `every: 1`, so the first quiet scene is offered its seed.
+    "side_threads": "TEXTURE, if the scene has room",
+    # CR-06. The loop below sets the player's action to "lorekey", which regency's one entry keys on.
+    "lore": "\nLORE:\n",
 }
 STATE_UPDATE_MARKERS = {
     "tracked_entity": "entity_interaction",
@@ -67,6 +72,7 @@ STATE_UPDATE_MARKERS = {
     "subplots": '"subplot_beats"',
     "progression": '"leverage"',
     "pacing_loop": '"beat"',
+    "bonds": '"bond_events"',
     "revelations": "LIVE TRIGGERS",
     # mechanics.flags.declared: the event descriptions reach the state-update pass while a
     # declared flag is unset. Not an engine slot (the block has no `engine` key), so it has
@@ -79,18 +85,18 @@ STATE_UPDATE_MARKERS = {
 # weakening the test.
 EXPECTED_ABSENT = {
     "regency.json": ["locations", "factions", "stats", "tracked_entity",
-                     "endings", "pacing_loop", "inventory", "gate", "flags"],
+                     "endings", "pacing_loop", "inventory", "gate", "flags", "side_threads"],
     "courtroom.json": ["locations", "factions", "tracked_entity", "stats",
                        "relationships", "progression", "pacing_loop", "inventory",
-                       "subplots"],
-    "survival.json": ["relationships", "characters", "revelations", "progression", "gate"],
+                       "subplots", "bonds", "side_threads", "lore"],
+    "survival.json": ["relationships", "characters", "revelations", "progression", "gate", "bonds", "lore"],
 }
 EXPECTED_PRESENT = {
     "regency.json": ["relationships", "characters", "revelations", "subplots",
-                     "progression"],
+                     "progression", "bonds", "lore"],
     "courtroom.json": ["characters", "revelations", "endings", "gate", "flags"],
     "survival.json": ["stats", "tracked_entity", "endings", "flags", "locations",
-                      "inventory", "subplots", "pacing_loop"],
+                      "inventory", "subplots", "pacing_loop", "side_threads"],
 }
 
 # --- the registry dimension (engine v2 phase 3) ------------------------------------
@@ -104,12 +110,12 @@ EXPECTED_PRESENT = {
 # **Every phase 4 port must add its engine to this table and to at least one fixture in the
 # same commit**, or nothing is guarding P-2 for it.
 EXPECTED_ENGINES = {
-    "regency.json": ["progression", "relationships", "revelations", "subplots"],
+    "regency.json": ["bonds", "lore", "progression", "relationships", "revelations", "subplots"],
     # courtroom authors no plot.subplots at all - it is the deliberately single-thread
     # fixture, and the reason the subplot field stopped being unconditional (P-2).
     "courtroom.json": ["endings", "gate", "revelations"],
-    "survival.json": ["endings", "inventory", "pacing_loop", "stats",
-                      "subplots"],
+    "survival.json": ["endings", "inventory", "pacing_loop", "side_threads",
+                      "stats", "subplots"],
 }
 ALL_ENGINE_SLOTS = sorted({slot for slot, _ in se.mechanics.registered_engines()})
 
@@ -150,7 +156,12 @@ for name in sorted(EXPECTED_ABSENT):
         assert module not in present, f"{name}: expected NOT to author {module}"
 
     # (2) build_system_prompt emits no marker for an absent module
+    # Quiet scenes only: the opening scene never gets texture, so look a few turns in.
+    ctx["state"]["pacing"]["turn_count"] = 5
+    ctx["player_action"] = "lorekey"
     prompt = se.build_system_prompt(ctx)
+    ctx.pop("player_action")
+    ctx["state"]["pacing"]["turn_count"] = 0
     for module in EXPECTED_ABSENT[name]:
         marker = NARRATION_MARKERS.get(module)
         if marker:

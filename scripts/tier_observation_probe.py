@@ -54,9 +54,9 @@ SAVES = [
 # own. All three are here because §5.5's argument is about latency as much as accuracy, and
 # Tier B's reasoning pass is the expensive end of it.
 CONFIGS = {
-    "C": {"model": se.TIER_C_MODEL, "provider": se.TIER_C_PROVIDER, "reasoning": False},
-    "A": {"model": se.TIER_AB_MODEL, "provider": se.TIER_AB_PROVIDER, "reasoning": False},
-    "B": {"model": se.TIER_AB_MODEL, "provider": se.TIER_AB_PROVIDER, "reasoning": True},
+    "C": {"model": se.EXTRACTION_MODEL, "provider": se.EXTRACTION_PROVIDER, "reasoning": se.EXTRACTION_REASONING},
+    "A": {"model": se.NARRATION_MODEL, "provider": se.NARRATION_PROVIDER, "reasoning": se.NARRATION_REASONING},
+    "B": {"model": se.JUDGMENT_MODEL, "provider": se.JUDGMENT_PROVIDER, "reasoning": se.JUDGMENT_REASONING},
 }
 
 

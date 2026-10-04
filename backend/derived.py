@@ -12,9 +12,10 @@ set a player could make, and `uses()` finds each `{var}` a template writes and w
 conditions through `conditions.evaluate` (D3: no second implementation), never writes, calls
 no LLM.
 
-**The engine half is not built.** Nothing substitutes `{var}` in a prompt yet, so
-`mechanics.validate()` refuses a template that authors `derived` - loud rather than a narrator
-handed `{lark_is}` verbatim (build order: a story may be unplayable, loudly).
+**The engine half** is `settle()` and `substitute()`: `state_store` settles the values into
+`state["derived"]` the first load after creation completes, then hands every consumer a `ctx["story"]`
+with the `{var}` tokens already filled - no prompt builder substitutes anything itself. Until
+creation completes the tokens stay as written; no prompt is built before then.
 
 **`when` is CLOSED** (D2): an unknown step or option reads false, so a typo falls through to
 the next rule instead of fixing the wrong value for the whole story. Lint (L10) catches the typo.
@@ -134,3 +135,50 @@ def builtin_for(path: str) -> set:
     """The engine-filled placeholders legal at `path`."""
     return set().union(*[names for prefix, names in BUILTIN.items()
                          if path == prefix or path.startswith(prefix + ".") or path.startswith(prefix + "[")])
+
+
+# --- the engine half ---------------------------------------------------------------------------
+def creation_complete(story, state) -> bool:
+    """True once every `character_creation` step has a recorded choice (vacuously true for a
+    story with none)."""
+    choices = ((state or {}).get("protagonist") or {}).get("creation_choices") or {}
+    return all(s.get("key") in choices for s in (story or {}).get("character_creation") or []
+               if isinstance(s, dict) and s.get("key"))
+
+
+def settle(story, state) -> bool:
+    """Fixes `state["derived"]` the first time creation is complete, from the choices made. Stored
+    in the save, so a later template edit cannot silently change a running story's facts. Returns
+    True when it wrote something. A story with no `derived` rules stores nothing (P-2)."""
+    if not rules(story) or state.get("derived") is not None or not creation_complete(story, state):
+        return False
+    choices = dict(state["protagonist"].get("creation_choices") or {})
+    index, values = resolve(story, creation_ctx(story, choices))
+    state["derived"] = {"rule": index, "values": values}
+    return True
+
+
+def substitute(story, values: dict):
+    """A copy of `story` with each `{name}` that `values` defines replaced, in every string the
+    engine could send to a model. Any other `{token}` (the engine's own builtins, a name no rule
+    matched) is left exactly as written."""
+    if not values:
+        return story
+
+    def sub(text):
+        return TOKEN.sub(lambda m: str(values[m.group(1)]) if m.group(1) in values else m.group(0), text)
+
+    def walk(value, path, key):
+        if key in _SKIP_KEYS or (key or "").startswith("_"):
+            return value
+        if any(path == p or path.startswith(p + ".") or path.startswith(p + "[") for p in _SKIP_PREFIXES):
+            return value
+        if isinstance(value, dict):
+            return {k: walk(v, f"{path}.{k}" if path else k, k) for k, v in value.items()}
+        if isinstance(value, list):
+            return [walk(v, f"{path}[{i}]", key) for i, v in enumerate(value)]
+        if isinstance(value, str):
+            return sub(value)
+        return value
+
+    return walk(story, "", None)

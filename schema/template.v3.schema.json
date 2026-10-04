@@ -23,7 +23,7 @@
 
     "derived": {
       "description": "CR-04: values fixed once, when character creation completes. The first rule whose condition holds wins, and its values can be written as {name} in any text the narrator sees.",
-      "$comment": "Written by the board now; the engine that substitutes {name} is not built, so mechanics.validate() refuses a template authoring this until it is (a narrator must never be handed a raw {name}).",
+      "$comment": "Settled into the save when creation completes (state.derived); state_store then substitutes {name} into ctx.story, so no prompt builder handles it.",
       "type": "array",
       "items": {
         "type": "object",
@@ -87,7 +87,7 @@
     },
 
     "scene_length_by_moment": {
-      "$comment": "CR-14 (Story_Mechanics_Update.md): the scene's word range follows the moment, chosen in code before narration - finale, then a fired pacing directive (or CR-13's push), then the previous turn's beat, then narration.scene_length. inquiry is narrator-judged. Absent means every scene uses scene_length. Not built yet: mechanics.validate() warns while nothing reads it.",
+      "$comment": "CR-14 (Story_Mechanics_Update.md): the scene's word range follows the moment, chosen in code before narration - finale, then a fired pacing directive (or CR-13's push), then the previous turn's beat, then narration.scene_length. inquiry is narrator-judged. Absent means every scene uses scene_length.",
       "type": "object",
       "properties": {
         "beats": {
@@ -318,7 +318,7 @@
         "narration": { "x-visibility": "narrator", "x-visible-when": "the current tier", "type": "string" },
         "clause_max_words": { "type": "integer" },
         "on_enter": {
-          "$comment": "CR-01: fires on an upward crossing into this tier. Not built until S5 step 2; mechanics.validate() warns while nothing reads it.",
+          "$comment": "CR-01: fires on an upward crossing into this tier. Read by bounded_counter: one directive for the narration after the crossing; `once` limits it to the first entry.",
           "type": "object",
           "properties": {
             "once": { "type": "boolean" },
@@ -413,15 +413,13 @@
         "engine": { "const": "weighted_threads" },
         "weights": { "type": "object", "additionalProperties": { "type": "number" } },
         "completion_rewards": {
-          "$comment": "CR-07 (Story_Mechanics_Update.md): the stat events a thread pays when it completes, by the thread's priority (high / medium / low). Each name must be a key of some mechanics.stats.axes.<axis>.costs. A thread's own on_complete.stat_events overrides its priority's row; generated threads inherit by priority. Not built yet: mechanics.validate() warns while nothing reads it.",
-          "x-not-built": true,
-          "type": "object",
+          "$comment": "CR-07 (Story_Mechanics_Update.md): the stat events a thread pays when it completes, by the thread's priority (high / medium / low). Each name must be a key of some mechanics.stats.axes.<axis>.costs. A thread's own on_complete.stat_events overrides its priority's row; generated threads inherit by priority.",
+                 "type": "object",
           "additionalProperties": { "type": "array", "items": { "type": "string" } }
         },
         "near_completion_margin": {
           "$comment": "CR-07: how close to its completion threshold a thread must be for the narrator to be told it may resolve this scene. No engine default: how early to foreshadow a payoff is a creative decision.",
-          "x-not-built": true,
-          "type": "integer", "minimum": 1
+                 "type": "integer", "minimum": 1
         }
       },
       "patternProperties": { "^_": true },
@@ -470,9 +468,8 @@
         },
         "unreciprocated_factor": { "type": "number" },
         "transitions": {
-          "$comment": "CR-08 (Story_Mechanics_Update.md): one-shot directives when a relationship's history crosses a line, e.g. once warm and now drifting to neutral, the character exits. Each transition is checked against every relationship after its deltas, once per character unless once_per_character is false. Not built yet: mechanics.validate() warns while nothing reads it.",
-          "x-not-built": true,
-          "type": "array",
+          "$comment": "CR-08 (Story_Mechanics_Update.md): one-shot directives when a relationship's history crosses a line, e.g. once warm and now drifting to neutral, the character exits. Each transition is checked against every relationship after its deltas, once per character unless once_per_character is false.",
+                 "type": "array",
           "items": { "$ref": "#/$defs/relationship_transition" }
         }
       },
@@ -682,7 +679,7 @@
     },
 
     "engine_lore": {
-      "$comment": "CR-06 keyed lore. Written by the board at its final path (D1); the keyed_lore engine is not built yet, so a story authoring this block fails load_template() loudly until it is.",
+      "$comment": "CR-06 keyed lore. Written by the board at its final path (D1); read by the keyed_lore engine (backend/mechanics/lore.py).",
       "type": "object",
       "properties": {
         "engine": { "const": "keyed_lore" },
@@ -712,7 +709,7 @@
       "additionalProperties": false
     },
     "engine_bonds": {
-      "$comment": "CR-11 NPC-to-NPC bonds. One-way scores: A->B and B->A are separate, so unrequited feeling is representable. Written by the board at its final path (D1); the scored_bonds engine is not built yet, so a story authoring this block fails load_template() loudly until it is.",
+      "$comment": "CR-11 NPC-to-NPC bonds. One-way scores: A->B and B->A are separate, so unrequited feeling is representable. Read by the scored_bonds engine (backend/mechanics/bonds.py); state lives at state.mechanics.bonds[from][to].",
       "type": "object",
       "properties": {
         "engine": { "const": "scored_bonds" },
@@ -822,7 +819,7 @@
     },
 
     "engine_side_threads": {
-      "$comment": "CR-11 side threads: a separate track of short AI-written episodes, started and ended by state, never by the story's structure. Not subplots: no delivers, never counted toward act advancement. Written by the board at its final path (D1); the episodic_threads engine is not built yet, so a story authoring this block fails load_template() loudly until it is.",
+      "$comment": "CR-11 side threads: a separate track of short AI-written episodes, started and ended by state, never by the story's structure. Not subplots: no delivers, never counted toward act advancement. Written by the board at its final path (D1); the episodic_threads engine reads it..",
       "type": "object",
       "properties": {
         "engine": { "const": "episodic_threads" },

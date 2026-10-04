@@ -192,6 +192,24 @@ try:
     assert b"Broken Test Story" not in resp.data
     print("OK: /stories omits a story that still fails lint")
 
+    # --- ending collection (CR-05 open question 4): absent with no endings block (P-2); with
+    # one, "X of Y" plus the names of reached endings only, never an unreached one's ---
+    assert b"Endings reached" not in resp.data
+    with_endings = json.loads(json.dumps(template))
+    with_endings.setdefault("mechanics", {})["endings"] = {"engine": "ending_funnel", "entries": [
+        {"id": "reached_one", "kind": "destination", "name": "The Reached Ending"},
+        {"id": "unreached_one", "kind": "destination", "name": "The Secret Ending"}]}
+    with open(os.path.join(story_dir, "template.json"), "w") as f:
+        json.dump(with_endings, f)
+    ss.record_ending_reached(alice_id, "new_babel", "reached_one", "Old Name")
+    resp = client.get("/stories")
+    assert b"Endings reached" in resp.data and b"1 of 2" in resp.data, resp.data
+    assert b"The Reached Ending" in resp.data and b"Old Name" not in resp.data
+    assert b"The Secret Ending" not in resp.data
+    with open(os.path.join(story_dir, "template.json"), "w") as f:
+        json.dump(template, f)
+    print("OK: /stories shows endings reached as X of Y, naming only the reached ones")
+
     # --- first visit to /play is the name-capture phase ---
     resp = client.get("/play/new_babel")
     assert resp.status_code == 200

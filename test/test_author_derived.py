@@ -18,6 +18,7 @@ import author_model  # noqa: E402
 import conditions  # noqa: E402
 import derived  # noqa: E402
 import mechanics  # noqa: E402
+import state_store  # noqa: E402
 
 GENDER = [("man", "a man"), ("woman", "a woman"), ("nonbinary", "nonbinary")]
 TRADE = ["coil_hand", "listener", "patcher"]
@@ -62,14 +63,47 @@ assert ("derived[0].when", conditions.CLOSED) in [(p, pol) for p, _, pol, _ in c
 assert any("unknown option 'mann'" in i["message"] for i in author_lint.condition_issues(typo))
 print("OK: `when` is CLOSED - a typo falls through to the next rule, and lint names it (L10)")
 
-# --- loud until the engine substitutes {name} --------------------------------------------------
+# --- the engine half: settle once, substitute everywhere --------------------------------------
+mechanics.validate(RAW)  # no longer refused
+import state_store  # noqa: E402
+plain = copy.deepcopy(RAW)
+st = {"protagonist": {"creation_choices": {}}}
+assert not derived.settle(plain, st) and "derived" not in st, "no values until creation completes"
+done = {"protagonist": {"creation_choices": {"gender": "man", "trade": "listener"}}}
+assert derived.settle(plain, done) and done["derived"]["rule"] == 0
+settled = dict(done["derived"]["values"])
+assert not derived.settle(plain, done), "settled once, then left alone"
+out = derived.substitute(plain, settled)
+assert not any(n in settled for _, n in derived.uses(out)), "every defined {var} filled"
+assert out["derived"] == plain["derived"], "the rules themselves are never rewritten"
+assert derived.substitute({"a": "{counter_value} {nope}"}, {"x": "1"}) == {"a": "{counter_value} {nope}"}
+print("OK: derived values settle once creation completes and substitute into every prompt-bound string")
+
+# --- end to end: a real save settles on load and ctx["story"] arrives substituted --------------
+import shutil, tempfile  # noqa: E402
+tmp = tempfile.mkdtemp()
 try:
-    mechanics.validate(RAW)
-    raise AssertionError("a story authoring `derived` must not load for play yet")
-except mechanics.UnknownEngineError as e:
-    assert "derived" in str(e)
-mechanics.validate({k: v for k, v in RAW.items() if k != "derived"})
-print("OK: a story authoring `derived` is refused at load rather than handing the narrator {lark_is}")
+    base = json.load(open(os.path.join("stories", "example", "template.json")))
+    base["character_creation"] = RAW["character_creation"]
+    base["derived"] = RAW["derived"]
+    base["world"]["rules"] = list(base["world"].get("rules") or []) + RAW["world"]["rules"]
+    os.makedirs(os.path.join(tmp, "stories", "dv"))
+    json.dump(base, open(os.path.join(tmp, "stories", "dv", "template.json"), "w"))
+    state_store.STORIES_DIR = os.path.join(tmp, "stories")
+    state_store.SAVES_DIR = os.path.join(tmp, "saves")
+    ctx = state_store.load_state("u1", "dv")
+    assert any("{lark_is}" in r for r in ctx["story"]["world"]["rules"]), "raw until creation completes"
+    for step in base["character_creation"]:
+        ctx["state"]["protagonist"].setdefault("creation_choices", {})[step["key"]] = step["options"][0]["id"]
+    state_store.save_state(ctx, "u1", "dv")
+    ctx = state_store.load_state("u1", "dv")
+    rules_text = " ".join(ctx["story"]["world"]["rules"])
+    assert "{lark_is}" not in rules_text and "{lark_pron}" not in rules_text, rules_text
+    assert ctx["state"]["derived"]["values"], "stored in the save"
+    state_store.save_state(ctx, "u1", "dv")  # the mutation guard accepts the substituted story
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)
+print("OK: a live save settles derived values after creation and every prompt-bound string arrives filled")
 
 # --- board model -------------------------------------------------------------------------------
 m = author_model.to_board_model(RAW)

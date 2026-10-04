@@ -128,6 +128,12 @@ class MechanicEngine:
         """Pure: no I/O, no LLM (except a declared §6.4 judgement), deterministic."""
         raise NotImplementedError(f"{type(self).__name__} must implement resolve()")
 
+    def settle(self, cfg, ctx) -> list:
+        """Effects that can only be decided once this turn's other effects have applied (CR-07
+        rewards, CR-08 transitions). Runs after the observation pipeline, and must be idempotent:
+        it is also called again where a thread is closed outside a turn."""
+        return []
+
     def render(self, cfg, ctx, text: str) -> str:
         """Deterministic post-narration substitution - the apply_stat_readouts slot."""
         return text
@@ -203,13 +209,6 @@ def validate(story):
 
     Deliberately silent about a mechanics entry with no "engine" key - that is not an
     error, it is a mechanic the registry does not own yet."""
-    # CR-04 `derived` is not a mechanics block, but it fails the same way an unbuilt engine
-    # would if let through: nothing substitutes `{var}` yet, so the narrator would be handed
-    # `{lark_is}` verbatim. Refused here until the substitution exists (build order: loud).
-    if story.get("derived"):
-        raise UnknownEngineError(
-            "This story authors `derived` (CR-04 creation-derived values), which this build "
-            "cannot apply yet: nothing would substitute its {names} in the narrator's text.")
     # Declare-to-bind created one new way to author a story wrongly: seed protagonist.stats
     # (or a character_creation starting_stats) but never declare the engine, and the stats
     # sit in state doing nothing - no bounds, no prompt line, no stat_changes field. Silent
@@ -253,37 +252,6 @@ def validate(story):
             print(f"WARNING: act {act.get('act_number')} requires {', '.join(loose)}, which "
                   f"§2.2 marks non-latching - the act can un-satisfy its own precondition "
                   f"after advancing. Prefer revelation or flag.")
-
-    # D1 lets the board write a CR field before the engine that reads it exists; this is the
-    # "names every CR field present with no reader" warning for CR-01's tier hooks, so an
-    # author playing a half-built story is told why a tier crossing does nothing. Delete it in
-    # the change that gives on_enter a reader (AUTHORING_TOOL_PHASES.md S5 step 2).
-    stat_axes = ((story.get("mechanics") or {}).get("stats") or {}).get("axes") or {}
-    hooked = sorted(axis for axis, spec in stat_axes.items()
-                    if any(isinstance(t, dict) and t.get("on_enter") for t in (spec or {}).get("tiers") or []))
-    if hooked:
-        print(f"WARNING: tiers on {', '.join(hooked)} author on_enter (CR-01), which this build "
-              f"does not read yet - crossing into those tiers fires nothing.")
-
-    # CR-07's thread completion rewards: the board authors them, nothing pays them yet.
-    subs = (story.get("mechanics") or {}).get("subplots") or {}
-    threads = (story.get("plot") or {}).get("subplots") or {}
-    if subs.get("completion_rewards") or subs.get("near_completion_margin") or any(
-            isinstance(t, dict) and (t.get("on_complete") or {}).get("stat_events") for t in threads.values()):
-        print("WARNING: thread completion rewards (CR-07: mechanics.subplots.completion_rewards, "
-              "near_completion_margin or a thread's on_complete) are authored but this build does "
-              "not pay them yet - a completed thread moves no stat.")
-
-    # CR-08's relationship transitions: authored on the board, nothing evaluates them yet.
-    if ((story.get("mechanics") or {}).get("relationships") or {}).get("transitions"):
-        print("WARNING: mechanics.relationships.transitions (CR-08) are authored but this build "
-              "does not evaluate them yet - no relationship ever triggers an exit directive or sets "
-              "its flag.")
-
-    # And CR-14's scene length by moment: only narration.scene_length is read today.
-    if (story.get("narration") or {}).get("scene_length_by_moment"):
-        print("WARNING: narration.scene_length_by_moment (CR-14) is authored but this build does "
-              "not read it yet - every scene still uses narration.scene_length.")
 
     # D5: `failure_conditions` / `triggered_ending` is retired. A failure ending is a
     # `kind: "terminal"` entry in `mechanics.endings` (a `ready_when` condition plus, optionally, a
@@ -414,6 +382,13 @@ def resolve_all(ctx, observations=None) -> list:
     return effects
 
 
+def settle_all(ctx):
+    """Run every bound engine's `settle()` in resolve order, applying each one's effects before
+    the next engine looks, so a later engine settles against what an earlier one just did."""
+    for b in bind(ctx["story"]):
+        apply_effects(ctx, b.engine.settle(b.cfg, ctx) or [])
+
+
 def apply_effects(ctx, effects: list):
     """Apply effects in the order their engines produced them (§6.2).
 
@@ -519,4 +494,4 @@ def run_observation_pipeline(ctx, diff, before_resolve=None):
 
 # Engines register by being imported. At the bottom, because each one imports names from
 # this module - the package is the contract, the modules are the implementations.
-from . import endings, gate, items, ledger, pacing, resource, reveal, social, threads  # noqa: E402,F401
+from . import bonds, endings, episodes, gate, items, ledger, lore, pacing, resource, reveal, social, threads  # noqa: E402,F401

@@ -149,8 +149,9 @@ def main():
         try:
             if args.tier == "b":
                 out = story_engine.call_llm_json(
-                    prompt, model=story_engine.TIER_AB_MODEL,
-                    provider=story_engine.TIER_AB_PROVIDER, reasoning=True)
+                    prompt, model=story_engine.JUDGMENT_MODEL,
+                    provider=story_engine.JUDGMENT_PROVIDER,
+                    reasoning=story_engine.JUDGMENT_REASONING)
             else:
                 out = story_engine.call_llm_json(prompt)
         except (story_engine.LLMUnavailableError, json.JSONDecodeError, ValueError) as e:
