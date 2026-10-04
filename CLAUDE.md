@@ -1,369 +1,293 @@
 # Palimpsest
 
-See `README.md` for the project's background, setting, and how to run it.
+Read `README.md` for the project background, the setting, and how to run it.
 
-This file is **invariants only** — the things a change could break without
-realising they were deliberate. It deliberately does not explain how any of it
-works. For that:
+This file contains invariants only. An invariant is a rule that a change can break without
+the author knowing it was deliberate. This file does not explain how the system works. Find that
+in `docs/` (start with `docs/Design_Overhaul.md`).
 
-| Topic | Where |
-|---|---|
-| **The storyboard-first overhaul: what it is and why** | `docs/Design_Overhaul.md` |
-| **Authoring tool: what it is, view by view** | `docs/Authoring_Tool_Spec.md` |
-| Writing a story by editing `template.json` directly (for agents), and `scripts/lint_template.py` | `docs/Agent_Authoring_Manual.md` |
-| Assisting a human author on the storyboard (project-knowledge file: content + where to paste it) | `docs/Assistant_CoAuthor_Manual.md` |
-| **The mechanic change requests the overhaul is built from (CR-01–CR-12)** | `docs/Story_Mechanics_Update.md` |
-| **Authoring tool phases, gates, and the decisions (D1–D7) that bind them** | `docs/analysis_and_plans/AUTHORING_TOOL/AUTHORING_TOOL_PHASES.md` |
-| How threads (spine/personal/texture) relate to acts and endings, with a diagram | `docs/How_Threads_Work.md` |
-| How the engine actually worked, pre-overhaul | `docs/Pre-V3 docs/ARCHITECTURE.md` |
-| The mechanic registry, as built | `docs/Pre-V3 docs/ARCHITECTURE.md` § *The Mechanic Registry* |
-| Template/save schema, pre-overhaul design principles | `docs/Pre-V3 docs/SCHEMA_V2_SPEC.md` |
-| Pacing loop, beats, counters, directives | `docs/Pre-V3 docs/Narrative_Pacing_Loop_Spec_v4.md` |
-| Web UI design intent | `docs/Web_UI_Spec.md` |
-| What the engine stores but never prompts, pre-overhaul | `docs/Pre-V3 docs/Narrative_Engine_Spec.md` |
-| Engine v2 / schema v3 — superseded by the overhaul above | `docs/Pre-V3 docs/ENGINE_V2_SPEC.md` |
-| Engine v2 phase order, gates and risks (v2 landed; this is history) | `docs/analysis_and_plans/ENGINE_V2/ENGINE_V2_PHASES.md` |
+These five documents describe the overhaul that is now under construction. They override
+everything below and everything in `docs/Pre-V3 docs/` where they conflict:
+`docs/Design_Overhaul.md`, `docs/Authoring_Tool_Spec.md`, `docs/Story_Mechanics_Update.md`
+(CR-01–CR-12; §0 lists what is superseded), `docs/analysis_and_plans/AUTHORING_TOOL/AUTHORING_TOOL_PHASES.md`
+(phases, gates, D1–D7), and `docs/How_Threads_Work.md`. The `docs/Pre-V3 docs/` files describe the
+engine before the overhaul. They are reference, not a live spec.
 
-The five documents marked **bold** are the overhaul currently under construction and take
-precedence over everything below and under `docs/Pre-V3 docs/` where they conflict. The
-`docs/Pre-V3 docs/` files describe the engine as it stood before the overhaul; they are
-reference for what's being rebuilt, not a live spec, and most of their design principles
-(P-1…P-7, visibility rules, condition grammar) are carried forward — see
-`Story_Mechanics_Update.md` §0 for exactly what's superseded and what stands.
+Before you change anything below, read the matching section of `docs/Pre-V3 docs/ARCHITECTURE.md`.
+Then check if an Authoring tool decision (D1–D7, below) changed it. Every rule here has a recorded
+reason. Most rules exist because something broke.
 
-If you are about to change something below, read the matching section of
-`docs/Pre-V3 docs/ARCHITECTURE.md` first, and check whether an Authoring tool decision (D1–D7,
-below) has since amended it — every rule here has a reason recorded there, and most of them
-were written after something broke. **If what's being asked would conflict with a decision
-recorded here, say so and lay out the resolution options — don't silently comply (the
-conflict compounds silently) and don't silently refuse (the ask may be exactly the override
-that's needed).** The call is the user's to make, once they can see what's actually at stake.
+**If a request conflicts with a decision recorded here, tell the user and give the resolution
+options.** Do not comply silently: the conflict grows unseen. Do not refuse silently: the request
+can be the override that is needed. The user makes the decision after they see the trade-off.
 
 ---
 
 ## Build order: the storyboard leads, the engine follows
-Decided 2026-09-24, mid-overhaul. The authoring tool (the storyboard) is the upstream design
-surface — it writes whatever a story needs, including fields and `mechanics` blocks no engine
-can act on yet, and the engine's job is to catch up to what's already been authored, never the
-reverse. This generalizes D1's "final paths, always": a story is allowed to be unplayable,
-*loudly* (`UnknownEngineError`, `load_template()` refusing a template with no endings block,
-a field that round-trips but has no reader), while the engine piece it depends on doesn't
-exist yet. That is correct, not a bug to route around by watering down what gets authored.
+Decided 2026-09-24, during the overhaul. The authoring tool (the storyboard) is the upstream
+design surface. It can write anything a story needs, including fields and `mechanics` blocks
+that no engine can use yet. The engine catches up to what is authored. The engine never leads.
 
-**Consequence for how engine work (Phase S5) gets planned: demand-driven, not batch-planned.**
-No pre-planning and building a whole numbered phase step before any of it is exercised against
-real authored content. Engine work lands piece by piece, in whatever order real storyboard
-authoring actually needs next — see `AUTHORING_TOOL_PHASES.md`'s Phase S5 note for the
-concrete instance of this decision. A feature request blocked only by "the engine doesn't do
-that yet" is not a conflict — that is the expected, designed-for state; build the engine piece
-it needs. A feature request that conflicts with a *decided* invariant (this file, a
-D-numbered decision, a locked CR) is a different thing entirely — that is what the paragraph
-above this section exists for.
+This extends D1 ("final paths, always"). A story can be unplayable, but it must fail *loudly*
+(`UnknownEngineError`; `load_template()` refuses a template with no endings block; a field
+that round-trips but has no reader). This is correct while the engine piece does not exist.
+Do not water down the authored content to avoid it.
+
+**Engine work (Phase S5) is demand-driven, not batch-planned.** Do not plan and build a whole
+numbered phase step before real authored content uses it. Engine work lands piece by piece, in
+the order that real storyboard authoring needs. See the Phase S5 note in
+`AUTHORING_TOOL_PHASES.md`.
+
+- A request that only waits for "the engine does not do that yet" is not a conflict. This is the
+  expected state. Build the engine piece that it needs.
+- A request that conflicts with a *decided* invariant (this file, a D-numbered decision, a
+  locked CR) is a conflict. Use the conflict rule above.
 
 ---
 
 ## Design Philosophy: "Tight Rails, Loose Paint"
-Decided against both extremes: fully scripted branches lose the reactive,
-emergent feeling that makes AI-driven CYOA worth building; theme-and-
-worldbuilding-only causes drift (plot holes, forgotten stakes, tonal
-inconsistency, especially on cheaper/smaller models). Instead, a hybrid:
-1. **World rules = strict, non-negotiable** (`world.rules`) — magic limits,
-   tone, content boundaries. Should almost never bend.
-2. **Plot structure = adaptive waypoints, not fixed paths** (`plot.main_thread`,
-   `plot.subplots`) — acts provide direction but can be added, modified, or
-   pivoted mid-adventure. The model decides *how* the player gets there.
-3. **Scene-level execution = fully free** (`plot.current_scene`) — this is
-   where the "alive" feeling comes from.
-4. **A pacing/director layer** — every N turns, inject a meta-instruction
-   nudging the story toward the next waypoint, preventing infinite wandering
-   without scripting every branch.
-5. **Mid-adventure steering** (`plot_manager.py`, `subplot_manager.py`, the
-   in-session `steer` command, or the web UI's Plot/Subplot Manager pages —
-   `app.py` calls the same functions directly, no subprocess) bypasses
-   narration and edits plot state directly — see README for the command
-   reference. Reach for it only when the model won't arrive at a needed
-   structural change on its own.
-6. **Continuous, not finite** — no built-in stopping point. Subplots and
-   acts are generated on demand rather than pulled from a fixed pool — see
-   *Continuous / Long-Running Structure* in `docs/Pre-V3 docs/ARCHITECTURE.md`. Superseded
-   by the overhaul: see D6, below — a story with an authored `mechanics.endings` block does
-   have a designed endpoint now, reached only by the engine, never by the player.
+Fully scripted branches lose the reactive, emergent feel that makes AI-driven CYOA worth
+building. Theme-only design causes drift (plot holes, forgotten stakes, tone changes),
+especially on cheaper models. This project uses a hybrid:
+1. **World rules are strict and non-negotiable** (`world.rules`): magic limits, tone, content
+   limits. They almost never bend.
+2. **Plot structure is adaptive waypoints, not fixed paths** (`plot.main_thread`,
+   `plot.subplots`). Acts give direction. They can be added, changed, or pivoted during play.
+   The model decides *how* the player gets there.
+3. **Scene-level execution is fully free** (`plot.current_scene`). The "alive" feel comes from here.
+4. **A pacing/director layer.** Every N turns, the engine injects a meta-instruction that moves
+   the story toward the next waypoint. This stops endless wandering without scripting every branch.
+5. **Mid-adventure steering** (`plot_manager.py`, `subplot_manager.py`, the in-session `steer`
+   command, or the web UI Plot/Subplot Manager pages) edits plot state directly and skips
+   narration. `app.py` calls the same functions directly (no subprocess). See the README for
+   commands. Use steering only when the model does not reach a needed structural change by itself.
+6. **Continuous, not finite.** There is no built-in stopping point. The engine generates subplots
+   and acts on demand, not from a fixed pool (see *Continuous / Long-Running Structure* in
+   `docs/Pre-V3 docs/ARCHITECTURE.md`). The overhaul supersedes this (see D6): a story with an
+   authored `mechanics.endings` block has a designed endpoint. Only the engine reaches it.
+   The player never does.
 
-Start stricter than feels necessary — it's easier to loosen constraints once
-the model proves it handles structure well than to rein in a session that's
-already gone off the rails.
+Start stricter than necessary. It is easier to loosen the constraints after the model proves it
+handles structure than to recover a session that already went wrong.
 
 ---
 
 ## Invariants
 
 ### Structure and pacing
-- **No fixed act or subplot count.** Subplots regenerate on completion, acts are
-  generated on demand, and there is no ceiling. Don't reintroduce a number that
-  would give an open-ended story a definite endpoint.
-- **Act advancement must not depend on subplot completion.** It fires on *either*
-  a subplot completing this act *or* `act_check_frequency` turns elapsing.
-  Requiring the first alone structurally forced every subplot to single-act
-  length, which is exactly what a `multi_act` subplot needs not to happen.
-- **A story ends only through `mechanics.endings`** — a committed destination
-  (including a forced commit at `commit_by`) or a confirmed terminal (Authoring
-  Tool decision D6). The player has no command to end a story; `end story` and
-  its variants are retired along with `handle_end_story_request`. Once an ending
-  is committed, `generate_new_subplot` and `check_and_advance_act` both no-op,
-  the same as `plot.endgame.requested` did before. A story with no
-  `mechanics.endings` block — none should exist post-overhaul — has no way to
-  end at all, which is why every story must author one with a catch-all.
+- **No fixed act or subplot count.** Subplots regenerate when they complete. Acts are generated
+  on demand. There is no ceiling. Do not add a number that gives an open-ended story a definite end.
+- **Act advancement must not depend on subplot completion.** It fires on *either* a subplot that
+  completes this act *or* `act_check_frequency` turns that elapse. If it needs the first
+  condition alone, every subplot is forced to a single act. A `multi_act` subplot must not be.
+- **A story ends only through `mechanics.endings`:** a committed destination (including a forced
+  commit at `commit_by`) or a confirmed terminal (decision D6).
+  - The player has no command to end a story. `end story` and its variants are retired, with
+    `handle_end_story_request`.
+  - After an ending is committed, `generate_new_subplot` and `check_and_advance_act` both do nothing
+    (as `plot.endgame.requested` did before).
+  - A story with no `mechanics.endings` block cannot end. No such story should exist after the
+    overhaul. Every story must author an endings block with a catch-all.
 
 ### Keeping LLM context bounded
-- **The disk record may grow forever. What reaches a prompt must not.** Any new
-  accumulating state needs the same treatment as the existing ones.
-- **Summary rollover triggers on a batch threshold, not plain overflow.**
-  Triggering on "longer than `RECENT_TURN_LIMIT`" means a rollover every turn
-  past the tenth, costing a Tier A call each time and re-compressing the summary
-  ~16 times by turn 26 instead of ~2.
-- **The summary word cap is enforced in code, not merely requested in the
-  prompt.** A real save reached 2,912 words against a 2,000-word instruction.
-- **`pending_regenerate` holds exactly one entry** — a full pre-turn snapshot,
-  restored by a whole-state swap rather than a diff.
+- **The disk record can grow forever. What reaches a prompt must not.** Give any new accumulating
+  state the same limits as the existing state.
+- **Summary rollover triggers on a batch threshold, not on plain overflow.** If it triggers on
+  "longer than `RECENT_TURN_LIMIT`", it runs every turn after the tenth. Each run costs one Tier A
+  call. The summary is then compressed about 16 times by turn 26, not about 2 times.
+- **Code enforces the summary word cap. A prompt request is not enough.** A real save reached
+  2,912 words against a 2,000-word instruction.
+- **`pending_regenerate` holds exactly one entry:** a full pre-turn snapshot. Restore it with a
+  whole-state swap, not a diff.
 
 ### LLM backend
-- **Tiers are roles, not models; each is configured to the strength of whatever model fills
-  it.** The engine must stay model-agnostic (it was first built around DeepSeek; that is no
-  longer an assumption). Current assignment, decided 2026-10-03: **narration** (Tier A)
-  `claude-sonnet-5-5`, low effort; **judgment** (Tier B: commit judge, terminal confirmation,
-  act generator) `claude-opus-5-5`, thinking always on; **extraction** (Tier C:
-  classification and state extraction) `claude-haiku-4-5-20251001`, no extended thinking.
-  Per-call behaviour (effort, thinking) is threaded per call site, never hardcoded to a
-  provider. Don't hardcode a model name outside configuration. Tier A and B may be different
-  models; code must not assume they share one. (Supersedes "A and B are the same model".)
-- **Google/Gemini is not a real tier.** It is reserved for the offline test
-  suite and for `call_llm`'s own fail-safe retry.
-- **The fail-safe only ever falls back *to* Gemini, never away from it**, and
-  only on a request-level failure — never a silent retry because output looked
-  malformed. Its "already tried this" check must compare against the model
-  actually attempted, not the raw argument, since `TESTING_FORCE_GOOGLE`
-  substitutes silently.
-- **Narration and state-update are separate LLM calls.** One call trying to do
-  both produces messier JSON. Keep the split when extending state coverage.
-- **`LLMUnavailableError` is the single stable failure type**, including for a
-  200 with empty content. A failure here is always recoverable: `call_llm` runs
-  before any save write, so no turn is ever half-persisted.
-- Provider timeouts stay sized so that primary-plus-fallback fits inside
-  gunicorn's `--timeout`.
+- **Tiers are roles, not models.** Configure each tier for the strength of the model that fills it.
+  The engine must stay model-agnostic. (It started on DeepSeek. That is no longer assumed.)
+  Current assignment (decided 2026-10-03):
+  - **Narration** (Tier A): `claude-sonnet-5-5`, low effort.
+  - **Judgment** (Tier B: commit judge, terminal confirmation, act generator): `claude-opus-5-5`,
+    thinking always on.
+  - **Extraction** (Tier C: classification and state extraction): `claude-haiku-4-5-20251001`,
+    no extended thinking.
+- Thread per-call behavior (effort, thinking) through each call site. Never hardcode it to a
+  provider. Never hardcode a model name outside configuration.
+- Tier A and Tier B can be different models. Code must not assume that they share one.
+  (This supersedes "A and B are the same model".)
+- **Keep each role's model distinct from the others.** `_tier_reasoning()` finds the reasoning level
+  from the *model name*. If two roles use one model, they silently share the setting of whichever
+  role matches first.
+- Env vars are `NARRATION_*`, `JUDGMENT_*`, `EXTRACTION_*` (each with `PROVIDER`, `MODEL`,
+  `REASONING`). The old `TIER_AB_*` and `TIER_C_*` do not exist.
+- **Google/Gemini is not a real tier.** Use it only for the offline test suite and for the
+  `call_llm` fail-safe retry.
+- **The fail-safe falls back only *to* Gemini, never away from it.** It runs only after a
+  request-level failure. Never retry silently because the output looked malformed. Its "already
+  tried this" check must compare against the model that was actually attempted, not the raw
+  argument. `TESTING_FORCE_GOOGLE` substitutes the model silently.
+- **Narration and state-update are separate LLM calls.** One call that does both gives messier
+  JSON. Keep the split when you add state coverage.
+- **`LLMUnavailableError` is the single stable failure type.** It includes a 200 response with
+  empty content. This failure is always recoverable: `call_llm` runs before any save write, so no
+  turn is half-saved.
+- Size provider timeouts so that the primary call plus the fallback fit inside the gunicorn
+  `--timeout`.
 
 ### State shape
-- **The model can never introduce a new stat axis.** Stats are seeded at save
-  creation from `protagonist.stats` plus any `character_creation`
-  `starting_stats`, and the observation pass may only move an existing one.
-  §8.1's `axes.<axis>.start` is deliberately **not** implemented — a third seeding
-  source would break the stories that seed through character creation.
-- **Authoring `axes.<axis>.costs` switches the whole story to priced stats.** The model then
-  names events from a closed vocabulary and the engine does the arithmetic; authoring none
-  keeps the v2 delta map. It is all-or-nothing per story, not per axis, and an axis with no
-  `costs` entry can then only move by `per_turn` drift.
-- **Relationship scores are deltas, not absolutes**, and eviction drops whatever
-  sits *closest to neutral* — a story's strongest bonds must never silently
-  disappear.
+- **The model can never add a new stat axis.** Stats are seeded at save creation from
+  `protagonist.stats` and any `character_creation` `starting_stats`. The observation pass can
+  only move an existing axis. §8.1 `axes.<axis>.start` is deliberately **not** implemented. A
+  third seeding source would break stories that seed through character creation.
+- **Authoring `axes.<axis>.costs` switches the whole story to priced stats.** The model then names
+  events from a closed vocabulary, and the engine does the arithmetic. If you author no `costs`,
+  the story keeps the v2 delta map. The switch is per story, not per axis. After it, an axis with
+  no `costs` entry can move only by `per_turn` drift.
+- **Relationship scores are deltas, not absolutes.** Eviction drops the score *closest to
+  neutral*. The strongest bonds of a story must never disappear silently.
 - **A character's name is its only identity.** `world.characters` (authored) and
-  `state.characters` (discovered) are both keyed by the same canonical name — no
-  separate `npc_id`. (An earlier version of this invariant described a
-  `npc_id`-based link; that was never how the v2 code worked and is corrected
-  here.) Exact-name matching is fragile if names can diverge, which is why
-  `_existing_character_names` and the generation prompts exist to stop the model
-  minting a second name for someone who already has one.
-- **Every NPC record is created through `story_engine.insert_character()`**, and
-  every subplot through `insert_subplot()`.
-- **Adding a `character_creation` step retroactively halts every live save** —
-  moot during the overhaul (saves are disposable at cutover, see below), but the
-  rule is correct for any story shipped afterward: usually right, never opt-in.
+  `state.characters` (discovered) use the same canonical name as key. There is no `npc_id`.
+  (An older version of this rule described an `npc_id` link. The v2 code never worked that way.)
+  Exact-name matching breaks if names diverge. `_existing_character_names` and the generation
+  prompts stop the model from creating a second name for the same character.
+- **Create every NPC record with `story_engine.insert_character()`.** Create every subplot with
+  `insert_subplot()`.
+- **A new `character_creation` step halts every live save.** This does not matter during the
+  overhaul (saves are disposable at cutover, see below). The rule is correct for any later story:
+  it is usually right, and it is never opt-in.
 
-### Mechanic registry (see `docs/Pre-V3 docs/ARCHITECTURE.md` § *The Mechanic Registry* for how)
-- **Declare-to-bind: a `mechanics` block with no `"engine"` key binds nothing.** That is not
-  an error — it is a mechanic the registry does not own yet — but a block that *should*
-  declare one and doesn't loads **inert**: no state, no prompt line, no observation field,
-  and a story that looks fine and never progresses. Silent inertness is the failure this
-  architecture exists to remove, so an engine declared with an empty config raises rather
-  than adjudicating nothing, and `mechanics.validate()` warns for seeded stats, seeded
-  inventory and authored subplots with no engine. Don't quiet those warnings.
-- **A mechanics block must live inside `mechanics`.** Obvious until it isn't: a block placed
-  one level up parses fine, seeds nothing, binds nothing, and reads exactly like a story that
-  never authored the mechanic. This has happened once.
-- **An engine contributes at most one observation field per turn**, and may contribute none
-  (a cadence). An engine that needs two is two engines, or one field with a richer type —
-  both existing cases were merged rather than granted an exception. The budget is `core + 7`
-  and is *measured* by `scripts/measure_baseline.py`, not asserted.
+### Mechanic registry (see `docs/Pre-V3 docs/ARCHITECTURE.md` § *The Mechanic Registry*)
+- **Declare-to-bind: a `mechanics` block with no `"engine"` key binds nothing.** This is not an
+  error. It is a mechanic that the registry does not own yet. But a block that *should* declare
+  an engine and does not loads **inert**: no state, no prompt line, no observation field. The
+  story looks fine and never progresses. The architecture exists to remove this silent failure.
+  - An engine declared with an empty config raises. It does not adjudicate nothing.
+  - `mechanics.validate()` warns for seeded stats, seeded inventory, and authored subplots that
+    have no engine. Do not silence these warnings.
+- **A mechanics block must be inside `mechanics`.** A block one level up parses without error,
+  seeds nothing, binds nothing, and looks like a story that never authored the mechanic. This
+  has happened once.
+- **An engine contributes at most one observation field per turn.** It can contribute none (a
+  cadence). An engine that needs two fields is two engines, or one field with a richer type. Both
+  existing cases were merged. No exception was given. The budget is `core + 7`.
+  `scripts/measure_baseline.py` *measures* it. It is not asserted.
 - **An engine that contributes prompt text must declare a `prompt_budget`.** Zero means "no
-  narration text at all" and is legitimate; zero *with* text raises, and so does exceeding it.
-- **`resolve()` is pure and effects are absolute.** It returns `Effect`s and never touches
-  `ctx`. "Set it to 12" replays; "subtract 3" depends on what already applied this turn, so
-  an engine pricing several events against one axis projects locally and emits the final value.
-- **An engine call is Tier C unless its module records why not.** Stricter than the rest of
-  the codebase on purpose: the registry makes call sites cheap to add. Measured — Tier C is
-  the *more* self-consistent tier on 8 of 11 classification fields.
+  narration text" and is valid. Zero *with* text raises. Exceeding the budget raises.
+- **`resolve()` is pure, and effects are absolute.** It returns `Effect`s and never touches `ctx`.
+  "Set it to 12" replays correctly. "Subtract 3" depends on what already applied this turn. An
+  engine that prices several events against one axis projects locally and emits the final value.
+- **An engine call is Tier C unless its module records why not.** This rule is stricter than the
+  rest of the code on purpose, because the registry makes call sites cheap to add. Measured: Tier C
+  is the *more* self-consistent tier on 8 of 11 classification fields.
 - **Gate predicates fail open, never closed.** An unknown referent, a malformed predicate, an
-  empty `any`, a stat axis the save lacks — all read as *satisfied*. A typo should cost a
-  locked door, never a save whose main thread can never advance.
-- **Flag predicates read `flags.active ∪ flags.archive`.** `archive_stale_flags` retires a
-  flag out of `active` on a 10-turn window while `act_check_frequency` defaults to 12, so
-  reading `active` alone is consulted on a cadence longer than the flag's own lifetime there
-  and is reliably false exactly when it matters.
-- **The refusal rail is the location veto, not the detector.** The Tier C detector decides
-  whether to raise the modal and is ~90% accurate; `blocking()` vetoes a gated
-  `scene_update.location` regardless. Trade recall for precision and never the reverse — a
-  miss has a backstop, a false positive refuses a legitimate action and nothing catches it.
-- **Saves are disposable for the duration of the overhaul.** Engine v2 kept saves at schema
-  version 2 while only the template shape moved; the Authoring Tool overhaul does not extend
-  that courtesy. Templates the board writes are `schema_version: 3` (see *Authoring tool*,
-  below); `load_template_raw` accepts 2 and 3, upgrading 2 in memory. Save format may change
-  freely with a version bump, old saves are refused at load rather than migrated, and
-  `data/saves/` is discarded as an operator action at cutover — this is not a code change and
-  nothing in the repository deletes them itself. Once the overhaul ships, restore the old
-  discipline: relocating save state again needs a migration and a version bump.
+  empty `any`, or a stat axis that the save lacks all read as *satisfied*. A typo must cost a
+  locked door. It must never cost a save whose main thread cannot advance.
+- **Flag predicates read `flags.active ∪ flags.archive`.** `archive_stale_flags` moves a flag out
+  of `active` after a 10-turn window. `act_check_frequency` defaults to 12. If you read `active`
+  only, the check runs less often than the flag lives, so it is false exactly when it matters.
+- **The refusal rail is the location veto, not the detector.** The Tier C detector decides if the
+  modal is raised. It is about 90% accurate. `blocking()` vetoes a gated `scene_update.location`
+  in all cases. Trade recall for precision, never the reverse. A miss has a backstop. A false
+  positive refuses a legitimate action and nothing catches it.
+- **Saves are disposable during the overhaul.** Engine v2 kept saves at schema version 2 while
+  only the template shape moved. The Authoring Tool overhaul does not give that benefit.
+  - Templates that the board writes are `schema_version: 3` (see *Authoring tool*).
+    `load_template_raw` accepts 2 and 3, and upgrades 2 in memory.
+  - The save format can change freely with a version bump. The engine refuses old saves at load.
+    It does not migrate them.
+  - The operator discards `data/saves/` at cutover. This is not a code change. Nothing in the
+    repository deletes saves.
+  - After the overhaul ships, restore the old rule: a change to save state needs a migration and
+    a version bump.
 
-### Authoring tool (see `docs/analysis_and_plans/AUTHORING_TOOL/AUTHORING_TOOL_PHASES.md` for
-the full reasoning behind each decision below — D1–D7 there, reproduced here as invariants)
-- **D1: the board writes final template paths, inside `mechanics`, even before the engine
-  that reads them exists.** No staging namespace. A story authoring a module this build
-  doesn't register fails `load_template()` loudly (`UnknownEngineError`) — that's correct,
-  not a bug to route around in the story. The tool itself never depends on `validate()`
-  succeeding: it reads with `load_template_raw()`, validates against the JSON Schema, and
-  builds preview/playtest from a *playable projection* (the template minus every
-  unregistered `mechanics` block) so an unbuilt module is shown as left out, never silently
-  swallowed.
-- **D2: CR-02's condition grammar lives in `backend/conditions.py`, separate from
-  `gate.satisfied()`.** Gates and `activate_when` stay fail-open (an unknown referent reads
-  as satisfied — a typo should cost a locked door, never a stuck save). `ready_when`,
-  `done_when` and `fail_when` are fail-**closed** at the same call: a typo there would
-  commit or prune an ending, and both are permanent. Every condition call site declares its
-  polarity explicitly; lint rule L10 (unknown flag/stat/fragment/character) is
-  save-blocking for every condition field, so the fail-closed path is the one an author
-  actually hits.
-- **D3: conditions, lint and prompt preview are computed server-side, through the real
-  engine modules.** No parallel JS implementation that could disagree with the engine —
-  Design_Overhaul's original JS-then-port plan is superseded by this because the deployment
-  environment has no JS runtime to test a JS evaluator against.
-- **D4: the board page (`/author/<slug>/board`) is a scoped exception to "built with HTMX,
-  declaratively."** Its canvas (SVG edges, drag, pan, zoom) is client-rendered from a JSON
-  model; every server exchange still goes through HTMX (`hx-vals` for requests,
-  `HX-Trigger` payloads or fragments for responses). No hand-written `fetch` anywhere else
-  in the app.
-- **D5: `mechanics.failure_conditions` / `triggered_ending` is retired.** Failure endings
-  become `mechanics.endings` entries with `kind: "terminal"` (stat `ready_when` plus judge
-  confirmation), not a separate engine.
-- **D6: the player cannot end the story.** See *Structure and pacing*, above — a story ends
-  only through a committed or forced `mechanics.endings` destination, or a confirmed
-  terminal.
-- **D7: `world.characters[name].relationship_to_player` is renamed `first_contact`, and is
-  narrator-visible only until that character's first scored relationship interaction** — a
-  first-contact stance, not a permanent trait; once there's a score, the relationship tiers
-  speak instead. A character created with no relationship score yet (e.g. by
-  `insert_character` — score `null`, not `0`) still shows it. `role` moves to author-only
-  visibility: it's shown in the Plot Manager and the cast card, never prompted, because it
-  routinely states where an arc is going (e.g. "the one person who might become a partner")
-  and prompting it would steer the narrator there from the first scene. `world.factions[].
-  relationship_to_player` is a distinct field and keeps its name — it's already prompted and
-  D7 doesn't touch it.
+### Authoring tool (D1–D7; reasoning is in `AUTHORING_TOOL_PHASES.md`)
+- **D1: the board writes final template paths, inside `mechanics`, before the engine that reads
+  them exists.** No staging namespace. A story with an unregistered module fails `load_template()`
+  loudly (`UnknownEngineError`). This is correct. The tool reads with `load_template_raw()`, never
+  depends on `validate()`, and builds preview and playtest from a *playable projection* (the
+  template without unregistered `mechanics` blocks). An unbuilt module shows as left out.
+- **D2: the CR-02 condition grammar is in `backend/conditions.py`, separate from `gate.satisfied()`.**
+  Gates and `activate_when` fail open. `ready_when`, `done_when` and `fail_when` fail **closed**,
+  because a typo there can commit or prune an ending permanently. Each condition call site
+  declares its polarity. Lint rule L10 (unknown flag/stat/fragment/character) blocks save for
+  every condition field.
+- **D3: the server computes conditions, lint and prompt preview, through the real engine modules.**
+  Do not write a parallel JS implementation. The deployment has no JS runtime to test one.
+- **D4: the board page (`/author/<slug>/board`) is a scoped exception to "built with HTMX".** The
+  client renders its canvas (SVG, drag, pan, zoom) from a JSON model. Every server exchange still
+  uses HTMX (`hx-vals`; `HX-Trigger` payloads or fragments). No hand-written `fetch` elsewhere.
+- **D5: `mechanics.failure_conditions` / `triggered_ending` is retired.** A failure ending is a
+  `mechanics.endings` entry with `kind: "terminal"` (stat `ready_when` plus judge confirmation).
+- **D6: the player cannot end the story.** See *Structure and pacing*.
+- **D7: `world.characters[name].relationship_to_player` is renamed `first_contact`.** The narrator
+  sees it only until that character's first scored relationship interaction (a character with
+  score `null`, for example from `insert_character`, still shows it). `role` is author-only: never
+  prompt it, because it often states where an arc goes. `world.factions[].relationship_to_player`
+  is a different field and keeps its name.
 
-### Schema (see `docs/Pre-V3 docs/SCHEMA_V2_SPEC.md` §1 for the full principles)
-- **An absent optional module means the feature does not exist** — no state, no
-  prompt section, no schema field, no empty header, no zeroed counter.
-- **Read paths never assume optional structure.** `.get()`/`setdefault()`
-  throughout; the minimal template must run.
-- **No engine constant may encode a creative decision.** If a novelist would have
-  an opinion about it, it belongs in the template.
-- **Determinism belongs to the engine, never to the prompt** (P-7). If a feature
-  must be correct *every* time rather than usually, code produces it; the template
-  only opts in and configures how it looks. The test is what failure costs: a
-  slightly worse scene is a template concern, a broken promise to the player is
-  an engine one. Asking a model to transcribe its own stat block drifted 8 points
-  over a real save, which is why `mechanics.stats.readout` exists — the model
-  emits a token and never a number.
-- `test/fixtures/` + `test_genre_conformance.py` are what make these enforceable
-  rather than aspirational. A new optional module needs a fixture that omits it.
+### Schema (principles: `docs/Pre-V3 docs/SCHEMA_V2_SPEC.md` §1)
+- **An absent optional module means the feature does not exist.** No state, no prompt section, no
+  schema field, no empty header, no zeroed counter.
+- **Read paths never assume optional structure.** Use `.get()` and `setdefault()` everywhere. The
+  minimal template must run.
+- **No engine constant may encode a creative decision.** If a novelist can have an opinion about
+  it, it belongs in the template.
+- **Determinism belongs to the engine, never to the prompt** (P-7). If a feature must be correct
+  *every* time, and not only usually, code produces it. The template only opts in and sets how it
+  looks. The test is the cost of a failure: a slightly worse scene is a template concern. A broken
+  promise to the player is an engine concern. A model that transcribed its own stat block drifted
+  8 points over a real save. For this reason `mechanics.stats.readout` exists: the model emits a
+  token and never a number.
+- `test/fixtures/` and `test_genre_conformance.py` make these rules enforceable. A new optional
+  module needs a fixture that omits it.
 
 ### Web UI
-- **Built with HTMX, declaratively.** Don't introduce a parallel
-  `fetch`/DOM-patch implementation alongside it.
-- **Turn-taking is asynchronous** — kickoff returns `202`, the client polls, then
-  fetches the result. This exists because the Cloudflare tunnel cancels a
-  long-held response at ~100–125s even though the turn succeeds.
-- **`STATUS_LABELS` and `DEFAULT_STEP_ESTIMATE_SECONDS` mirror the `_timed()`
-  call sites.** Adding an LLM call to the turn path means adding it to both;
-  `test_status_labels.py` asserts the mirror both ways. This has drifted once.
-- **Narration markup is exactly three markers** (`**bold**`, `*italic*`,
-  `__underline__`), and escaping always runs before the marker regexes, so LLM
-  output can never inject real markup.
-- Label sheets need their `filelock` (unlocked, concurrent POSTs silently dropped
-  labels) and stay gated on `LABEL_SHEETS_USER`.
+- **Built with HTMX, declaratively.** Do not add a parallel `fetch`/DOM-patch implementation.
+- **Turn-taking is asynchronous.** Kickoff returns `202`, the client polls, then it fetches the
+  result. The Cloudflare tunnel cancels a long-held response at about 100–125 s, even when the
+  turn succeeds.
+- **`STATUS_LABELS` and `DEFAULT_STEP_ESTIMATE_SECONDS` mirror the `_timed()` call sites.** When you
+  add an LLM call to the turn path, add it to both. `test_status_labels.py` checks the mirror in
+  both directions. This has drifted once.
+- **Narration markup is exactly three markers:** `**bold**`, `*italic*`, `__underline__`. Escaping
+  always runs before the marker regexes. LLM output can then never inject real markup.
+- Label sheets need their `filelock`. Without it, concurrent POSTs silently dropped labels. They
+  stay gated on `LABEL_SHEETS_USER`.
 
 ### Storage and layout
-- **All state access goes through `state_store.py`.** All four entry points
-  (`story_engine`, `plot_manager`, `subplot_manager`, `app`) use it. Don't read or
-  write story state any other way.
-- The five backend modules live under `backend/` and import each other **flat**
-  (`import state_store`). Every entry point puts `backend/` on `sys.path` itself;
-  cwd stays the repo root, which is what lets `STORIES_DIR`/`DATA_DIR` be plain
-  relative strings. `app.py` passes `template_folder`/`static_folder` explicitly
-  because Flask would otherwise resolve them relative to `backend/`.
-- **Adding a story is a content change, not a code change** — drop in
-  `stories/<slug>/template.json`.
-- **Stories no longer need to stay out of this repo's history.** Decided
-  2026-10-03: the private-submodule split (`stories/private/<slug>/` as a second,
-  gitignored-from-history story root) is retired — it's fine for story content,
-  including what was previously kept in `palimpsest-stories`, to be public in this
-  repo. Don't reintroduce a second story root; a story is just
-  `stories/<slug>/template.json` like any other.
-- `data/` is runtime-only and gitignored. Accounts are provisioned server-side;
-  there is deliberately no self-service registration route.
+- **All state access goes through `state_store.py`.** All four entry points (`story_engine`,
+  `plot_manager`, `subplot_manager`, `app`) use it. Do not read or write story state any other way.
+- The five backend modules are in `backend/` and import each other **flat** (`import state_store`).
+  Each entry point puts `backend/` on `sys.path` itself. The cwd stays the repo root, so
+  `STORIES_DIR` and `DATA_DIR` can be plain relative strings. `app.py` passes
+  `template_folder` and `static_folder` explicitly, because Flask would resolve them relative to
+  `backend/`.
+- **Adding a story is a content change, not a code change.** Add `stories/<slug>/template.json`.
+- **Stories do not need to stay out of the repo history.** Decided 2026-10-03: the private-submodule
+  split (`stories/private/<slug>/` as a second story root) is retired. Story content, including
+  content that was in `palimpsest-stories`, can be public in this repo. Do not add a second story
+  root. A story is `stories/<slug>/template.json`.
+- `data/` is runtime-only and gitignored. The operator provisions accounts on the server. There is
+  no self-service registration route, on purpose.
+- **`.env`: lines 1–26 are off-limits (they hold secrets). From line 27, it is plain
+  configuration. You can read and edit it.** The `NARRATION_*`/`JUDGMENT_*`/`EXTRACTION_*` tier
+  settings, feature flags, and their comments are there. Read it with an offset (`Read` from
+  line 26). Never read the whole file. Never print or copy anything above line 26.
 
 ---
 
 ## Testing
-`test/` is offline-first: `test/_llm_stubs.py` stubs `dotenv`,
-`google.generativeai`, `filelock`, and `werkzeug.security` so most of the
-suite runs with zero pip-installed dependencies and no network access —
-useful in sandboxes without pip access. `test_app_routes.py` is the one
-exception (needs real `flask`); it skips gracefully (exit 0) rather than
-failing when `flask` isn't importable. Run the whole suite with
-`python test/run_all.py`. When adding a new engine function that calls the
-LLM, follow the existing pattern: accept the prompt-building/parsing as
-something `call_llm`/`call_llm_json` can be monkeypatched around, so it stays
-testable without a real API key.
-
-`test/fixtures/` holds three genre-conformance templates (`regency.json`,
-`courtroom.json`, `survival.json`), exercised by `test_genre_conformance.py`.
-They are the executable form of `docs/Pre-V3 docs/SCHEMA_V2_SPEC.md`'s P-6 - the claim that
-an author can write a wholly different genre without touching Python - and each
-uses a deliberately different subset of the optional `mechanics` modules. They
-live outside `stories/` on purpose: anything under `stories/<slug>/` is picked
-up by `state_store.list_stories()` and becomes startable by a real player, so
-the test loads them through `freeze`/`new_save_state` directly.
-
-Two things about them are easy to weaken by accident. The assertions run **in
-both directions** - an absent module must leak no marker into either prompt,
-*and* an authored module must actually reach them; one-directional absence
-testing passes happily for a module that was never wired up at all. And the
-per-fixture "modules absent" lists are written out in the test rather than
-derived from the fixture files, so deleting a module from a fixture fails
-loudly instead of silently shrinking what's covered. If a new optional module
-is added to the schema, it needs a marker entry and a fixture that omits it,
-or nothing is guarding P-2 for it.
-
-Tests that load `se.state_store.load_template(se.state_store.DEFAULT_STORY_SLUG)`
-should derive their expectations from whatever that template actually
-contains (subplot count, memory fragments, etc.) rather than hardcoding
-assumptions from one specific story - `DEFAULT_STORY_SLUG` has changed once
-already (New Babel → example) and content-specific assumptions silently
-broke two tests when it did.
-
-`test_app_routes.py` exercises `POST /api/turn`/`/api/regenerate` through
-Flask's real (synchronous) test client, but the routes themselves now kick
-the actual turn off on a background thread and return `202` almost
-immediately (see "Asynchronous turn-taking" under "Web UI") — the test
-client's `.post(...)` call returning does *not* mean `story_engine.take_turn`
-has run yet. `wait_for_idle(user_id, ...)` (defined in that file, polling
-`state_store.read_turn_status` directly rather than over HTTP) has to be
-called before asserting on save-file state or fetching `GET
-/api/turn/result` — any new turn-taking assertion added to that file needs
-to follow the same poll-then-fetch shape the real client uses, not assume
-the kickoff POST already did the work.
+- `test/` is offline-first: `test/_llm_stubs.py` stubs `dotenv`, `google.generativeai`, `filelock`
+  and `werkzeug.security`. `test_app_routes.py` needs real `flask` and skips (exit 0) without it.
+  Run everything with `python test/run_all.py`.
+- A new engine function that calls the LLM must accept prompt-building and parsing that
+  `call_llm`/`call_llm_json` can monkeypatch.
+- `test/fixtures/` (`regency.json`, `courtroom.json`, `survival.json`) are the executable form of P-6.
+  They are outside `stories/` on purpose: `state_store.list_stories()` would make them playable.
+  Tests load them through `freeze`/`new_save_state`.
+- Fixture assertions run **in both directions**: an absent module leaks no marker into a prompt,
+  and an authored module reaches it. The "modules absent" lists are written out in the test, not
+  derived from the fixtures. A new optional module needs a marker entry and a fixture that omits it.
+- Tests that use `load_template(DEFAULT_STORY_SLUG)` must take expectations from that template's
+  content. Do not hardcode one story's details.
+- After `POST /api/turn` or `/api/regenerate` in `test_app_routes.py`, the turn is not done (the
+  route returns `202`). Call `wait_for_idle(user_id, ...)` before you assert on save state or fetch
+  `GET /api/turn/result`.
